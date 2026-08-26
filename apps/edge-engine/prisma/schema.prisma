@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Specimen {
+  id              String   @id @default(cuid())
+  accessionNumber String   @unique
+  barcode         String   @unique
+  patientJson     String?
+  specimenType    String   @default("blood")
+  orderedTestsJson String  @default("[]")
+  status          String   @default("registered")
+  collectedAt     DateTime?
+  registeredAt    DateTime @default(now())
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  results         Result[]
+}
+
+model Result {
+  id              String   @id @default(cuid())
+  accessionNumber String
+  barcode         String
+  analyzerId      String
+  testCode        String
+  testName        String?
+  value           String
+  units           String?
+  referenceLow    Float?
+  referenceHigh   Float?
+  flag            String   @default("unknown")
+  observedAt      DateTime
+  rawMessageId    String?
+  createdAt       DateTime @default(now())
+  specimen        Specimen? @relation(fields: [accessionNumber], references: [accessionNumber])
+  rawMessage      RawMessage? @relation(fields: [rawMessageId], references: [id])
+
+  @@index([barcode])
+  @@index([analyzerId])
+}
+
+model RawMessage {
+  id          String   @id @default(cuid())
+  analyzerId  String
+  transport   String
+  protocol    String
+  payload     String
+  receivedAt  DateTime @default(now())
+  parsedOk    Boolean  @default(false)
+  parseError  String?
+  results     Result[]
+
+  @@index([analyzerId, receivedAt])
+}
+
+model OutboxEvent {
+  id         String   @id @default(cuid())
+  eventId    String   @unique
+  type       String
+  status     String   @default("pending")
+  sequence   Int
+  payload    String
+  attempts   Int      @default(0)
+  lastError  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([status, sequence])
+}
+
+model SyncMeta {
+  id    String @id @default("singleton")
+  /// Monotonic sequence for outbox ordering
+  nextSequence Int @default(1)
+}

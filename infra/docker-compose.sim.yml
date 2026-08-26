@@ -1,0 +1,5 @@
+# Optional overlay — prefer: docker compose --profile sim up
+# Kept for explicit `docker compose -f docker-compose.yml -f docker-compose.sim.yml up`
+services:
+  simulators:
+    profiles: []

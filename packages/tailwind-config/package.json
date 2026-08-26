@@ -1,0 +1,10 @@
+{
+  "name": "@drax-lis/tailwind-config",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.css",
+    "./theme": "./theme.css"
+  }
+}

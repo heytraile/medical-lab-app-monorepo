@@ -1,0 +1,68 @@
+services:
+  edge-engine:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.edge
+    ports:
+      - "3101:3101"
+      - "5001:5001"
+      - "5003:5003"
+      - "5004:5004"
+    environment:
+      PORT: "3101"
+      DATABASE_URL: "file:/data/edge.db"
+      EDGE_NODE_ID: drax-hall-edge-1
+      CLOUD_API_URL: http://api:3102
+      CLOUD_SYNC_ENABLED: "true"
+      SYSMEX_TCP_PORT: "5001"
+      MINDRAY_TCP_PORT: "5003"
+      IFLASH_TCP_PORT: "5004"
+      ZEBRA_PRINTER_HOST: simulators
+      ZEBRA_PRINTER_PORT: "9100"
+    volumes:
+      - edge-sqlite:/data
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.api
+    ports:
+      - "3102:3102"
+    environment:
+      PORT: "3102"
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    ports:
+      - "3100:3100"
+    environment:
+      VITE_LIS_API_URL: http://localhost:3101
+      VITE_WS_URL: http://localhost:3101
+      VITE_LIS_MODE: edge
+    depends_on:
+      - edge-engine
+
+  simulators:
+    profiles: ["sim"]
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.simulators
+    environment:
+      EDGE_HOST: edge-engine
+      SYSMEX_TCP_PORT: "5001"
+      IFLASH_TCP_PORT: "5004"
+      ZEBRA_PRINTER_PORT: "9100"
+      SIM_BARCODE: DH20260125001
+    ports:
+      - "9100:9100"
+    depends_on:
+      - edge-engine
+
+volumes:
+  edge-sqlite:

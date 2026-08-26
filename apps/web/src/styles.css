@@ -1,0 +1,5 @@
+@import "@drax-lis/tailwind-config";
+
+body {
+  @apply bg-lab-surface text-lab-slate antialiased;
+}
