@@ -2,11 +2,65 @@
 
 Run the full edge loop on this Mac **without** the four physical analyzers.
 
+Clinical product rules (Bench Review, authorizer release, critical STAT alerts) live in [WORKFLOW.md](./WORKFLOW.md) — implement those next; this doc is how to run the stack locally.
+
+Confused by an acronym or assay code? See [GLOSSARY.md](./GLOSSARY.md).
+
 ## Prerequisites
 
 - Node.js ≥ 20 (`nvm use` if you have `.nvmrc`)
 - pnpm 11 (`corepack enable`)
+- **Doppler CLI** ([install](https://docs.doppler.com/docs/install-cli)) — local secrets source of truth
 - Optional: Docker Desktop, `socat` (for serial PTY pairs)
+
+## Environment (Doppler)
+
+All local env vars live in **Doppler** project `drax-lis`, config `dev` ([`doppler.yaml`](../doppler.yaml)).
+
+```bash
+# once
+doppler login
+cd medical-lab-app-monorepo
+doppler setup   # select project drax-lis / config dev
+# or non-interactive:
+# doppler setup --no-interactive -p drax-lis -c dev
+
+# set secrets (dashboard or CLI)
+doppler secrets set EDGE_SYNC_TOKEN=dev-edge-sync-token
+doppler secrets set SUPABASE_URL=https://xxxx.supabase.co
+# …
+```
+
+`pnpm dev` / `pnpm db:*` call [`scripts/with-doppler.sh`](../scripts/with-doppler.sh), which injects Doppler secrets when the CLI is logged in and the project exists. If Doppler is missing or not set up yet, those scripts **fall back** to running without injection (and print a warning) so local work is not blocked. Use `pnpm dev:bare` to skip Doppler on purpose.
+
+**Do not** treat `apps/*/.env` as the source of truth. Those files are gitignored leftovers. [`.env.example`](../apps/edge-engine/.env.example) files are a **key catalog** only.
+
+### Key catalog (put these in Doppler `dev`)
+
+| Key | Used by | Notes |
+| --- | --- | --- |
+| `EDGE_ENGINE_PORT` | edge | Default `3101` (avoid shared `PORT`) |
+| `API_PORT` | api | Default `3102` |
+| `DATABASE_URL` | edge / Prisma | e.g. `file:./dev.db` |
+| `EDGE_NODE_ID` | edge | e.g. `drax-hall-edge-1` |
+| `CLOUD_API_URL` | edge | `http://localhost:3102` |
+| `CLOUD_SYNC_ENABLED` | edge | `true` / `false` |
+| `EDGE_SYNC_TOKEN` | edge + api | Same value both sides |
+| `SUPABASE_URL` | api | Optional; empty → in-memory sync |
+| `SUPABASE_SERVICE_ROLE_KEY` | api | Server only — never `VITE_` |
+| `VITE_LIS_API_URL` | web | `http://localhost:3101` |
+| `VITE_LIS_MODE` | web | `edge` or `cloud` |
+| `VITE_WS_URL` | web | Socket.IO base |
+| `VITE_CLOUD_API_URL` | web | `http://localhost:3102` |
+| `VITE_SUPABASE_URL` | web | Anon client |
+| `VITE_SUPABASE_ANON_KEY` | web | Browser-safe anon key |
+| `SYSMEX_TCP_PORT` / `MINDRAY_TCP_PORT` / `IFLASH_TCP_PORT` | edge / sims | Defaults 5001 / 5003 / 5004 |
+| `ZEBRA_PRINTER_HOST` / `ZEBRA_PRINTER_PORT` | edge | Defaults `127.0.0.1` / `9100` |
+| `PROLYTE_SERIAL_PATH` / `PROLYTE_BAUD` | edge / sims | Optional RS-232 |
+
+Vite only exposes keys prefixed with `VITE_` to the browser — name them that way in Doppler.
+
+Production / deploy secret placement is deferred; keep using Doppler for local for now.
 
 ## Ports
 
@@ -15,14 +69,12 @@ Defaults avoid clashing with common Next.js apps on `:3000`–`:3002`:
 | Service | Default port |
 | --- | --- |
 | Web workbench | `3100` |
-| Edge engine | `3101` |
-| Cloud API | `3102` |
+| Edge engine | `3101` (`EDGE_ENGINE_PORT`) |
+| Cloud API | `3102` (`API_PORT`) |
 | Sysmex TCP | `5001` |
 | Mindray TCP | `5003` |
 | iFlash TCP | `5004` |
 | Zebra ZPL | `9100` |
-
-Override with env vars (`PORT`, `VITE_LIS_API_URL`, `SYSMEX_TCP_PORT`, etc.) if needed.
 
 ## Install & database
 
@@ -41,6 +93,8 @@ pnpm db:push
 pnpm dev
 ```
 
+(`pnpm dev` uses Doppler when configured; otherwise falls back — see [Environment (Doppler)](#environment-doppler).)
+
 | Service | URL / port |
 | --- | --- |
 | Web workbench | http://localhost:3100 |
@@ -56,14 +110,17 @@ In another terminal, start simulators (fake analyzers + fake Zebra):
 pnpm --filter @drax-lis/simulators dev
 ```
 
-Or one-shot:
+Or one-shot ACK-aware sends (edge must be listening):
 
 ```bash
-pnpm --filter @drax-lis/simulators send:sysmex
-pnpm --filter @drax-lis/simulators send:iflash
+pnpm --filter @drax-lis/simulators send:sysmex -- --barcode DHDEMO001
+pnpm --filter @drax-lis/simulators send:mindray -- --barcode DHDEMO001-CHEM
+pnpm --filter @drax-lis/simulators send:iflash -- --barcode DHDEMO001-IA
+# optional host-query round-trip before ORU:
+pnpm --filter @drax-lis/simulators send:iflash -- --barcode DHDEMO001-IA --query
 ```
 
-Then open **Bench** — CBC / TSH rows should appear. **Sync** shows outbox counters draining to the cloud API (in-memory if Supabase env is empty).
+Then open **Bench** — CBC / chemistry / TSH rows should appear with units, flags, and `pending_review`. Check `GET http://localhost:3101/analyzers/status` or the Bench status strip. **Sync** shows outbox counters draining to the cloud API (in-memory if Supabase env is empty).
 
 ## Manual ingest (no simulator)
 
@@ -75,11 +132,91 @@ curl -s http://localhost:3101/ingest -H 'content-type: application/json' -d '{
 }'
 ```
 
-## Register + print
+## Register + print + analyze (clean loop)
 
-1. Open http://localhost:3100/register  
-2. Enter a patient name → **Register & Print Label**  
-3. If the Zebra simulator is running, ZPL appears in that terminal  
+1. Start simulators (includes fake Zebra on `:9100`) if not already running — see [HARDWARE.md](./HARDWARE.md).
+2. Open http://localhost:3100/register  
+3. All patients load in the list immediately — type to filter (debounced). Select a patient and the **draft label preview** appears instantly on the right (no printer required).
+4. Pick test presets (CBC, BMP, etc.) — preview updates as tests change.
+5. **Register & Print Label** — the same preview panel transitions to the registered accession; ZPL is sent to the fake Zebra (terminal log) or physical ZD411.
+6. Use **Open in Labels** or visit http://localhost:3100/labels?accession=DH… to reprint. Labels accepts `?accession=` deep links from Register scans.
+7. Copy the accession barcode (or **Copy sim command**) from the preview panel actions.
+8. Run the simulator with **that** barcode, e.g.  
+   `pnpm --filter @drax-lis/simulators send:sysmex -- --barcode DH202608260001`  
+9. Open **Bench** — CBC rows appear under the same accession with `pending_review`
+
+Accessions are sequential: `DH{YYYYMMDD}{####}`.
+
+**Labels page:** use the **Register | Labels** tabs to switch workflows. Scan or type an accession, or open `/labels?accession=DH…` from Register. **Printer status** reflects `GET /print/status` (TCP to Zebra) — preview works even when the printer is offline.
+
+**Print preview / reprint 404:** If Register shows an edge preview warning, Labels preview is empty, or reprint returns 404, edge-engine is running stale code — rebuild and restart so `/print/*` routes load (`pnpm --filter @drax-lis/edge-engine build`, then restart `pnpm dev`). Labels still shows a cached preview from specimen data when edge preview is unavailable.
+
+Identity rules: [IDENTITY.md](./IDENTITY.md).
+
+### Demo patients + Bench names
+
+Populate the local registry and linked demo results so **Patients** and **Bench** show real names:
+
+```bash
+curl -X POST http://localhost:3101/patients/seed
+curl -X POST http://localhost:3101/demo/bench
+```
+
+`POST /demo/bench` also:
+
+- Purges **patientless** pending results/specimens (old bridge/smoke/unregistered analyzer barcodes that show as “—” on Bench)
+- Clears duplicate pending results (from simulator retransmits) and reseeds one clean row per demo test
+
+After that, ongoing simulator traffic **updates** the same `(accession, test)` instead of stacking clones. Unregistered analyzer barcodes still appear as “—” until you register the specimen to a patient; re-run demo cleanup to remove that local noise.
+
+Then open:
+
+- http://localhost:3100/patients — searchable MRN registry  
+- http://localhost:3100/bench — rows under `DHDEMO0001`… with patient name + MRN  
+
+Simulator default barcode is `DHDEMO0001` (Marlon Campbell) so ongoing sim traffic stays patient-linked. Override with `SIM_BARCODE=…` if needed.
+
+**Notifications:** the bell (top-right) fills when analyzers report **new** results or when a flag **escalates** to high/critical. Simulator retransmits every ~30s update values quietly — they do not spam the notification center.
+
+Re-seed patients only: `curl -X POST http://localhost:3101/patients/seed`
+
+## Supabase (cloud clinical store + Auth)
+
+1. Create a Supabase project.  
+2. SQL editor → run [`infra/supabase/schema.sql`](../infra/supabase/schema.sql).  
+3. Auth → create users. Promote an authorizer:
+
+```sql
+update profiles set role = 'authorizer' where email = 'you@example.com';
+```
+
+(Or set `raw_user_meta_data.role` to `authorizer` when inviting so the trigger picks it up.)
+
+If the project was created before profile self-update existed, also run:
+
+```sql
+create policy "profiles_update_own"
+  on profiles for update
+  to authenticated
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
+```
+
+(Skip if you re-ran the full [`schema.sql`](../infra/supabase/schema.sql) that already includes this policy.)
+
+Staff sign-in / sign-out and **Profile** (display name) live in the sidebar. Session works in edge or cloud mode when `VITE_SUPABASE_*` is set.
+
+4. Env — set in **Doppler** (`drax-lis` / `dev`), not in committed files:
+
+| App | Vars |
+| --- | --- |
+| API | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EDGE_SYNC_TOKEN`, `API_PORT` |
+| Edge | `EDGE_SYNC_TOKEN` (same value), `CLOUD_API_URL`, `EDGE_ENGINE_PORT`, `DATABASE_URL` |
+| Web | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_CLOUD_API_URL`, `VITE_LIS_*` |
+
+Without Supabase keys, sync still works **in-memory** on the API (lost on restart). Release queue works with **dev roles** via http://localhost:3100/login → “Continue as authorizer (dev)”.
+
+5. Release queue: http://localhost:3100/release — authorizer releases cloud `pending_review` results (`POST /results/:id/release`).
 
 ## Docker Compose
 
@@ -90,9 +227,9 @@ docker compose up --build
 docker compose --profile sim up --build
 ```
 
-## Serial PTYs with socat (Phase 1 preview)
+## Serial PTYs with socat (ProLyte / RS-232 stand-in)
 
-Fake a null-modem cable between edge and a future serial simulator:
+Fake a null-modem cable between edge and the ProLyte simulator:
 
 ```bash
 socat -d -d pty,raw,echo=0 pty,raw,echo=0
@@ -101,17 +238,38 @@ socat -d -d pty,raw,echo=0 pty,raw,echo=0
 # N PTY is /dev/ttys004
 ```
 
-Point `PROLYTE_SERIAL_PATH` at one end; the simulator opens the other.
+In two terminals (or `.env` + simulator env):
 
-## Env files
+```bash
+# Terminal A — edge listens on one PTY
+export PROLYTE_SERIAL_PATH=/dev/ttys003
+pnpm --filter @drax-lis/edge-engine dev
 
-| App | File |
-| --- | --- |
-| Edge | `apps/edge-engine/.env` |
-| API | `apps/api/.env` |
-| Web | `apps/web/.env` |
+# Terminal B — simulator writes a multi-line ASCII block to the peer PTY
+export PROLYTE_SERIAL_PATH=/dev/ttys004
+pnpm --filter @drax-lis/simulators send:prolyte -- --barcode ACC-ELYTE-001
+```
 
-Supabase is optional for Phase 0. Leave `SUPABASE_URL` empty to use the API in-memory store.
+Block shape (real ProLyte RS-232):
+
+```
+DATE: …  TIME: …
+SAMPLE: ACC-ELYTE-001
+Na+:  140.2  mmol/L
+K+:     4.15 mmol/L
+Cl-:  102.0  mmol/L
+Li+:    0.85 mmol/L
+```
+
+Edge flushes the block after ~400ms idle (`PROLYTE_BLOCK_IDLE_MS`). Serial open is 9600 8N1 (set `PROLYTE_BAUD=1200` if the unit UI still uses legacy baud).
+
+Optional: `SYSMEX_SERIAL_PATH` opens an ASTM E1381 serial listener on a second PTY pair.
+
+## Env
+
+**Source of truth: Doppler** (`drax-lis` / `dev`). See [Environment (Doppler)](#environment-doppler) above.
+
+Per-app `.env.example` files list keys for reference. Optional local `.env` files are fallbacks only (`dotenv` does not override Doppler).
 
 ## Troubleshooting
 
@@ -127,8 +285,9 @@ Supabase is optional for Phase 0. Leave `SUPABASE_URL` empty to use the API in-m
 ## Suggested first demo script
 
 1. `pnpm dev` + simulators  
-2. Register “Jane Doe” / CBC  
+2. Register a seeded patient (e.g. Alice Brown) / CBC — or create a provisional patient then register
 3. Watch Sync pending → acked  
 4. `send:sysmex` with matching barcode (or wait for loop)  
-5. Bench shows WBC/RBC/HGB/PLT  
+5. Bench shows WBC/RBC/HGB/PLT with flags and `pending_review`  
 6. Unplug network / stop `api` → sync stays pending → restart api → drains  
+7. (Optional) socat ProLyte PTY → `send:prolyte` → NA/K/CL/LI on Bench  

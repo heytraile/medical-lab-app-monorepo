@@ -16,15 +16,16 @@ export class SpecimensController {
     body: {
       accessionNumber?: string;
       barcode?: string;
-      patientName: string;
-      patient?: {
-        firstName: string;
-        lastName: string;
-        dateOfBirth?: string;
-        sex?: string;
+      patientId: string;
+      identityConfirmation?: {
+        decision: "distinct_people" | "possible_duplicate_acknowledged";
+        suspectGroupId: string;
+        confirmedAt?: string;
+        confirmedBy?: string;
       };
       orderedTests?: Array<{ code: string; name?: string }>;
       printLabel?: boolean;
+      copies?: number;
     },
   ) {
     return this.specimens.register(body);

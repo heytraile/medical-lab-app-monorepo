@@ -2,13 +2,24 @@ import { Injectable, Logger } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { SyncService } from "../sync/sync.service";
-import { parseAstmFrame, unwrapMllp } from "@drax-lis/protocols";
+import { displayName } from "../patients/patient-normalize";
+import type { BenchIngestItem } from "@drax-lis/contracts";
+import {
+  parseAstmFrame,
+  parseE1394,
+  parseOru,
+  parseProlyteBlock,
+  unwrapMllp,
+  type ParsedInstrumentMessage,
+} from "@drax-lis/protocols";
 
 export type IngestInput = {
   analyzerId: string;
   transport: "serial" | "tcp";
   protocol: "astm_e1381" | "astm_e1394" | "hl7_mllp" | "ascii_delimited";
   payload: Buffer | string;
+  /** When TCP/serial drivers already ran protocol engines */
+  parsed?: ParsedInstrumentMessage;
 };
 
 @Injectable()
@@ -22,7 +33,7 @@ export class IngestionService {
   ) {}
 
   /**
-   * Persist a raw analyzer frame, attempt a lightweight parse,
+   * Persist a raw analyzer frame, parse via protocol engines when needed,
    * enqueue outbox, and notify the local bench UI.
    */
   async ingest(input: IngestInput) {
@@ -33,50 +44,17 @@ export class IngestionService {
 
     let parsedOk = false;
     let parseError: string | undefined;
-    let accessionHint: string | undefined;
-    const extractedResults: Array<{
-      testCode: string;
-      value: string;
-      units?: string;
-    }> = [];
+    let message: ParsedInstrumentMessage | undefined = input.parsed;
 
     try {
-      if (input.protocol === "hl7_mllp") {
-        const buf =
-          typeof input.payload === "string"
-            ? Buffer.from(input.payload, "utf8")
-            : input.payload;
-        const { messages } = unwrapMllp(
-          buf[0] === 0x0b
-            ? buf
-            : Buffer.concat([
-                Buffer.from([0x0b]),
-                buf,
-                Buffer.from([0x1c, 0x0d]),
-              ]),
-        );
-        const msg = messages[0] ?? payloadStr;
-        accessionHint = this.extractHl7Barcode(msg);
-        extractedResults.push(...this.extractHl7Obx(msg));
-        parsedOk = true;
-      } else if (
-        input.protocol === "astm_e1381" ||
-        input.protocol === "astm_e1394"
-      ) {
-        const buf =
-          typeof input.payload === "string"
-            ? Buffer.from(input.payload, "latin1")
-            : input.payload;
-        const text = this.astmSessionToText(buf, payloadStr);
-        accessionHint = this.extractAstmBarcode(text);
-        extractedResults.push(...this.extractAstmResults(text));
-        parsedOk = true;
-      } else {
-        parsedOk = true;
+      if (!message) {
+        message = this.parsePayload(input, payloadStr);
       }
+      parsedOk = true;
     } catch (err) {
       parseError = err instanceof Error ? err.message : String(err);
       this.logger.warn(`Parse warning: ${parseError}`);
+      message = { analytes: [], rawRecords: [] };
     }
 
     const raw = await this.prisma.rawMessage.create({
@@ -90,10 +68,9 @@ export class IngestionService {
       },
     });
 
-    const barcode = accessionHint ?? `UNK-${raw.id.slice(0, 8)}`;
+    const barcode = message.barcode ?? `UNK-${raw.id.slice(0, 8)}`;
     const accessionNumber = barcode;
 
-    // Ensure specimen shell exists so results can attach
     await this.prisma.specimen.upsert({
       where: { accessionNumber },
       create: {
@@ -106,21 +83,87 @@ export class IngestionService {
     });
 
     const createdResults = [];
-    for (const r of extractedResults) {
-      const result = await this.prisma.result.create({
-        data: {
+    const notifiableItems: BenchIngestItem[] = [];
+    for (const r of message.analytes) {
+      const existing = await this.prisma.result.findFirst({
+        where: {
           accessionNumber,
-          barcode,
-          analyzerId: input.analyzerId,
           testCode: r.testCode,
-          value: r.value,
-          units: r.units,
-          observedAt: new Date(),
-          rawMessageId: raw.id,
-          flag: "unknown",
+          analyzerId: input.analyzerId,
         },
+        orderBy: { observedAt: "desc" },
       });
-      createdResults.push(result);
+
+      const nextFlag = r.flag || "unknown";
+
+      if (existing) {
+        // Retransmit / update: refresh values. Do not clobber a released result.
+        if (existing.status === "released") {
+          this.logger.warn(
+            `Skip update for released ${accessionNumber}/${r.testCode} (${input.analyzerId})`,
+          );
+          createdResults.push(existing);
+          continue;
+        }
+        const updated = await this.prisma.result.update({
+          where: { id: existing.id },
+          data: {
+            barcode,
+            testName: existing.testName,
+            value: r.value,
+            units: r.units,
+            referenceLow: r.referenceLow,
+            referenceHigh: r.referenceHigh,
+            flag: nextFlag,
+            status: existing.status || "pending_review",
+            // Keep first observation time so Bench sort (newest-first) does not thrash on retransmits.
+            rawMessageId: raw.id,
+          },
+        });
+        createdResults.push(updated);
+        if (
+          this.isFlagEscalation(existing.flag, nextFlag)
+        ) {
+          notifiableItems.push({
+            id: updated.id,
+            testCode: updated.testCode,
+            testName: updated.testName,
+            value: updated.value,
+            units: updated.units,
+            flag: updated.flag,
+            status: updated.status,
+            kind: "escalated",
+          });
+        }
+      } else {
+        const result = await this.prisma.result.create({
+          data: {
+            accessionNumber,
+            barcode,
+            analyzerId: input.analyzerId,
+            testCode: r.testCode,
+            value: r.value,
+            units: r.units,
+            referenceLow: r.referenceLow,
+            referenceHigh: r.referenceHigh,
+            flag: nextFlag,
+            status: "pending_review",
+            observedAt: new Date(),
+            rawMessageId: raw.id,
+          },
+        });
+        createdResults.push(result);
+        notifiableItems.push({
+          id: result.id,
+          testCode: result.testCode,
+          testName: result.testName,
+          value: result.value,
+          units: result.units,
+          flag: result.flag,
+          status: result.status,
+          kind: "created",
+        });
+      }
     }
 
     await this.sync.enqueue({
@@ -133,26 +176,118 @@ export class IngestionService {
         results: createdResults.map((r) => ({
           id: r.id,
           testCode: r.testCode,
+          testName: r.testName,
           value: r.value,
           units: r.units,
+          referenceLow: r.referenceLow,
+          referenceHigh: r.referenceHigh,
+          flag: r.flag,
+          status: r.status,
+          observedAt: r.observedAt.toISOString(),
         })),
       },
     });
 
-    this.realtime.emitBenchEvent({
-      type: "result.received",
-      accessionNumber,
-      barcode,
-      analyzerId: input.analyzerId,
-      resultCount: createdResults.length,
-      at: new Date().toISOString(),
-    });
+    if (notifiableItems.length) {
+      const specimen = await this.prisma.specimen.findUnique({
+        where: { accessionNumber },
+        include: { patient: true },
+      });
+      let patientDisplayName: string | undefined;
+      if (specimen?.patient) {
+        patientDisplayName = displayName(specimen.patient);
+      } else if (specimen?.patientJson) {
+        try {
+          const snap = JSON.parse(specimen.patientJson) as {
+            firstName?: string;
+            lastName?: string;
+            middleName?: string | null;
+          };
+          if (snap.firstName && snap.lastName) {
+            patientDisplayName = displayName({
+              firstName: snap.firstName,
+              lastName: snap.lastName,
+              middleName: snap.middleName,
+            });
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
+      this.realtime.emitBenchEvent({
+        type: "results.ingested",
+        at: new Date().toISOString(),
+        accessionNumber,
+        barcode,
+        analyzerId: input.analyzerId,
+        patientDisplayName,
+        items: notifiableItems,
+      });
+    }
 
     this.logger.log(
       `Ingested ${input.analyzerId} → ${barcode} (${createdResults.length} results)`,
     );
 
-    return { rawMessageId: raw.id, accessionNumber, barcode, results: createdResults };
+    return {
+      rawMessageId: raw.id,
+      accessionNumber,
+      barcode,
+      results: createdResults,
+    };
+  }
+
+  /** Notify when flag moves into high / critical territory. */
+  private isFlagEscalation(before: string, after: string): boolean {
+    const tier = (flag: string) => {
+      if (flag === "critical_high" || flag === "critical_low") return 3;
+      if (flag === "high") return 2;
+      return 0;
+    };
+    const prev = tier(before);
+    const next = tier(after);
+    return next >= 2 && next > prev;
+  }
+
+  private parsePayload(
+    input: IngestInput,
+    payloadStr: string,
+  ): ParsedInstrumentMessage {
+    if (input.protocol === "hl7_mllp") {
+      const buf =
+        typeof input.payload === "string"
+          ? Buffer.from(input.payload, "utf8")
+          : input.payload;
+      const framed =
+        buf[0] === 0x0b
+          ? buf
+          : Buffer.concat([
+              Buffer.from([0x0b]),
+              buf,
+              Buffer.from([0x1c, 0x0d]),
+            ]);
+      const { messages } = unwrapMllp(framed);
+      return parseOru(messages[0] ?? payloadStr);
+    }
+
+    if (
+      input.protocol === "astm_e1381" ||
+      input.protocol === "astm_e1394"
+    ) {
+      const buf =
+        typeof input.payload === "string"
+          ? Buffer.from(input.payload, "latin1")
+          : input.payload;
+      const text = this.astmSessionToText(buf, payloadStr);
+      return parseE1394(text);
+    }
+
+    if (input.protocol === "ascii_delimited") {
+      return parseProlyteBlock(payloadStr);
+    }
+
+    return { analytes: [], rawRecords: [] };
   }
 
   /**
@@ -175,14 +310,13 @@ export class IngestionService {
         }
       }
       if (endIdx < 0) break;
-      // STX..ETX/ETB + 2 checksum chars + CR LF
       const frameEnd = Math.min(endIdx + 5, buf.length);
       const frame = buf.subarray(i, frameEnd);
       const parsed = parseAstmFrame(frame);
       if (parsed) {
         texts.push(parsed.text);
       } else {
-        const textEnd = endIdx - 1; // CR before ETX
+        const textEnd = endIdx - 1;
         if (textEnd > i + 1) {
           texts.push(buf.subarray(i + 2, textEnd).toString("latin1"));
         }
@@ -192,66 +326,9 @@ export class IngestionService {
 
     if (texts.length) return texts.join("\r");
 
-    // Normalize literal "\r" / "\n" from JSON curl payloads
     return fallback
       .replace(/\\r\\n/g, "\r")
       .replace(/\\r/g, "\r")
       .replace(/\\n/g, "\n");
-  }
-
-  private extractAstmBarcode(text: string): string | undefined {
-    // O record: O|1|SAMPLEID|...
-    const lines = text.split(/\r\n|\r|\n/);
-    for (const line of lines) {
-      if (line.startsWith("O|")) {
-        const fields = line.split("|");
-        const sampleId = fields[2]?.split("^")[0];
-        if (sampleId) return sampleId;
-      }
-    }
-    return undefined;
-  }
-
-  private extractAstmResults(
-    text: string,
-  ): Array<{ testCode: string; value: string; units?: string }> {
-    const out: Array<{ testCode: string; value: string; units?: string }> = [];
-    for (const line of text.split(/\r\n|\r|\n/)) {
-      if (!line.startsWith("R|")) continue;
-      const f = line.split("|");
-      // R|1|^^^WBC|6.5|10*3/uL|...
-      const testCode = f[2]?.split("^").filter(Boolean).pop() ?? "UNK";
-      const value = f[3] ?? "";
-      const units = f[4];
-      out.push({ testCode, value, units });
-    }
-    return out;
-  }
-
-  private extractHl7Barcode(msg: string): string | undefined {
-    for (const seg of msg.split(/\r/)) {
-      if (seg.startsWith("OBR|")) {
-        const f = seg.split("|");
-        // OBR-2 or OBR-3
-        const id = (f[2] || f[3] || "").split("^")[0];
-        if (id) return id;
-      }
-    }
-    return undefined;
-  }
-
-  private extractHl7Obx(
-    msg: string,
-  ): Array<{ testCode: string; value: string; units?: string }> {
-    const out: Array<{ testCode: string; value: string; units?: string }> = [];
-    for (const seg of msg.split(/\r/)) {
-      if (!seg.startsWith("OBX|")) continue;
-      const f = seg.split("|");
-      const testCode = f[3]?.split("^")[0] ?? "UNK";
-      const value = f[5] ?? "";
-      const units = f[6]?.split("^")[0];
-      out.push({ testCode, value, units });
-    }
-    return out;
   }
 }

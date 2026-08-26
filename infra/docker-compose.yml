@@ -14,6 +14,7 @@ services:
       EDGE_NODE_ID: drax-hall-edge-1
       CLOUD_API_URL: http://api:3102
       CLOUD_SYNC_ENABLED: "true"
+      EDGE_SYNC_TOKEN: ${EDGE_SYNC_TOKEN:-dev-edge-sync-token}
       SYSMEX_TCP_PORT: "5001"
       MINDRAY_TCP_PORT: "5003"
       IFLASH_TCP_PORT: "5004"
@@ -34,6 +35,7 @@ services:
       PORT: "3102"
       SUPABASE_URL: ${SUPABASE_URL:-}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      EDGE_SYNC_TOKEN: ${EDGE_SYNC_TOKEN:-dev-edge-sync-token}
 
   web:
     build:

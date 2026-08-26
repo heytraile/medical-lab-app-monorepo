@@ -1,8 +1,14 @@
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { io } from "socket.io-client";
-import { getWsBaseUrl } from "../lib/api";
+import { useState } from "react";
+import { ThemeProvider } from "../components/theme-provider";
+import { AppSidebar } from "../components/app-sidebar";
+import { CommandPalette } from "../components/command-palette";
+import {
+  NotificationCenter,
+  NotificationToastStack,
+} from "../components/notification-center";
+import { NotificationProvider } from "../lib/notification-store";
 
 export const Route = createFileRoute("/_lab")({
   component: LabLayout,
@@ -10,59 +16,29 @@ export const Route = createFileRoute("/_lab")({
 
 function LabLayout() {
   const { queryClient } = Route.useRouteContext();
-
-  useEffect(() => {
-    const socket = io(`${getWsBaseUrl()}/bench`, {
-      transports: ["websocket", "polling"],
-    });
-    socket.on("bench.event", () => {
-      void queryClient.invalidateQueries({ queryKey: ["results"] });
-      void queryClient.invalidateQueries({ queryKey: ["specimens"] });
-      void queryClient.invalidateQueries({ queryKey: ["syncStatus"] });
-    });
-    return () => {
-      socket.disconnect();
-    };
-  }, [queryClient]);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="min-h-screen flex flex-col">
-        <header className="bg-lab-navy text-white px-6 py-4 flex items-center justify-between shadow">
-          <div>
-            <p className="text-xs uppercase tracking-widest text-teal-200">
-              Drax Hall Clinical Laboratory
-            </p>
-            <h1 className="text-xl font-semibold">LIS Workbench</h1>
+      <ThemeProvider>
+        <NotificationProvider>
+          <div className="flex h-svh overflow-hidden bg-background text-foreground">
+            <AppSidebar onOpenSearch={() => setSearchOpen(true)} />
+            <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+              <header className="flex h-12 shrink-0 items-center justify-end border-b border-border px-4 md:px-6">
+                <NotificationCenter />
+              </header>
+              <div className="min-h-0 flex-1 overflow-y-auto p-6 md:p-8">
+                <div className="mx-auto w-full max-w-none">
+                  <Outlet />
+                </div>
+              </div>
+            </main>
+            <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
+            <NotificationToastStack />
           </div>
-          <nav className="flex gap-4 text-sm">
-            <NavLink to="/bench">Bench</NavLink>
-            <NavLink to="/register">Register</NavLink>
-            <NavLink to="/sync">Sync</NavLink>
-          </nav>
-        </header>
-        <main className="flex-1 p-6 max-w-6xl w-full mx-auto">
-          <Outlet />
-        </main>
-      </div>
+        </NotificationProvider>
+      </ThemeProvider>
     </QueryClientProvider>
-  );
-}
-
-function NavLink({
-  to,
-  children,
-}: {
-  to: "/bench" | "/register" | "/sync";
-  children: React.ReactNode;
-}) {
-  return (
-    <Link
-      to={to}
-      className="px-3 py-1.5 rounded-md hover:bg-white/10 [&.active]:bg-lab-teal [&.active]:text-white"
-      activeOptions={{ exact: true }}
-    >
-      {children}
-    </Link>
   );
 }

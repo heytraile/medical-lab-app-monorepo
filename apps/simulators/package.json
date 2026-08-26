@@ -10,7 +10,9 @@
     "lint": "echo \"lint ok\"",
     "test": "echo \"no simulator tests yet\"",
     "send:sysmex": "tsx src/cli.ts sysmex",
+    "send:mindray": "tsx src/cli.ts mindray",
     "send:iflash": "tsx src/cli.ts iflash",
+    "send:prolyte": "tsx src/cli.ts prolyte",
     "zebra": "tsx src/zebra.ts"
   },
   "dependencies": {

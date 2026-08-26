@@ -1,0 +1,9 @@
+H|\^&|||BS-240^Mindray|||||||P|E1394-97|20240101120100
+P|1||PAT002||SMITH^JOHN
+O|1|ACC-CHEM-001||^^^CHEM|||||||N
+R|1|^^^GLU|95|mg/dL|70-100|N||F
+R|2|^^^BUN|18|mg/dL|7-20|N||F
+R|3|^^^CREA|0.9|mg/dL|0.6-1.2|N||F
+R|4|^^^ALT|55|U/L|7-56|N||F
+R|5|^^^AST|42|U/L|10-40|H||F
+L|1|N

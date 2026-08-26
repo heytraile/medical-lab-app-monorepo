@@ -1,6 +1,6 @@
 /**
- * Simple ASCII delimited line parser (ProLyte-style).
- * Phase 1 will replace regex stubs with vendor-accurate field maps.
+ * Simple ASCII delimited line parser (generic).
+ * ProLyte uses multi-line labeled blocks via `parseProlyteBlock`.
  */
 export function parseAsciiDelimited(
   line: string,

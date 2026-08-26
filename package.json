@@ -1,24 +1,28 @@
 {
-  "name": "drax-hall-lis",
+  "name": "drax-lis",
   "private": true,
   "packageManager": "pnpm@11.7.0",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "dev": "turbo run dev --parallel",
+    "dev": "scripts/with-doppler.sh turbo run dev --parallel",
+    "dev:bare": "turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "postinstall": "pnpm --filter @drax-lis/contracts build && pnpm --filter @drax-lis/protocols build",
-    "dev:edge": "turbo run dev --filter=@drax-lis/edge-engine --filter=@drax-lis/web",
-    "dev:cloud": "turbo run dev --filter=@drax-lis/api --filter=@drax-lis/web",
-    "dev:sim": "turbo run dev --filter=@drax-lis/simulators",
-    "db:generate": "turbo run db:generate --filter=@drax-lis/edge-engine",
-    "db:push": "turbo run db:push --filter=@drax-lis/edge-engine"
+    "dev:edge": "scripts/with-doppler.sh turbo run dev --filter=@drax-lis/edge-engine --filter=@drax-lis/web",
+    "dev:cloud": "scripts/with-doppler.sh turbo run dev --filter=@drax-lis/api --filter=@drax-lis/web",
+    "dev:sim": "scripts/with-doppler.sh turbo run dev --filter=@drax-lis/simulators",
+    "db:generate": "scripts/with-doppler.sh turbo run db:generate --filter=@drax-lis/edge-engine",
+    "db:push": "scripts/with-doppler.sh turbo run db:push --filter=@drax-lis/edge-engine",
+    "db:generate:bare": "turbo run db:generate --filter=@drax-lis/edge-engine",
+    "db:push:bare": "turbo run db:push --filter=@drax-lis/edge-engine"
   },
   "devDependencies": {
+    "@types/node": "^22.15.21",
     "turbo": "^2.5.4",
     "typescript": "^5.8.3"
   }

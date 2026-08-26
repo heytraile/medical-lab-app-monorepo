@@ -6,7 +6,10 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import appCss from "../styles.css?url";
+import { AuthProvider, useAuth } from "../lib/auth";
+import { setAuthTokenProvider } from "../lib/api";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -25,14 +28,25 @@ export const Route = createRootRouteWithContext<{
 function RootComponent() {
   return (
     <RootDocument>
-      <Outlet />
+      <AuthProvider>
+        <AuthTokenBridge />
+        <Outlet />
+      </AuthProvider>
     </RootDocument>
   );
 }
 
+function AuthTokenBridge() {
+  const auth = useAuth();
+  useEffect(() => {
+    setAuthTokenProvider(() => auth.accessToken);
+  }, [auth.accessToken]);
+  return null;
+}
+
 function RootDocument({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <HeadContent />
       </head>

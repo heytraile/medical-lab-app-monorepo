@@ -1,0 +1,8 @@
+# Doppler project binding for local development.
+# Official format: https://docs.doppler.com/docs/cli#doppleryaml
+# Run: doppler login && doppler setup
+# Docs: docs/LOCAL_DEV.md
+
+setup:
+  project: drax-lis
+  config: dev

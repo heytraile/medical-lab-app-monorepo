@@ -8,6 +8,8 @@ import { SyncModule } from "./sync/sync.module";
 import { RealtimeModule } from "./realtime/realtime.module";
 import { SpecimensModule } from "./specimens/specimens.module";
 import { ResultsModule } from "./results/results.module";
+import { PatientsModule } from "./patients/patients.module";
+import { DemoModule } from "./demo/demo.module";
 
 @Module({
   imports: [
@@ -20,6 +22,8 @@ import { ResultsModule } from "./results/results.module";
     RealtimeModule,
     SpecimensModule,
     ResultsModule,
+    PatientsModule,
+    DemoModule,
   ],
 })
 export class AppModule {}

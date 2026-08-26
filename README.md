@@ -1,6 +1,8 @@
-# Drax Hall Clinical Laboratory LIS
+# Medical Lab App Monorepo
 
-Hybrid **Edge–Cloud** Laboratory Information System for Drax Hall Clinical Laboratory.
+Hybrid **Edge–Cloud** Laboratory Information System (LIS).
+
+First deployment: **Drax Hall Clinical Laboratory**. Product direction: the same stack for many labs.
 
 Barcode / accession number is the spine of the system: every tube, analyzer result, pending sync row, and cloud report hangs off that ID.
 
@@ -8,9 +10,9 @@ Barcode / accession number is the spine of the system: every tube, analyzer resu
 
 | Layer | App / package | Role |
 | --- | --- | --- |
-| Edge mini PC | `apps/edge-engine` | NestJS: serial/TCP ingest, SQLite WAL, outbox sync, ZPL, Socket.IO |
-| Cloud API | `apps/api` | NestJS: LIS HTTP API → Supabase Postgres |
-| Workbench | `apps/web` | TanStack Start UI (edge or cloud mode) |
+| Edge mini PC | `apps/edge-engine` | NestJS **bridge**: serial/TCP ingest, SQLite WAL, outbox push, ZPL, Socket.IO |
+| Cloud API | `apps/api` | NestJS in front of **Supabase** (sync, release, notifications) |
+| Workbench | `apps/web` | TanStack Start UI — Bench Review, Register, Sync, Release queue |
 | Simulators | `apps/simulators` | Fake analyzers + fake Zebra for local testing |
 | Contracts | `packages/contracts` | Zod schemas for specimen, results, sync events |
 | Protocols | `packages/protocols` | ASTM E1381/E1394, MLLP HL7 framing helpers |
@@ -19,33 +21,37 @@ Barcode / accession number is the spine of the system: every tube, analyzer resu
 Analyzers (RS-232 / TCP)
         │
         ▼
-  edge-engine (SQLite + outbox)
-        │  HTTPS when online
-        ▼
-     api → Supabase
-        ▲
-        │
-       web (bench / register / sync)
+  edge-engine (SQLite + outbox)  ──push──►  api → Supabase
+        ▲                                      ▲
+        │                                      │
+   web (edge mode)                      web (cloud mode)
+   Bench Review                         Release queue
 ```
 
 ## Quick start
 
 ```bash
+# Doppler CLI + login once; project drax-lis / config dev (see docs/LOCAL_DEV.md)
+doppler setup
+
 pnpm install
 pnpm db:generate
 pnpm db:push
-pnpm dev
+pnpm dev          # injects secrets via `doppler run`
 ```
 
 - Edge API: http://localhost:3101  
 - Cloud API: http://localhost:3102  
 - Web workbench: http://localhost:3100  
 
-See [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md) for simulators, Docker, and socat serial PTYs.
+See [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md) for Doppler keys, simulators, Docker, and socat serial PTYs.
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system map, data flow, offline rules
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system map, Nest↔Nest sync, offline rules
+- [docs/WORKFLOW.md](docs/WORKFLOW.md) — Bench Review, authorizer release, critical STAT alerts
+- [docs/IDENTITY.md](docs/IDENTITY.md) — local patient registry, duplicates, Register confirmation gate
+- [docs/GLOSSARY.md](docs/GLOSSARY.md) — acronyms, protocols, and lab test codes (living)
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phased build order
 - [docs/ANALYZERS.md](docs/ANALYZERS.md) — four instruments, ports, protocols
 - [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md) — run the simulated lab on this machine
@@ -55,10 +61,10 @@ See [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md) for simulators, Docker, and socat ser
 | Machine | Protocol |
 | --- | --- |
 | Sysmex XS-1000i | ASTM E1381 / E1394 |
-| Diamond ProLyte | ASCII delimited (ASTM fallback) |
+| Diamond ProLyte | RS-232 multi-line ASCII (Na/K/Cl/Li) |
 | Mindray BS-240 | ASTM E1394 |
 | YHLO iFlash 1200 | HL7 v2.3.1 over MLLP |
 
 ## License
 
-Private — Drax Hall Clinical Laboratory.
+Private — Traile / lab product source (Drax Hall first customer).

@@ -1,0 +1,143 @@
+[
+  {
+    "mrn": "MRN-7001",
+    "accessionNumber": "DHDEMO0001",
+    "orderedTests": [{ "code": "WBC", "name": "White Blood Cells" }, { "code": "HGB", "name": "Hemoglobin" }],
+    "results": [
+      {
+        "analyzerId": "sysmex_xs1000i",
+        "testCode": "WBC",
+        "testName": "White Blood Cells",
+        "value": "11.8",
+        "units": "10*3/uL",
+        "flag": "high",
+        "status": "pending_review",
+        "referenceLow": 4.0,
+        "referenceHigh": 11.0
+      },
+      {
+        "analyzerId": "sysmex_xs1000i",
+        "testCode": "HGB",
+        "testName": "Hemoglobin",
+        "value": "13.2",
+        "units": "g/dL",
+        "flag": "normal",
+        "status": "pending_review",
+        "referenceLow": 12.0,
+        "referenceHigh": 16.0
+      }
+    ]
+  },
+  {
+    "mrn": "MRN-7002",
+    "accessionNumber": "DHDEMO0002",
+    "orderedTests": [{ "code": "GLU", "name": "Glucose" }, { "code": "CREA", "name": "Creatinine" }],
+    "results": [
+      {
+        "analyzerId": "mindray_bs240",
+        "testCode": "GLU",
+        "testName": "Glucose",
+        "value": "6.1",
+        "units": "mmol/L",
+        "flag": "normal",
+        "status": "pending_review",
+        "referenceLow": 3.9,
+        "referenceHigh": 6.1
+      },
+      {
+        "analyzerId": "mindray_bs240",
+        "testCode": "CREA",
+        "testName": "Creatinine",
+        "value": "145",
+        "units": "umol/L",
+        "flag": "high",
+        "status": "pending_review",
+        "referenceLow": 45,
+        "referenceHigh": 90
+      }
+    ]
+  },
+  {
+    "mrn": "MRN-7003",
+    "accessionNumber": "DHDEMO0003",
+    "orderedTests": [{ "code": "TSH", "name": "Thyroid Stimulating Hormone" }],
+    "results": [
+      {
+        "analyzerId": "yhlo_iflash1200",
+        "testCode": "TSH",
+        "testName": "Thyroid Stimulating Hormone",
+        "value": "0.02",
+        "units": "mIU/L",
+        "flag": "critical_low",
+        "status": "pending_review",
+        "referenceLow": 0.4,
+        "referenceHigh": 4.0
+      }
+    ]
+  },
+  {
+    "mrn": "MRN-1001",
+    "accessionNumber": "DHDEMO0004",
+    "orderedTests": [{ "code": "Na", "name": "Sodium" }, { "code": "K", "name": "Potassium" }],
+    "results": [
+      {
+        "analyzerId": "diamond_prolyte",
+        "testCode": "Na",
+        "testName": "Sodium",
+        "value": "138",
+        "units": "mmol/L",
+        "flag": "normal",
+        "status": "pending_review",
+        "referenceLow": 135,
+        "referenceHigh": 145
+      },
+      {
+        "analyzerId": "diamond_prolyte",
+        "testCode": "K",
+        "testName": "Potassium",
+        "value": "6.4",
+        "units": "mmol/L",
+        "flag": "critical_high",
+        "status": "pending_review",
+        "referenceLow": 3.5,
+        "referenceHigh": 5.1
+      }
+    ]
+  },
+  {
+    "mrn": "MRN-7006",
+    "accessionNumber": "DHDEMO0005",
+    "orderedTests": [{ "code": "PLT", "name": "Platelets" }],
+    "results": [
+      {
+        "analyzerId": "sysmex_xs1000i",
+        "testCode": "PLT",
+        "testName": "Platelets",
+        "value": "92",
+        "units": "10*3/uL",
+        "flag": "low",
+        "status": "pending_review",
+        "referenceLow": 150,
+        "referenceHigh": 400
+      }
+    ]
+  },
+  {
+    "mrn": "MRN-7010",
+    "accessionNumber": "DHDEMO0006",
+    "orderedTests": [{ "code": "ALT", "name": "Alanine Aminotransferase" }],
+    "results": [
+      {
+        "analyzerId": "mindray_bs240",
+        "testCode": "ALT",
+        "testName": "Alanine Aminotransferase",
+        "value": "28",
+        "units": "U/L",
+        "flag": "normal",
+        "status": "pending_review",
+        "referenceLow": 7,
+        "referenceHigh": 56
+      }
+    ]
+  }
+]

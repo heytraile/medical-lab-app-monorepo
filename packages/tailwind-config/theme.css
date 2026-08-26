@@ -4,7 +4,48 @@
   --color-lab-slate: #1e293b;
   --color-lab-surface: #f8fafc;
   --color-lab-danger: #dc2626;
+  /* Stop-sign / alert-now red — full chroma, not a wash */
+  --color-lab-alarm: #e10600;
   --color-lab-warn: #d97706;
   --color-lab-ok: #16a34a;
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+
+  --color-background: #f4f7fb;
+  --color-foreground: #0b1f3a;
+  --color-card: #ffffff;
+  --color-card-foreground: #0b1f3a;
+  --color-muted: #e8eef5;
+  --color-muted-foreground: #64748b;
+  --color-border: #d5dee9;
+  --color-accent: #0d9488;
+  --color-accent-foreground: #ffffff;
+  --color-sidebar: #0b1f3a;
+  --color-sidebar-foreground: #e8eef5;
+  --color-sidebar-muted: #163356;
+  --color-sidebar-accent: #0d9488;
+  --color-sidebar-border: #1a3358;
+  --color-ring: #0d9488;
+  --color-destructive: #dc2626;
+}
+
+.dark {
+  --color-background: #071525;
+  --color-foreground: #e8eef5;
+  --color-card: #0d2138;
+  --color-card-foreground: #e8eef5;
+  --color-muted: #132a45;
+  --color-muted-foreground: #94a3b8;
+  --color-border: #1e3a5f;
+  --color-accent: #14b8a6;
+  --color-accent-foreground: #042f2e;
+  --color-sidebar: #050f1c;
+  --color-sidebar-foreground: #e8eef5;
+  --color-sidebar-muted: #0d2138;
+  --color-sidebar-accent: #14b8a6;
+  --color-sidebar-border: #163356;
+  --color-ring: #14b8a6;
+  --color-destructive: #f87171;
+  --color-lab-surface: #071525;
+  --color-lab-slate: #e8eef5;
 }

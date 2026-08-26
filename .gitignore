@@ -17,6 +17,10 @@ build
 .env.*.local
 !.env.example
 
+# Doppler (never commit service tokens / .doppler cache)
+.doppler/
+doppler.yaml.local
+
 # Databases
 *.db
 *.db-journal

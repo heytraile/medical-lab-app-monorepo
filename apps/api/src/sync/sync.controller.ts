@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post } from "@nestjs/common";
-import { SyncService } from "./sync.service";
+import { Body, Controller, Get, Headers, Post } from "@nestjs/common";
+import { SyncService, assertEdgeSyncToken } from "./sync.service";
 import { SyncEventsRequestSchema } from "@drax-lis/contracts";
 
 @Controller("sync")
@@ -7,7 +7,11 @@ export class SyncController {
   constructor(private readonly sync: SyncService) {}
 
   @Post("events")
-  async events(@Body() body: unknown) {
+  async events(
+    @Body() body: unknown,
+    @Headers("authorization") authorization?: string,
+  ) {
+    assertEdgeSyncToken(authorization);
     const parsed = SyncEventsRequestSchema.parse(body);
     return this.sync.ingest(parsed);
   }

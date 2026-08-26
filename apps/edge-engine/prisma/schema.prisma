@@ -7,19 +7,56 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Patient {
+  id             String     @id @default(cuid())
+  /// Normalized medical record number — unique business key (upstream or TEMP…)
+  mrn            String     @unique
+  externalId     String?
+  firstName      String
+  middleName     String?
+  lastName       String
+  dateOfBirth    String?
+  sex            String?
+  /// active | quarantined
+  status         String     @default("active")
+  /// upstream | local_provisional
+  identityOrigin String     @default("upstream")
+  /// n_a | pending_upstream | synced | failed
+  syncStatus     String     @default("n_a")
+  /// Shared when multiple active patients share name+DOB+sex with different MRNs
+  suspectGroupId String?
+  source         String     @default("seed")
+  rawImportJson  String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  specimens      Specimen[]
+
+  @@index([lastName, firstName])
+  @@index([suspectGroupId])
+  @@index([status])
+  @@index([syncStatus])
+}
+
 model Specimen {
-  id              String   @id @default(cuid())
-  accessionNumber String   @unique
-  barcode         String   @unique
-  patientJson     String?
-  specimenType    String   @default("blood")
-  orderedTestsJson String  @default("[]")
-  status          String   @default("registered")
-  collectedAt     DateTime?
-  registeredAt    DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  results         Result[]
+  id                     String    @id @default(cuid())
+  accessionNumber        String    @unique
+  barcode                String    @unique
+  patientId              String?
+  patientJson            String?
+  /// Audit of identity confirmation when patient was in a suspect group
+  identityConfirmationJson String?
+  specimenType           String    @default("blood")
+  orderedTestsJson       String    @default("[]")
+  status                 String    @default("registered")
+  collectedAt            DateTime?
+  registeredAt           DateTime  @default(now())
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  results                Result[]
+  patient                Patient?  @relation(fields: [patientId], references: [id])
+
+  @@index([barcode])
+  @@index([patientId])
 }
 
 model Result {
@@ -34,6 +71,8 @@ model Result {
   referenceLow    Float?
   referenceHigh   Float?
   flag            String   @default("unknown")
+  /// Clinical release workflow: pending_review → released (authorizer)
+  status          String   @default("pending_review")
   observedAt      DateTime
   rawMessageId    String?
   createdAt       DateTime @default(now())
@@ -42,6 +81,8 @@ model Result {
 
   @@index([barcode])
   @@index([analyzerId])
+  @@index([status])
+  @@index([accessionNumber, testCode, analyzerId])
 }
 
 model RawMessage {
@@ -77,4 +118,7 @@ model SyncMeta {
   id    String @id @default("singleton")
   /// Monotonic sequence for outbox ordering
   nextSequence Int @default(1)
+  /// YYYYMMDD for sequential accession counter
+  accessionDay String @default("")
+  accessionSeq Int    @default(0)
 }

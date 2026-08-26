@@ -1,6 +1,5 @@
 /**
  * ASTM E1381 control characters (data-link layer).
- * Full ENQ/ACK/STX/ETX/EOT state machine lands in Phase 1.
  */
 export const ASTM = {
   ENQ: 0x05,

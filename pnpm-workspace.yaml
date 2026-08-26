@@ -5,6 +5,7 @@ packages:
 allowBuilds:
   "@prisma/client": true
   "@prisma/engines": true
+  "@serialport/bindings-cpp": true
   esbuild: true
   prisma: true
 

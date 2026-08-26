@@ -1,0 +1,6 @@
+DATE: 2026-08-26  TIME: 08:30
+SAMPLE: ACC-ELYTE-001
+Na+:  140.2  mmol/L
+K+:     4.15 mmol/L
+Cl-:  102.0  mmol/L
+Li+:    0.85 mmol/L

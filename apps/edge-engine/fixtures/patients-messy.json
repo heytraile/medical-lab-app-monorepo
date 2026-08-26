@@ -1,0 +1,212 @@
+[
+  {
+    "externalId": "EXT-1001",
+    "mrn": "MRN-1001",
+    "firstName": "Alice",
+    "middleName": "Marie",
+    "lastName": "Brown",
+    "dateOfBirth": "1988-03-14",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-1002",
+    "mrn": "MRN-1002",
+    "firstName": "John",
+    "middleName": "Paul",
+    "lastName": "Smith",
+    "dateOfBirth": "1975-11-02",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-1003",
+    "mrn": "MRN-1003",
+    "firstName": "Maria",
+    "lastName": "Garcia",
+    "dateOfBirth": "1992-07-21",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-2001A",
+    "mrn": "MRN-2001-A",
+    "firstName": "Jane",
+    "middleName": "Ann",
+    "lastName": "Doe",
+    "dateOfBirth": "1990-01-15",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-2001B",
+    "mrn": "MRN-2001-B",
+    "firstName": "Jane",
+    "middleName": "Ann",
+    "lastName": "Doe",
+    "dateOfBirth": "1990-01-15",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-3001",
+    "mrn": "MRN-3001",
+    "firstName": "Robert",
+    "middleName": "James",
+    "lastName": "Wilson",
+    "dateOfBirth": "1968-05-09",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-3001-BAD",
+    "mrn": "MRN-3001",
+    "firstName": "Robert",
+    "middleName": "James",
+    "lastName": "Wilson",
+    "dateOfBirth": "1970-01-01",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-4001",
+    "mrn": "MRN-4001",
+    "firstName": "Jane",
+    "middleName": "Elizabeth",
+    "lastName": "Doe",
+    "dateOfBirth": "1990-01-15",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-5001",
+    "mrn": "mrn 5001",
+    "firstName": "  Samuel  ",
+    "lastName": "Clarke",
+    "dateOfBirth": "2001-12-01",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-6001",
+    "mrn": "MRN-6001",
+    "firstName": "Priya",
+    "middleName": "K",
+    "lastName": "Patel",
+    "dateOfBirth": "1985-09-30",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-7001",
+    "mrn": "MRN-7001",
+    "firstName": "Marlon",
+    "middleName": "A",
+    "lastName": "Campbell",
+    "dateOfBirth": "1979-04-18",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-7002",
+    "mrn": "MRN-7002",
+    "firstName": "Keisha",
+    "middleName": "L",
+    "lastName": "Williams",
+    "dateOfBirth": "1995-08-03",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-7003",
+    "mrn": "MRN-7003",
+    "firstName": "Devon",
+    "lastName": "Reid",
+    "dateOfBirth": "1983-12-22",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-7004",
+    "mrn": "MRN-7004",
+    "firstName": "Anika",
+    "middleName": "S",
+    "lastName": "Henry",
+    "dateOfBirth": "2000-01-09",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-7005",
+    "mrn": "MRN-7005",
+    "firstName": "Omar",
+    "middleName": "J",
+    "lastName": "Thompson",
+    "dateOfBirth": "1964-06-27",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-7006",
+    "mrn": "MRN-7006",
+    "firstName": "Simone",
+    "lastName": "Grant",
+    "dateOfBirth": "1991-10-11",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-7007",
+    "mrn": "MRN-7007",
+    "firstName": "Andre",
+    "middleName": "M",
+    "lastName": "Bailey",
+    "dateOfBirth": "1987-02-28",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-7008",
+    "mrn": "MRN-7008",
+    "firstName": "Tanya",
+    "middleName": "R",
+    "lastName": "Edwards",
+    "dateOfBirth": "1972-09-05",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-7009",
+    "mrn": "MRN-7009",
+    "firstName": "Marcus",
+    "lastName": "Powell",
+    "dateOfBirth": "1998-07-16",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-7010",
+    "mrn": "MRN-7010",
+    "firstName": "Nicole",
+    "middleName": "P",
+    "lastName": "Stewart",
+    "dateOfBirth": "1986-11-30",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-7011",
+    "mrn": "MRN-7011",
+    "firstName": "Ricardo",
+    "middleName": "D",
+    "lastName": "Bennett",
+    "dateOfBirth": "1959-03-08",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-7012",
+    "mrn": "MRN-7012",
+    "firstName": "Aaliyah",
+    "lastName": "Morrison",
+    "dateOfBirth": "2003-05-21",
+    "sex": "F"
+  },
+  {
+    "externalId": "EXT-7013",
+    "mrn": "MRN-7013",
+    "firstName": "Jerome",
+    "middleName": "K",
+    "lastName": "Francis",
+    "dateOfBirth": "1977-08-14",
+    "sex": "M"
+  },
+  {
+    "externalId": "EXT-7014",
+    "mrn": "MRN-7014",
+    "firstName": "Danielle",
+    "middleName": "C",
+    "lastName": "McKenzie",
+    "dateOfBirth": "1993-12-02",
+    "sex": "F"
+  }
+]

@@ -39,6 +39,15 @@ export const ResultFlagSchema = z.enum([
 ]);
 export type ResultFlag = z.infer<typeof ResultFlagSchema>;
 
+/** Clinical review state on a Result row (Bench → authorizer). */
+export const ClinicalResultStatusSchema = z.enum([
+  "pending_review",
+  "released",
+  "held",
+  "rejected",
+]);
+export type ClinicalResultStatus = z.infer<typeof ClinicalResultStatusSchema>;
+
 export const SpecimenStatusSchema = z.enum([
   "registered",
   "collected",
@@ -53,12 +62,45 @@ export type SpecimenStatus = z.infer<typeof SpecimenStatusSchema>;
 export const PatientSchema = z.object({
   id: z.string().optional(),
   mrn: z.string().min(1).optional(),
+  externalId: z.string().optional(),
   firstName: z.string().min(1),
+  middleName: z.string().optional(),
   lastName: z.string().min(1),
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   sex: z.enum(["M", "F", "O", "U"]).optional(),
+  status: z.enum(["active", "quarantined"]).optional(),
+  identityOrigin: z.enum(["upstream", "local_provisional"]).optional(),
+  syncStatus: z
+    .enum(["n_a", "pending_upstream", "synced", "failed"])
+    .optional(),
+  suspectGroupId: z.string().optional(),
 });
 export type Patient = z.infer<typeof PatientSchema>;
+
+export const CreatePatientRequestSchema = z.object({
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
+  middleName: z.string().optional(),
+  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  sex: z.enum(["M", "F", "O", "U"]).optional(),
+});
+export type CreatePatientRequest = z.infer<typeof CreatePatientRequestSchema>;
+
+export const IdentityConfirmationDecisionSchema = z.enum([
+  "distinct_people",
+  "possible_duplicate_acknowledged",
+]);
+export type IdentityConfirmationDecision = z.infer<
+  typeof IdentityConfirmationDecisionSchema
+>;
+
+export const IdentityConfirmationSchema = z.object({
+  decision: IdentityConfirmationDecisionSchema,
+  suspectGroupId: z.string().min(1),
+  confirmedAt: z.string().datetime().optional(),
+  confirmedBy: z.string().optional(),
+});
+export type IdentityConfirmation = z.infer<typeof IdentityConfirmationSchema>;
 
 export const OrderedTestSchema = z.object({
   code: z.string().min(1),
@@ -70,7 +112,9 @@ export const SpecimenSchema = z.object({
   id: z.string().optional(),
   accessionNumber: z.string().min(1),
   barcode: z.string().min(1),
+  patientId: z.string().optional(),
   patient: PatientSchema.optional(),
+  identityConfirmation: IdentityConfirmationSchema.optional(),
   specimenType: z.string().default("blood"),
   orderedTests: z.array(OrderedTestSchema).default([]),
   status: SpecimenStatusSchema.default("registered"),
@@ -79,6 +123,17 @@ export const SpecimenSchema = z.object({
 });
 export type Specimen = z.infer<typeof SpecimenSchema>;
 
+export const RegisterSpecimenRequestSchema = z.object({
+  accessionNumber: z.string().min(1).optional(),
+  barcode: z.string().min(1).optional(),
+  patientId: z.string().min(1),
+  identityConfirmation: IdentityConfirmationSchema.optional(),
+  orderedTests: z.array(OrderedTestSchema).optional(),
+  printLabel: z.boolean().optional(),
+});
+export type RegisterSpecimenRequest = z.infer<
+  typeof RegisterSpecimenRequestSchema
+>;
 export const CanonicalResultSchema = z.object({
   id: z.string().optional(),
   accessionNumber: z.string().min(1),
@@ -91,6 +146,7 @@ export const CanonicalResultSchema = z.object({
   referenceLow: z.number().optional(),
   referenceHigh: z.number().optional(),
   flag: ResultFlagSchema.default("unknown"),
+  status: ClinicalResultStatusSchema.default("pending_review"),
   observedAt: z.string().datetime(),
   rawMessageId: z.string().optional(),
 });
@@ -101,6 +157,7 @@ export const OutboxEventTypeSchema = z.enum([
   "result.received",
   "result.batch",
   "instrument.status",
+  "patient.provisional_created",
 ]);
 export type OutboxEventType = z.infer<typeof OutboxEventTypeSchema>;
 

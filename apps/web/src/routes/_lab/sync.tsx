@@ -14,38 +14,58 @@ function SyncPage() {
   });
 
   const cards = [
-    { key: "pending", label: "Pending", color: "border-amber-300 bg-amber-50" },
-    { key: "syncing", label: "Syncing", color: "border-sky-300 bg-sky-50" },
-    { key: "acked", label: "Acked (cloud)", color: "border-green-300 bg-green-50" },
-    { key: "failed", label: "Failed", color: "border-red-300 bg-red-50" },
+    {
+      key: "pending",
+      label: "Pending",
+      className: "border-amber-500/30 bg-amber-500/10",
+    },
+    {
+      key: "syncing",
+      label: "Syncing",
+      className: "border-sky-500/30 bg-sky-500/10",
+    },
+    {
+      key: "acked",
+      label: "Acked (cloud)",
+      className: "border-emerald-500/30 bg-emerald-500/10",
+    },
+    {
+      key: "failed",
+      label: "Failed",
+      className: "border-lab-danger/30 bg-lab-danger/10",
+    },
   ] as const;
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto w-full max-w-6xl space-y-5">
       <div>
-        <h2 className="text-2xl font-semibold text-lab-navy">Store-and-Forward Sync</h2>
-        <p className="text-sm text-slate-600">
-          Edge outbox queue. While the internet is down, events stay{" "}
-          <strong>pending</strong> and drain automatically when the cloud API is
-          reachable again.
+        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          Connectivity
+        </p>
+        <h2 className="font-display text-3xl font-semibold tracking-tight">
+          Store-and-Forward Sync
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Edge outbox queue. Offline events stay <strong>pending</strong> and
+          drain when the cloud API is reachable.
         </p>
       </div>
 
-      {isLoading && <p className="text-slate-500">Loading sync status…</p>}
+      {isLoading && <p className="text-muted-foreground">Loading sync status…</p>}
       {error && (
-        <p className="text-lab-danger text-sm">Could not load sync status.</p>
+        <p className="text-sm text-lab-danger">Could not load sync status.</p>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {cards.map((c) => (
           <div
             key={c.key}
-            className={`rounded-lg border p-4 shadow-sm ${c.color}`}
+            className={`rounded-xl border p-4 shadow-sm ${c.className}`}
           >
-            <p className="text-xs uppercase tracking-wide text-slate-600">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
               {c.label}
             </p>
-            <p className="text-3xl font-semibold text-lab-navy mt-1">
+            <p className="mt-1 text-3xl font-semibold text-foreground">
               {data?.[c.key] ?? "—"}
             </p>
           </div>

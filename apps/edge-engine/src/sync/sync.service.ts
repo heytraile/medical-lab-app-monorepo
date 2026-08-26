@@ -71,7 +71,12 @@ export class SyncService {
       try {
         const res = await fetch(`${cloudUrl}/sync/events`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            ...(process.env.EDGE_SYNC_TOKEN
+              ? { Authorization: `Bearer ${process.env.EDGE_SYNC_TOKEN}` }
+              : {}),
+          },
           body: JSON.stringify(body),
         });
 
