@@ -17,7 +17,7 @@ export function AccessioningShell({ title, description, children }: Props) {
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Accessioning
             </p>
-            <h2 className="font-display text-3xl font-semibold tracking-tight">
+            <h2 className="font-display text-2xl font-semibold sm:text-3xl tracking-tight">
               {title}
             </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">

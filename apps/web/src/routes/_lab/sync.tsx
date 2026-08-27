@@ -42,7 +42,7 @@ function SyncPage() {
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Connectivity
         </p>
-        <h2 className="font-display text-3xl font-semibold tracking-tight">
+        <h2 className="font-display text-2xl font-semibold sm:text-3xl tracking-tight">
           Store-and-Forward Sync
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -65,7 +65,7 @@ function SyncPage() {
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
               {c.label}
             </p>
-            <p className="mt-1 text-3xl font-semibold text-foreground">
+            <p className="mt-1 text-2xl font-semibold sm:text-3xl text-foreground">
               {data?.[c.key] ?? "—"}
             </p>
           </div>

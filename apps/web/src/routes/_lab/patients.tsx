@@ -6,6 +6,7 @@ import { PatientDetailDialog } from "../../components/patient-detail-dialog";
 import { Badge } from "../../components/ui/badge";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
+import { useIsDesktop } from "../../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab/patients")({
   component: PatientsPage,
@@ -15,6 +16,7 @@ function PatientsPage() {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const isDesktop = useIsDesktop();
 
   const patientsQ = useQuery({
     queryKey: ["patients", deferredQuery],
@@ -30,7 +32,7 @@ function PatientsPage() {
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Registry
           </p>
-          <h2 className="font-display text-3xl font-semibold tracking-tight">
+          <h2 className="font-display text-2xl font-semibold sm:text-3xl tracking-tight">
             Patients
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -58,6 +60,52 @@ function PatientsPage() {
         </p>
       )}
 
+      {!isDesktop ? (
+        <div className="space-y-2">
+          {patientsQ.isLoading && (
+            <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
+              Loading…
+            </p>
+          )}
+          {!patientsQ.isLoading && rows.length === 0 && (
+            <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
+              No patients found. Seed with{" "}
+              <code className="text-xs">POST /patients/seed</code>.
+            </p>
+          )}
+          {rows.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setSelectedId(p.id)}
+              className="w-full rounded-xl border border-border bg-card p-3 text-left shadow-sm transition-colors hover:bg-muted/35"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="min-w-0 truncate font-medium">
+                  {p.displayName}
+                </span>
+                <StatusBadges patient={p} />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                <span className="font-mono">{p.mrn}</span> ·{" "}
+                {p.dateOfBirth ?? "—"} · {p.sex ?? "—"}
+              </p>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {p.identityOrigin === "local_provisional" && (
+                  <Badge variant="warn" className="px-1 py-0 text-[10px]">
+                    Provisional
+                  </Badge>
+                )}
+                {p.requiresIdentityConfirmation && (
+                  <Badge variant="warn" className="px-1 py-0 text-[10px]">
+                    Suspect
+                  </Badge>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : (
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
@@ -139,6 +187,7 @@ function PatientsPage() {
           </table>
         </div>
       </div>
+      )}
 
       <PatientDetailDialog
         patientId={selectedId}

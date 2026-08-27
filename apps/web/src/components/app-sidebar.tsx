@@ -22,6 +22,7 @@ import { analyzerLabel } from "../lib/analyzers";
 import { useAuth } from "../lib/auth";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
+import { Sheet, SheetContent, SheetCloseButton } from "./ui/sheet";
 import { ThemeToggle } from "./theme-provider";
 import { Badge } from "./ui/badge";
 
@@ -29,19 +30,31 @@ const COLLAPSE_KEY = "lis-sidebar-collapsed";
 
 type Props = {
   onOpenSearch: () => void;
+  /** Mobile drawer state, owned by the layout so the top bar can open it. */
+  navOpen: boolean;
+  onNavOpenChange: (open: boolean) => void;
 };
 
-export function AppSidebar({ onOpenSearch }: Props) {
+/**
+ * Two presentations of one nav: a persistent rail from lg up, and a drawer
+ * below it. The drawer is always expanded — an icon-only rail inside a sheet
+ * would be pointless — so the collapse control is desktop-only.
+ */
+export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const search = useRouterState({ select: (s) => s.location.search });
   const [collapsed, setCollapsed] = useState(false);
-  const auth = useAuth();
-  const navigate = useNavigate();
 
   useEffect(() => {
     const saved = localStorage.getItem(COLLAPSE_KEY);
     if (saved === "1") setCollapsed(true);
   }, []);
+
+  // Backstop for navigation the drawer's own links don't see, such as the
+  // command palette jumping routes while the drawer is open.
+  useEffect(() => {
+    onNavOpenChange(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   const toggle = () => {
     setCollapsed((c) => {
@@ -50,6 +63,57 @@ export function AppSidebar({ onOpenSearch }: Props) {
       return next;
     });
   };
+
+  return (
+    <>
+      <aside
+        className={cn(
+          "hidden h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:flex",
+          collapsed ? "w-[4.25rem]" : "w-64",
+        )}
+      >
+        <SidebarBody
+          collapsed={collapsed}
+          onToggleCollapse={toggle}
+          onOpenSearch={onOpenSearch}
+        />
+      </aside>
+
+      <Sheet open={navOpen} onOpenChange={onNavOpenChange}>
+        <SheetContent
+          side="left"
+          label="Navigation"
+          className="border-sidebar-border bg-sidebar text-sidebar-foreground lg:hidden"
+        >
+          <SidebarBody
+            collapsed={false}
+            onOpenSearch={() => {
+              onNavOpenChange(false);
+              onOpenSearch();
+            }}
+            onNavigate={() => onNavOpenChange(false)}
+          />
+        </SheetContent>
+      </Sheet>
+    </>
+  );
+}
+
+function SidebarBody({
+  collapsed,
+  onToggleCollapse,
+  onOpenSearch,
+  onNavigate,
+}: {
+  collapsed: boolean;
+  onToggleCollapse?: () => void;
+  onOpenSearch: () => void;
+  onNavigate?: () => void;
+}) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const search = useRouterState({ select: (s) => s.location.search });
+  const auth = useAuth();
+  const navigate = useNavigate();
 
   const analyzersQ = useQuery({
     queryKey: ["analyzers-status"],
@@ -82,15 +146,10 @@ export function AppSidebar({ onOpenSearch }: Props) {
   }
 
   return (
-    <aside
-      className={cn(
-        "flex h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200",
-        collapsed ? "w-[4.25rem]" : "w-64",
-      )}
-    >
+    <>
       <div
         className={cn(
-          "flex h-14 items-center gap-2 border-b border-sidebar-border px-3",
+          "flex h-14 shrink-0 items-center gap-2 border-b border-sidebar-border px-3",
           collapsed && "justify-center px-2",
         )}
       >
@@ -107,19 +166,23 @@ export function AppSidebar({ onOpenSearch }: Props) {
             </p>
           </div>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="text-sidebar-foreground hover:bg-sidebar-muted"
-          onClick={toggle}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? (
-            <ChevronRight className="size-4" />
-          ) : (
-            <ChevronLeft className="size-4" />
-          )}
-        </Button>
+        {onToggleCollapse ? (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-sidebar-foreground hover:bg-sidebar-muted"
+            onClick={onToggleCollapse}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? (
+              <ChevronRight className="size-4" />
+            ) : (
+              <ChevronLeft className="size-4" />
+            )}
+          </Button>
+        ) : (
+          <SheetCloseButton className="text-sidebar-foreground hover:bg-sidebar-muted" />
+        )}
       </div>
 
       <div className="p-2">
@@ -157,6 +220,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
             label="Bench Review"
             active={pathname === "/bench" && !activeAnalyzer}
             collapsed={collapsed}
+            onNavigate={onNavigate}
           />
           <NavItem
             to="/register"
@@ -164,6 +228,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
             label="Register"
             active={pathname === "/register"}
             collapsed={collapsed}
+            onNavigate={onNavigate}
           />
           <NavItem
             to="/labels"
@@ -171,6 +236,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
             label="Labels"
             active={pathname === "/labels"}
             collapsed={collapsed}
+            onNavigate={onNavigate}
           />
           <NavItem
             to="/sync"
@@ -178,6 +244,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
             label="Sync"
             active={pathname === "/sync"}
             collapsed={collapsed}
+            onNavigate={onNavigate}
           />
           <NavItem
             to="/release"
@@ -185,6 +252,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
             label="Release queue"
             active={pathname === "/release"}
             collapsed={collapsed}
+            onNavigate={onNavigate}
           />
           <NavItem
             to="/patients"
@@ -192,6 +260,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
             label="Patients"
             active={pathname === "/patients"}
             collapsed={collapsed}
+            onNavigate={onNavigate}
           />
         </div>
 
@@ -213,6 +282,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
             label="All results"
             active={pathname === "/bench" && !activeAnalyzer}
             collapsed={collapsed}
+            onNavigate={onNavigate}
           />
           {(analyzersQ.data ?? []).map((a) => (
             <NavItem
@@ -223,6 +293,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
               label={analyzerLabel(a.analyzerId)}
               active={pathname === "/bench" && activeAnalyzer === a.analyzerId}
               collapsed={collapsed}
+            onNavigate={onNavigate}
               status={
                 a.lastParseError
                   ? "error"
@@ -278,6 +349,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
               <Link
                 to="/profile"
                 title="Profile"
+                onClick={onNavigate}
                 className={cn(
                   "inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-sidebar-muted",
                   pathname === "/profile" && "bg-sidebar-muted",
@@ -305,6 +377,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
           <Link
             to="/login"
             title="Sign in"
+            onClick={onNavigate}
             className={cn(
               "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-sidebar-muted",
               collapsed && "justify-center px-0",
@@ -342,7 +415,7 @@ export function AppSidebar({ onOpenSearch }: Props) {
           <ThemeToggle className="text-sidebar-foreground hover:bg-sidebar-muted" />
         </div>
       </div>
-    </aside>
+    </>
   );
 }
 
@@ -355,6 +428,7 @@ function NavItem({
   collapsed,
   status,
   title,
+  onNavigate,
 }: {
   to: "/bench" | "/register" | "/labels" | "/sync" | "/release" | "/patients" | "/profile";
   search?: { analyzer?: string; q?: string };
@@ -364,12 +438,14 @@ function NavItem({
   collapsed: boolean;
   status?: "ok" | "off" | "error";
   title?: string;
+  onNavigate?: () => void;
 }) {
   return (
     <Link
       to={to}
       search={search}
       title={title ?? label}
+      onClick={onNavigate}
       className={cn(
         "group relative flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-sidebar-muted",
         active && "bg-sidebar-accent text-accent-foreground hover:bg-sidebar-accent",

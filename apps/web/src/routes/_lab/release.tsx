@@ -6,12 +6,15 @@ import { isCloudMode } from "../../lib/supabase";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import {
+  AlarmSign,
   FlagChip,
+  flagBarColor,
   flagRowClass,
   flagValueClass,
   isAlarmFlag,
 } from "../../components/result-status";
 import { cn } from "../../lib/utils";
+import { useIsDesktop } from "../../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab/release")({
   component: ReleasePage,
@@ -34,6 +37,7 @@ function ReleasePage() {
   const auth = useAuth();
   const qc = useQueryClient();
   const allowed = canRelease(auth.role);
+  const isDesktop = useIsDesktop();
 
   const resultsQ = useQuery({
     queryKey: ["cloud-results", "pending_review"],
@@ -58,7 +62,7 @@ function ReleasePage() {
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Authorization
           </p>
-          <h2 className="font-display text-3xl font-semibold tracking-tight">
+          <h2 className="font-display text-2xl font-semibold sm:text-3xl tracking-tight">
             Release queue
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -112,6 +116,64 @@ function ReleasePage() {
         </p>
       )}
 
+      {!isDesktop ? (
+        <div className="space-y-2">
+          {resultsQ.isLoading && (
+            <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
+              Loading…
+            </p>
+          )}
+          {!resultsQ.isLoading && rows.length === 0 && (
+            <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
+              No pending_review results in cloud.
+            </p>
+          )}
+          {rows.map((r) => (
+            <article
+              key={r.id}
+              className="rounded-xl border border-border bg-card p-3 shadow-sm"
+              style={{ boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag)}` }}
+            >
+              <div className="flex items-baseline justify-between gap-2 pl-1">
+                <span className="min-w-0 truncate font-medium">
+                  {r.test_code}
+                  {r.test_name ? (
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {r.test_name}
+                    </span>
+                  ) : null}
+                </span>
+                <span className="shrink-0 text-lg font-semibold tabular-nums">
+                  <span className={flagValueClass(r.flag)}>{r.value}</span>
+                  {r.units ? (
+                    <span className="ml-1 text-sm font-medium text-muted-foreground">
+                      {r.units}
+                    </span>
+                  ) : null}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-1">
+                <AlarmSign flag={r.flag} />
+                <FlagChip flag={r.flag} />
+              </div>
+              <p className="mt-2 pl-1 text-[11px] text-muted-foreground">
+                <span className="font-mono">{r.accession_number}</span>
+              </p>
+              <p className="pl-1 text-sm font-medium tabular-nums text-foreground/85">
+                {new Date(r.observed_at).toLocaleString()}
+              </p>
+              <Button
+                className="mt-3 h-11 w-full"
+                disabled={!allowed || releaseM.isPending}
+                onClick={() => releaseM.mutate(r.id)}
+              >
+                Release
+              </Button>
+            </article>
+          ))}
+        </div>
+      ) : (
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
@@ -155,7 +217,7 @@ function ReleasePage() {
                     flagRowClass(r.flag),
                   )}
                 >
-                  <td className="px-3 py-2.5 whitespace-nowrap text-xs text-muted-foreground align-middle">
+                  <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium tabular-nums text-foreground/85 align-middle">
                     {new Date(r.observed_at).toLocaleString()}
                   </td>
                   <td className="px-3 py-2.5 font-mono text-xs tracking-tight align-middle">
@@ -170,14 +232,26 @@ function ReleasePage() {
                       </span>
                     ) : null}
                   </td>
-                  <td className="px-3 py-2.5 align-middle">
-                    <span className={flagValueClass(r.flag)}>{r.value}</span>
+                  <td className="px-3 py-2.5 align-middle whitespace-nowrap">
+                    <span
+                      className={cn(
+                        "text-base font-semibold tabular-nums",
+                        flagValueClass(r.flag),
+                      )}
+                    >
+                      {r.value}
+                    </span>
                     {r.units ? (
-                      <span className="text-muted-foreground"> {r.units}</span>
+                      <span className="ml-1 text-sm font-medium text-muted-foreground">
+                        {r.units}
+                      </span>
                     ) : null}
                   </td>
                   <td className="px-3 py-2.5 align-middle">
-                    <FlagChip flag={r.flag} />
+                    <span className="inline-flex items-center gap-1.5">
+                      <AlarmSign flag={r.flag} />
+                      <FlagChip flag={r.flag} />
+                    </span>
                   </td>
                   <td className="px-3 py-2.5 text-right align-middle">
                     <Button
@@ -194,6 +268,7 @@ function ReleasePage() {
           </table>
         </div>
       </div>
+      )}
 
       {releaseM.isError && (
         <p className="text-sm text-lab-danger">

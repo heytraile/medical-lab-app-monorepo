@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ScanLine } from "lucide-react";
 import { ApiError, api, type LabelPreviewFields } from "../../lib/api";
 import {
@@ -15,6 +15,7 @@ import { LabelPreviewPanel } from "../../components/accessioning/label-preview-p
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
+import { cn } from "../../lib/utils";
 
 type LabelsSearch = {
   accession?: string;
@@ -62,6 +63,7 @@ function LabelsPage() {
   const [testPreview, setTestPreview] = useState<LabelPreviewFields | null>(
     null,
   );
+  const selectedRowRef = useRef<HTMLButtonElement | null>(null);
 
   const specimensQ = useQuery({
     queryKey: ["specimens"],
@@ -75,6 +77,12 @@ function LabelsPage() {
       setTestPreview(null);
     }
   }, [accessionFromUrl]);
+
+  // The list is scrollable, so a scanned barcode or /labels?accession=… deep
+  // link can select a row that is out of view. "nearest" keeps the page still.
+  useEffect(() => {
+    selectedRowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [activeAccession, specimensQ.dataUpdatedAt]);
 
   const specimenRow = useMemo(() => {
     if (!activeAccession.trim() || !specimensQ.data) return undefined;
@@ -241,7 +249,7 @@ function LabelsPage() {
             />
           </label>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3 [&>button]:h-11 [&>button]:flex-1 sm:[&>button]:h-9 sm:[&>button]:flex-none">
             <label className="flex items-center gap-2 text-sm">
               Copies
               <select
@@ -294,25 +302,44 @@ function LabelsPage() {
                   </Link>
                 </li>
               )}
-              {recent.map((s) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-muted"
-                    onClick={() => selectAccession(s.accessionNumber)}
-                  >
-                    <span>
-                      <span className="font-mono font-medium">
-                        {s.accessionNumber}
+              {recent.map((s) => {
+                const isSelected =
+                  s.accessionNumber.toUpperCase() ===
+                  activeAccession.trim().toUpperCase();
+                return (
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      ref={isSelected ? selectedRowRef : undefined}
+                      aria-current={isSelected ? "true" : undefined}
+                      className={cn(
+                        // Accession and name stack above the badge on a phone;
+                        // all three on one line crushes the patient name.
+                        "flex w-full flex-col items-start gap-1 border-l-2 px-3 py-2.5 text-left text-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-2",
+                        isSelected
+                          ? "border-l-accent bg-accent/10"
+                          : "border-l-transparent hover:bg-muted",
+                      )}
+                      onClick={() => selectAccession(s.accessionNumber)}
+                    >
+                      <span className="min-w-0">
+                        <span
+                          className={cn(
+                            "font-mono font-medium",
+                            isSelected && "text-accent",
+                          )}
+                        >
+                          {s.accessionNumber}
+                        </span>
+                        <span className="ml-2 text-muted-foreground">
+                          {patientFromJson(s.patientJson)}
+                        </span>
                       </span>
-                      <span className="ml-2 text-muted-foreground">
-                        {patientFromJson(s.patientJson)}
-                      </span>
-                    </span>
-                    <Badge variant="muted">{s.status}</Badge>
-                  </button>
-                </li>
-              ))}
+                      <Badge variant="muted">{s.status}</Badge>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         </div>

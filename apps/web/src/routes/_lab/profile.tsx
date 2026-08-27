@@ -53,7 +53,7 @@ function ProfilePage() {
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Account
           </p>
-          <h2 className="font-display text-3xl font-semibold tracking-tight">
+          <h2 className="font-display text-2xl font-semibold sm:text-3xl tracking-tight">
             Profile
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -78,7 +78,7 @@ function ProfilePage() {
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Account
         </p>
-        <h2 className="font-display text-3xl font-semibold tracking-tight">
+        <h2 className="font-display text-2xl font-semibold sm:text-3xl tracking-tight">
           Profile
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">

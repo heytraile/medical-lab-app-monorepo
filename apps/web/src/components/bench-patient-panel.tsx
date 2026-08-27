@@ -8,12 +8,14 @@ import {
 } from "../lib/api";
 import { analyzerLabel } from "../lib/analyzers";
 import {
+  AlarmSign,
   FlagChip,
   WorkflowStatusChip,
+  flagBarColor,
   flagRowClass,
   flagValueClass,
-  isAlarmFlag,
 } from "./result-status";
+import { useIsDesktop } from "../lib/use-media-query";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { cn } from "../lib/utils";
@@ -26,7 +28,7 @@ function Field({
   value: ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[6.5rem_1fr] gap-x-2 gap-y-0.5 py-1.5 text-sm">
+    <div className="grid grid-cols-1 gap-x-2 gap-y-0.5 py-1.5 text-sm sm:grid-cols-[6.5rem_1fr]">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 text-foreground">{value}</dd>
     </div>
@@ -44,12 +46,16 @@ export function BenchPatientPanel({
   summary,
   results,
   onClose,
+  embedded = false,
 }: {
   patientId: string;
   summary: BenchPatientSummary | null;
   results: BenchResult[];
   onClose: () => void;
+  /** Inside a sheet, which supplies its own frame, height and Escape handling. */
+  embedded?: boolean;
 }) {
+  const isDesktop = useIsDesktop();
   const detailQ = useQuery({
     queryKey: ["patient", patientId],
     queryFn: () => api.patient(patientId),
@@ -61,12 +67,13 @@ export function BenchPatientPanel({
   const mrn = p?.mrn ?? summary?.mrn ?? "—";
 
   useEffect(() => {
+    if (embedded) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, embedded]);
 
   const sorted = [...results].sort(
     (a, b) =>
@@ -76,7 +83,10 @@ export function BenchPatientPanel({
   return (
     <aside
       className={cn(
-        "flex max-h-[calc(100svh-8rem)] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm",
+        "flex min-h-0 flex-col overflow-hidden bg-card",
+        embedded
+          ? "flex-1"
+          : "max-h-[calc(100svh-8rem)] rounded-xl border border-border shadow-sm",
       )}
     >
       <div className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
@@ -188,6 +198,42 @@ export function BenchPatientPanel({
             <p className="py-6 text-center text-sm text-muted-foreground">
               No results for this patient in the current load.
             </p>
+          ) : !isDesktop ? (
+            <ul className="space-y-2">
+              {sorted.map((r) => (
+                <li
+                  key={r.id}
+                  className="rounded-lg border border-border p-2.5"
+                  style={{
+                    boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag)}`,
+                  }}
+                >
+                  <div className="flex items-baseline justify-between gap-2 pl-1">
+                    <span className="font-medium">{r.testCode}</span>
+                    <span className="shrink-0 text-lg font-semibold tabular-nums">
+                      <span className={flagValueClass(r.flag)}>{r.value}</span>
+                      {r.units ? (
+                        <span className="ml-1 text-sm font-medium text-muted-foreground">
+                          {r.units}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-1">
+                    <AlarmSign flag={r.flag} />
+                    <FlagChip flag={r.flag} />
+                    <WorkflowStatusChip status={r.status ?? "pending_review"} />
+                  </div>
+                  <p className="mt-1.5 pl-1 text-[10px] text-muted-foreground">
+                    <span className="font-mono">{r.accessionNumber}</span> ·{" "}
+                    {analyzerLabel(r.analyzerId)}
+                  </p>
+                  <p className="pl-1 text-sm font-medium tabular-nums text-foreground/85">
+                    {new Date(r.observedAt).toLocaleString()}
+                  </p>
+                </li>
+              ))}
+            </ul>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
               <table className="w-full min-w-[32rem] text-left text-xs">
@@ -210,7 +256,7 @@ export function BenchPatientPanel({
                         flagRowClass(r.flag),
                       )}
                     >
-                      <td className="px-2 py-2 align-middle whitespace-nowrap text-[10px] text-muted-foreground">
+                      <td className="px-2 py-2 align-middle whitespace-nowrap text-xs font-medium tabular-nums text-foreground/85">
                         {new Date(r.observedAt).toLocaleString()}
                       </td>
                       <td className="px-2 py-2 align-middle">
@@ -220,16 +266,25 @@ export function BenchPatientPanel({
                         </div>
                       </td>
                       <td className="px-2 py-2 align-middle whitespace-nowrap">
-                        <span className={flagValueClass(r.flag)}>{r.value}</span>
+                        <span
+                          className={cn(
+                            "text-sm font-semibold tabular-nums",
+                            flagValueClass(r.flag),
+                          )}
+                        >
+                          {r.value}
+                        </span>
                         {r.units ? (
-                          <span className="text-muted-foreground">
-                            {" "}
+                          <span className="ml-1 text-xs font-medium text-muted-foreground">
                             {r.units}
                           </span>
                         ) : null}
                       </td>
                       <td className="px-2 py-2 align-middle">
-                        <FlagChip flag={r.flag} />
+                        <span className="inline-flex items-center gap-1.5">
+                          <AlarmSign flag={r.flag} />
+                          <FlagChip flag={r.flag} />
+                        </span>
                       </td>
                       <td className="px-2 py-2 align-middle font-mono text-[10px] tracking-tight">
                         {r.accessionNumber}
@@ -237,7 +292,6 @@ export function BenchPatientPanel({
                       <td className="px-2 py-2 align-middle">
                         <WorkflowStatusChip
                           status={r.status ?? "pending_review"}
-                          onAlarm={isAlarmFlag(r.flag)}
                         />
                       </td>
                     </tr>

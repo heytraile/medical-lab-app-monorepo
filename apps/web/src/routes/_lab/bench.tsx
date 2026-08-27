@@ -1,29 +1,84 @@
-import { useDeferredValue, useMemo, useState } from "react";
+import {
+  Fragment,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   createColumnHelper,
   flexRender,
   getCoreRowModel,
+  getExpandedRowModel,
+  getGroupedRowModel,
   getSortedRowModel,
+  type ExpandedState,
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
-import { api, type BenchPatientSummary, type BenchResult } from "../../lib/api";
+import { api, type BenchResult } from "../../lib/api";
 import { analyzerLabel } from "../../lib/analyzers";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 import { BenchPatientPanel } from "../../components/bench-patient-panel";
+import { BenchMobileList } from "../../components/bench-mobile-list";
+import { Sheet, SheetContent } from "../../components/ui/sheet";
+import { useIsDesktop, useIsWide } from "../../lib/use-media-query";
 import {
+  BenchGroupRow,
+  summarizeGroup,
+  type BenchGroupSummary,
+} from "../../components/bench-group-row";
+import {
+  AlarmSign,
   FlagChip,
   WorkflowStatusChip,
-  flagRowClass,
+  flagBarColor,
+  flagRowTint,
   flagValueClass,
-  isAlarmFlag,
 } from "../../components/result-status";
-import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { cn } from "../../lib/utils";
+
+/** Stable group key — unlinked specimens group by accession, not into one bucket. */
+function groupKeyFor(row: BenchResult): string {
+  return row.patient?.id ?? `acc:${row.accessionNumber}`;
+}
+
+/**
+ * Leading bar and focus outline for one nested cell, as inset box-shadows.
+ *
+ * Inset shadows paint inside the border, so both land inboard of the grey
+ * gutter rather than at the table edge. Drawing the outline per cell — top and
+ * bottom everywhere, sides only on the end cells — is what lets the focus
+ * highlight stop at the inset instead of spanning the full row.
+ */
+function cellShadow({
+  barColor,
+  focused,
+  first,
+  last,
+}: {
+  barColor: string;
+  focused: boolean;
+  first: boolean;
+  last: boolean;
+}): CSSProperties | undefined {
+  const shadows: string[] = [];
+  if (first) shadows.push(`inset 3px 0 0 0 ${barColor}`);
+  if (focused) {
+    const accent = "var(--color-accent, #0d9488)";
+    shadows.push(`inset 0 2px 0 0 ${accent}`, `inset 0 -2px 0 0 ${accent}`);
+    if (first) shadows.push(`inset 2px 0 0 0 ${accent}`);
+    if (last) shadows.push(`inset -2px 0 0 0 ${accent}`);
+  }
+  return shadows.length ? { boxShadow: shadows.join(", ") } : undefined;
+}
 
 type BenchSearch = {
   analyzer?: string;
@@ -43,6 +98,18 @@ export const Route = createFileRoute("/_lab/bench")({
 
 const columnHelper = createColumnHelper<BenchResult>();
 
+/**
+ * Must be module-level constants, not inline literals.
+ *
+ * getGroupedRowModel memoizes on `[state.grouping, preGroupedRowModel]` by
+ * reference. A fresh array each render busts that memo, which re-runs grouping
+ * every render and triggers TanStack's autoReset — an infinite render loop that
+ * also wipes the expanded state.
+ */
+const GROUPING = ["patientGroup"];
+const COLUMN_VISIBILITY = { patientGroup: false };
+const NO_RESULTS: BenchResult[] = [];
+
 type TabFilter = "all" | "pending" | "flagged";
 
 function BenchPage() {
@@ -54,8 +121,18 @@ function BenchPage() {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(
     null,
   );
+  // Every group starts collapsed and stays that way until the tech opens it;
+  // only an active search overrides this (see below).
+  const [expanded, setExpanded] = useState<ExpandedState>({});
+  // Set by clicking a flag chip; cleared on a timer so the ring fades away.
+  const [focusedResultId, setFocusedResultId] = useState<string | null>(null);
+  // Typed loosely because the desktop renderer points it at a <tr> and the
+  // mobile one at a card element.
+  const focusedRowRef = useRef<HTMLElement | null>(null);
+  const isDesktop = useIsDesktop();
+  const isWide = useIsWide();
 
-  const { data = [], isLoading, error, isFetching } = useQuery({
+  const { data = NO_RESULTS, isLoading, error, isFetching } = useQuery({
     queryKey: ["results"],
     queryFn: () => api.results(),
     refetchInterval: 10_000,
@@ -91,6 +168,40 @@ function BenchPage() {
     return rows;
   }, [data, analyzer, deferredQ, tab]);
 
+  const groupSummaries = useMemo(() => {
+    const byKey = new Map<string, BenchResult[]>();
+    for (const r of filtered) {
+      const key = groupKeyFor(r);
+      const bucket = byKey.get(key);
+      if (bucket) bucket.push(r);
+      else byKey.set(key, [r]);
+    }
+    const out = new Map<string, BenchGroupSummary>();
+    for (const [key, rows] of byKey) out.set(key, summarizeGroup(key, rows));
+    return out;
+  }, [filtered]);
+
+  const searching = deferredQ.length > 0;
+
+  // While searching, open everything so a match is never hidden in a collapsed
+  // group. Collapse everything again when the query clears.
+  useEffect(() => {
+    setExpanded(searching ? true : {});
+  }, [searching]);
+
+  // The expand and the focus land in one batched render, so the target row is
+  // already mounted by the time this runs. scrollIntoView walks up to the
+  // scroll pane in _lab.tsx on its own.
+  useEffect(() => {
+    if (!focusedResultId) return;
+    focusedRowRef.current?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+    const timer = setTimeout(() => setFocusedResultId(null), 2200);
+    return () => clearTimeout(timer);
+  }, [focusedResultId]);
+
   const selectedResults = useMemo(
     () =>
       selectedPatientId
@@ -109,12 +220,21 @@ function BenchPage() {
 
   const columns = useMemo(
     () => [
+      // Hidden: drives grouping only. The patient name is rendered once in the
+      // group header instead of repeating on every result row.
+      columnHelper.accessor(groupKeyFor, {
+        id: "patientGroup",
+        header: "Patient",
+      }),
       columnHelper.accessor("observedAt", {
         header: ({ column }) => (
           <SortHeader label="Observed" column={column} />
         ),
+        aggregationFn: "max",
+        // One of the three things a tech actually reads, so it sits at body
+        // size rather than the muted 12px it used to be.
         cell: (info) => (
-          <span className="whitespace-nowrap text-xs text-muted-foreground">
+          <span className="whitespace-nowrap text-sm font-medium tabular-nums text-foreground/85">
             {new Date(info.getValue()).toLocaleString()}
           </span>
         ),
@@ -127,21 +247,6 @@ function BenchPage() {
           <span className="font-mono text-xs tracking-tight">
             {info.getValue()}
           </span>
-        ),
-      }),
-      columnHelper.accessor((row) => row.patient?.displayName ?? "", {
-        id: "patient",
-        header: ({ column }) => (
-          <SortHeader label="Patient" column={column} />
-        ),
-        cell: (info) => (
-          <PatientCell
-            patient={info.row.original.patient}
-            selected={
-              info.row.original.patient?.id === selectedPatientId
-            }
-            onSelect={(id) => setSelectedPatientId(id)}
-          />
         ),
       }),
       columnHelper.accessor("analyzerId", {
@@ -163,15 +268,22 @@ function BenchPage() {
       columnHelper.accessor("value", {
         header: ({ column }) => <SortHeader label="Value" column={column} />,
         cell: (info) => (
-          <span className={flagValueClass(info.row.original.flag)}>
+          <span
+            className={cn(
+              "text-base font-semibold tabular-nums",
+              flagValueClass(info.row.original.flag),
+            )}
+          >
             {info.getValue()}
           </span>
         ),
       }),
       columnHelper.accessor("units", {
         header: "Units",
+        // A value is meaningless without its unit, so the unit tracks the
+        // value's prominence rather than fading into the muted column text.
         cell: (info) => (
-          <span className="text-muted-foreground">
+          <span className="text-sm font-medium text-muted-foreground">
             {info.getValue() ?? "—"}
           </span>
         ),
@@ -179,32 +291,59 @@ function BenchPage() {
       }),
       columnHelper.accessor("flag", {
         header: ({ column }) => <SortHeader label="Flag" column={column} />,
-        cell: (info) => <FlagChip flag={info.getValue()} />,
+        cell: (info) => (
+          <span className="inline-flex items-center gap-1.5">
+            <AlarmSign flag={info.getValue()} />
+            <FlagChip flag={info.getValue()} />
+          </span>
+        ),
       }),
       columnHelper.accessor("status", {
         header: ({ column }) => <SortHeader label="Status" column={column} />,
         cell: (info) => (
-          <WorkflowStatusChip
-            status={info.getValue() ?? "pending_review"}
-            onAlarm={isAlarmFlag(info.row.original.flag)}
-          />
+          <WorkflowStatusChip status={info.getValue() ?? "pending_review"} />
         ),
       }),
     ],
-    [selectedPatientId],
+    [],
   );
 
   const table = useReactTable({
     data: filtered,
     columns,
-    state: { sorting },
+    state: {
+      sorting,
+      expanded,
+      grouping: GROUPING,
+      columnVisibility: COLUMN_VISIBILITY,
+    },
     onSortingChange: setSorting,
+    onExpandedChange: setExpanded,
+    // The 10s refetch replaces `data` wholesale. Without this, TanStack would
+    // collapse every group the tech had opened on each poll.
+    autoResetExpanded: false,
     getCoreRowModel: getCoreRowModel(),
+    getGroupedRowModel: getGroupedRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
   });
+
+  const visibleColumnCount = table.getVisibleLeafColumns().length;
+  const allExpanded = table.getIsAllRowsExpanded();
 
   const title = analyzer ? analyzerLabel(analyzer) : "All machines";
   const split = Boolean(selectedPatientId);
+
+  // Each patient renders as a white block on a grey canvas, so rows need to
+  // know where they sit inside their block. The row model is a flat list with
+  // group headers interleaved, hence the lookahead and the running counters.
+  const modelRows = table.getRowModel().rows;
+  const isLastInBlock = modelRows.map((_, i) => {
+    const next = modelRows[i + 1];
+    return !next || next.getIsGrouped();
+  });
+  let leafIndex = 0;
+  let groupIndex = 0;
 
   return (
     <div
@@ -218,7 +357,7 @@ function BenchPage() {
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Bench Review
           </p>
-          <h2 className="font-display text-3xl font-semibold tracking-tight text-foreground">
+          <h2 className="font-display text-2xl font-semibold sm:text-3xl tracking-tight text-foreground">
             {title}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -230,17 +369,31 @@ function BenchPage() {
         <span className="text-xs text-muted-foreground">
           {isFetching
             ? "Refreshing…"
-            : `${filtered.length} of ${data.length} rows`}
+            : `${groupSummaries.size} ${
+                groupSummaries.size === 1 ? "patient" : "patients"
+              } · ${filtered.length} of ${data.length} results`}
         </span>
       </div>
 
-      <Tabs value={tab} onValueChange={(v) => setTab(v as TabFilter)}>
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="pending">Pending review</TabsTrigger>
-          <TabsTrigger value="flagged">Flagged</TabsTrigger>
-        </TabsList>
-      </Tabs>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Tabs value={tab} onValueChange={(v) => setTab(v as TabFilter)}>
+          <TabsList>
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="pending">Pending review</TabsTrigger>
+            <TabsTrigger value="flagged">Flagged</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        {groupSummaries.size > 0 && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => table.toggleAllRowsExpanded(!allExpanded)}
+          >
+            {allExpanded ? "Collapse all" : "Expand all"}
+          </Button>
+        )}
+      </div>
 
       {isLoading && <p className="text-muted-foreground">Loading results…</p>}
       {error && (
@@ -257,7 +410,32 @@ function BenchPage() {
             "grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.9fr)]",
         )}
       >
-        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        {!isDesktop ? (
+          modelRows.length === 0 ? (
+            <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
+              No results for this view. Run a simulator or clear filters.
+            </p>
+          ) : (
+            <BenchMobileList
+              rows={modelRows}
+              groupSummaries={groupSummaries}
+              selectedPatientId={selectedPatientId}
+              focusedResultId={focusedResultId}
+              focusedRef={focusedRowRef}
+              onSelectPatient={setSelectedPatientId}
+              onToggleGroup={(row) => row.toggleExpanded()}
+              onJumpToFlag={(row, summary) => {
+                row.toggleExpanded(true);
+                const target = row.subRows.find(
+                  (sr) => sr.original.flag === summary.worstFlag,
+                );
+                setFocusedResultId(target?.original.id ?? null);
+              }}
+            />
+          )
+        ) : (
+        /* Grey canvas: the gaps between patient blocks are this showing through. */
+        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-muted shadow-sm">
           <div className="overflow-x-auto">
             <table
               className={cn(
@@ -265,7 +443,7 @@ function BenchPage() {
                 split ? "min-w-[52rem]" : "min-w-[880px]",
               )}
             >
-              <thead className="border-b border-border bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
+              <thead className="border-b border-border bg-muted text-xs uppercase tracking-wider text-muted-foreground">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
                     {hg.headers.map((h) => (
@@ -282,10 +460,10 @@ function BenchPage() {
                 ))}
               </thead>
               <tbody>
-                {table.getRowModel().rows.length === 0 ? (
-                  <tr>
+                {modelRows.length === 0 ? (
+                  <tr className="bg-card">
                     <td
-                      colSpan={columns.length}
+                      colSpan={visibleColumnCount}
                       className="px-3 py-12 text-center text-muted-foreground"
                     >
                       No results for this view. Run a simulator or clear
@@ -293,42 +471,111 @@ function BenchPage() {
                     </td>
                   </tr>
                 ) : (
-                  table.getRowModel().rows.map((row) => {
-                    const isSelected =
-                      row.original.patient?.id === selectedPatientId;
+                  modelRows.map((row, i) => {
+                    if (row.getIsGrouped()) {
+                      const summary = groupSummaries.get(String(row.groupingValue));
+                      if (!summary) return null;
+                      // Stripes restart per patient so the first test under
+                      // every name reads the same way.
+                      leafIndex = 0;
+                      const blockIndex = groupIndex++;
+                      const isOpen = row.getIsExpanded();
+                      return (
+                        <Fragment key={row.id}>
+                          {/* The real gap between patient blocks. */}
+                          {blockIndex > 0 && (
+                            <tr aria-hidden>
+                              <td colSpan={visibleColumnCount} className="h-4 p-0" />
+                            </tr>
+                          )}
+                          <BenchGroupRow
+                            summary={summary}
+                            colSpan={visibleColumnCount}
+                            expanded={isOpen}
+                            alternate={blockIndex % 2 === 1}
+                            selected={
+                              summary.patient?.id != null &&
+                              summary.patient.id === selectedPatientId
+                            }
+                            onToggle={row.getToggleExpandedHandler()}
+                            onSelectPatient={setSelectedPatientId}
+                            onJumpToFlag={() => {
+                              row.toggleExpanded(true);
+                              // subRows are already in the table's sort order,
+                              // so "first" is the first one the tech will see.
+                              const target = row.subRows.find(
+                                (sr) => sr.original.flag === summary.worstFlag,
+                              );
+                              setFocusedResultId(target?.original.id ?? null);
+                            }}
+                          />
+                        </Fragment>
+                      );
+                    }
+                    const striped = leafIndex++ % 2 === 1;
+                    const isFocused = row.original.id === focusedResultId;
+                    const cells = row.getVisibleCells();
+                    // Leaf rows only exist for expanded groups, so every one of
+                    // them belongs to an open block and is tinted blue. Order
+                    // matters: cn() is twMerge, so a later bg-* wins and the
+                    // alarm tint stays on top of the blue.
+                    const cellBg = cn(
+                      striped
+                        ? "bg-sky-100 dark:bg-sky-900/40"
+                        : "bg-sky-50 dark:bg-sky-950/60",
+                      flagRowTint(row.original.flag),
+                      q &&
+                        row.original.accessionNumber
+                          .toLowerCase()
+                          .includes((q ?? "").toLowerCase()) &&
+                        "bg-accent/15",
+                    );
                     return (
+                      // The background lives on the cells, not here: a <tr>
+                      // always paints the full table width, which would defeat
+                      // the inset. Hover therefore has to reach the cells too.
                       <tr
                         key={row.id}
-                        className={cn(
-                          "border-t border-border/60 transition-colors",
-                          !isAlarmFlag(row.original.flag) && "hover:bg-muted/35",
-                          flagRowClass(row.original.flag),
-                          isSelected &&
-                            !isAlarmFlag(row.original.flag) &&
-                            "bg-accent/10 ring-1 ring-inset ring-accent/20",
-                          isSelected &&
-                            isAlarmFlag(row.original.flag) &&
-                            "ring-2 ring-inset ring-white/50",
-                          q &&
-                            row.original.accessionNumber
-                              .toLowerCase()
-                              .includes((q ?? "").toLowerCase()) &&
-                            !isSelected &&
-                            !isAlarmFlag(row.original.flag) &&
-                            "bg-accent/5",
-                        )}
+                        ref={
+                          isFocused
+                            ? (focusedRowRef as React.Ref<HTMLTableRowElement>)
+                            : undefined
+                        }
+                        className="[&:hover>td]:bg-sky-200 dark:[&:hover>td]:bg-sky-900/70"
                       >
-                        {row.getVisibleCells().map((cell) => (
-                          <td
-                            key={cell.id}
-                            className="px-3 py-2.5 align-middle"
-                          >
-                            {flexRender(
-                              cell.column.columnDef.cell,
-                              cell.getContext(),
-                            )}
-                          </td>
-                        ))}
+                        {cells.map((cell, ci) => {
+                          const isLastCell = ci === cells.length - 1;
+                          return (
+                            <td
+                              key={cell.id}
+                              className={cn(
+                                "px-3 py-3 align-middle transition-[background-color,box-shadow] duration-300",
+                                cellBg,
+                                // Hairline between tests; a full rule closes
+                                // the block.
+                                isLastInBlock[i]
+                                  ? "border-b border-border"
+                                  : "border-b border-border/40",
+                                // The inset gutters. Opaque canvas-coloured
+                                // borders that the cell background cannot
+                                // paint over.
+                                ci === 0 && "border-l-[1.75rem] border-l-muted",
+                                isLastCell && "border-r-4 border-r-muted",
+                              )}
+                              style={cellShadow({
+                                barColor: flagBarColor(row.original.flag),
+                                focused: isFocused,
+                                first: ci === 0,
+                                last: isLastCell,
+                              })}
+                            >
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext(),
+                              )}
+                            </td>
+                          );
+                        })}
                       </tr>
                     );
                   })
@@ -337,8 +584,11 @@ function BenchPage() {
             </table>
           </div>
         </div>
+        )}
 
-        {selectedPatientId && (
+        {/* Docked beside the table only when there is room for both; below lg
+            it would otherwise strand the panel under a long list. */}
+        {selectedPatientId && isWide && (
           <BenchPatientPanel
             patientId={selectedPatientId}
             summary={selectedSummary}
@@ -347,50 +597,23 @@ function BenchPage() {
           />
         )}
       </div>
-    </div>
-  );
-}
 
-function PatientCell({
-  patient,
-  selected,
-  onSelect,
-}: {
-  patient: BenchPatientSummary | null | undefined;
-  selected: boolean;
-  onSelect: (id: string) => void;
-}) {
-  if (!patient) {
-    return <span className="text-muted-foreground">—</span>;
-  }
-
-  return (
-    <div className="min-w-0 max-w-[14rem]">
-      <button
-        type="button"
-        className={cn(
-          "block max-w-full truncate text-left font-medium underline-offset-2 hover:underline",
-          selected ? "text-accent" : "text-foreground",
-        )}
-        onClick={() => onSelect(patient.id)}
+      <Sheet
+        open={Boolean(selectedPatientId) && !isWide}
+        onOpenChange={(open) => !open && setSelectedPatientId(null)}
       >
-        {patient.displayName}
-      </button>
-      <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-        <span className="font-mono text-[11px] tracking-tight text-muted-foreground">
-          {patient.mrn}
-        </span>
-        {patient.identityOrigin === "local_provisional" && (
-          <Badge variant="warn" className="px-1 py-0 text-[10px]">
-            Provisional
-          </Badge>
-        )}
-        {patient.status === "quarantined" && (
-          <Badge variant="danger" className="px-1 py-0 text-[10px]">
-            Quarantined
-          </Badge>
-        )}
-      </div>
+        <SheetContent side="bottom" label="Patient results" className="p-0">
+          {selectedPatientId && (
+            <BenchPatientPanel
+              patientId={selectedPatientId}
+              summary={selectedSummary}
+              results={selectedResults}
+              onClose={() => setSelectedPatientId(null)}
+              embedded
+            />
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

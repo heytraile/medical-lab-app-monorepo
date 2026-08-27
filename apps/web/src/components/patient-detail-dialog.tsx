@@ -12,7 +12,7 @@ import {
 
 function Field({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="grid grid-cols-[7.5rem_1fr] gap-x-3 gap-y-1 py-2 text-sm">
+    <div className="grid grid-cols-1 gap-x-3 gap-y-1 py-2 text-sm sm:grid-cols-[7.5rem_1fr]">
       <dt className="text-muted-foreground">{label}</dt>
       <dd className="min-w-0 text-foreground">{value}</dd>
     </div>

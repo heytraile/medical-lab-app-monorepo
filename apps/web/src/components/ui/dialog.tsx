@@ -31,7 +31,9 @@ export const DialogContent = React.forwardRef<
     <RadixDialog.Content
       ref={ref}
       className={cn(
-        "fixed left-1/2 top-[15%] z-50 w-full max-w-lg -translate-x-1/2 rounded-xl border border-border bg-card p-0 shadow-2xl outline-none",
+        // On a phone the dialog starts near the top and scrolls internally;
+        // a 15% offset would push a tall dialog off the bottom of the screen.
+        "fixed left-1/2 top-4 z-50 max-h-[calc(100svh-2rem)] w-[calc(100%-1rem)] max-w-lg -translate-x-1/2 overflow-y-auto rounded-xl border border-border bg-card p-0 shadow-2xl outline-none sm:top-[15%] sm:w-full",
         className,
       )}
       {...props}

@@ -236,7 +236,8 @@ function RegisterPage() {
       accessionNumber={registeredAccession}
       actions={
         registeredAccession ? (
-          <div className="flex flex-wrap gap-2">
+          // Two comfortable columns on a phone; the desktop row is unchanged.
+          <div className="grid grid-cols-2 gap-2 [&>*]:h-11 [&>*]:w-full [&>*]:justify-center sm:flex sm:flex-wrap sm:[&>*]:h-8 sm:[&>*]:w-auto">
             <Button
               type="button"
               size="sm"
@@ -486,7 +487,11 @@ function RegisterPage() {
                 </label>
               </div>
 
-              <Button type="submit" disabled={mutation.isPending || !selected}>
+              <Button
+                type="submit"
+                className="h-11 w-full sm:h-9 sm:w-auto"
+                disabled={mutation.isPending || !selected}
+              >
                 {mutation.isPending
                   ? "Registering…"
                   : printLabel
@@ -541,7 +546,7 @@ function IdentityConfirmDialog({
       aria-modal="true"
       aria-labelledby="identity-confirm-title"
     >
-      <div className="w-full max-w-md rounded-xl border border-border bg-card p-5 shadow-lg">
+      <div className="max-h-[calc(100svh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-lg sm:p-5">
         <h3
           id="identity-confirm-title"
           className="font-display text-xl font-semibold tracking-tight"
@@ -570,7 +575,7 @@ function IdentityConfirmDialog({
           </ul>
         </div>
 
-        <div className="mt-5 flex flex-col gap-2">
+        <div className="mt-5 flex flex-col gap-2 [&>button]:h-11 [&>button]:whitespace-normal sm:[&>button]:h-9">
           <Button
             type="button"
             disabled={busy}
