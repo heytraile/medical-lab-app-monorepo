@@ -21,6 +21,12 @@ build
 .doppler/
 doppler.yaml.local
 
+# Supabase CLI local stack
+supabase/.branches
+supabase/.temp
+# NOTE: supabase/local.env IS committed on purpose — the CLI's local anon /
+# service_role keys are static, identical on every machine, and not secrets.
+
 # Databases
 *.db
 *.db-journal

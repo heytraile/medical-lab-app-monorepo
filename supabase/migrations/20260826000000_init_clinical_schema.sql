@@ -1,5 +1,7 @@
--- Drax Hall LIS — Supabase clinical + auth schema
--- Run in Supabase SQL editor (or psql) after creating the project.
+-- Drax Hall LIS — Supabase clinical + auth schema (baseline migration)
+-- Applied automatically by `supabase db reset` (local) and `supabase db push` (cloud).
+-- Do not edit in place once applied to a remote project — add a new migration instead:
+--   pnpm supabase:migration <name>
 
 -- ---------------------------------------------------------------------------
 -- Sync ledger (idempotent edge outbox)
@@ -181,9 +183,7 @@ create policy "results_release_authorizer"
 -- (no policies → deny for anon/authenticated; service role still works)
 
 -- ---------------------------------------------------------------------------
--- After running this SQL:
--- 1. Auth → Users → invite/create authorizer; set raw_user_meta_data.role = authorizer
---    or: update profiles set role = 'authorizer' where email = '...';
--- 2. Set apps/api .env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, EDGE_SYNC_TOKEN
--- 3. Set apps/web .env: VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
--- 4. Set apps/edge-engine .env: EDGE_SYNC_TOKEN (same value), CLOUD_API_URL
+-- Local dev: staff logins are created by supabase/seed.sql on `supabase db reset`.
+-- Cloud: invite users in Auth → Users with raw_user_meta_data.role = authorizer,
+-- or: update profiles set role = 'authorizer' where email = '...';
+-- Env wiring: see docs/LOCAL_DEV.md.

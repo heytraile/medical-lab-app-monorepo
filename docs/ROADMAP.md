@@ -33,7 +33,7 @@ First customer: **Drax Hall Clinical Laboratory**. Architecture stays multi-lab-
 
 ## Phase 2 — Reliable cloud sync
 
-- Supabase schema: patients, specimens, results (**with clinical `status`**), sync_events, profiles — SQL in `infra/supabase/schema.sql` ✅
+- Supabase schema: patients, specimens, results (**with clinical `status`**), sync_events, profiles — migrations in `supabase/migrations/` ✅
 - Edge `EDGE_SYNC_TOKEN`; ordered drain; project outbox → clinical tables ✅
 - Cloud `GET /cloud/results`, `GET /cloud/specimens` (JWT / dev role) ✅
 - In-memory fallback when Supabase unset ✅

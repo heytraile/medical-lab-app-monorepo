@@ -10,12 +10,34 @@ Confused by an acronym or assay code? See [GLOSSARY.md](./GLOSSARY.md).
 
 - Node.js ≥ 20 (`nvm use` if you have `.nvmrc`)
 - pnpm 11 (`corepack enable`)
-- **Doppler CLI** ([install](https://docs.doppler.com/docs/install-cli)) — local secrets source of truth
-- Optional: Docker Desktop, `socat` (for serial PTY pairs)
+- **Docker Desktop** — runs the local Supabase stack (Postgres + Auth + Storage + Studio)
+- Optional: **Doppler CLI** ([install](https://docs.doppler.com/docs/install-cli)) — only needed to talk to a *hosted* Supabase project
+- Optional: `socat` (for serial PTY pairs)
+
+The Supabase CLI is pinned as a repo devDependency — no global install.
+
+## Two ways to run
+
+| Command | Cloud database | Secrets from |
+| --- | --- | --- |
+| `pnpm dev:local` | **Local Supabase** in Docker | [`supabase/local.env`](../supabase/local.env) (committed) |
+| `pnpm dev` | Hosted Supabase project | Doppler `drax-lis` / `dev` |
+| `pnpm dev:bare` | none → API falls back to in-memory | nothing injected |
+
+**`pnpm dev:local` is the default day-to-day workflow.** It needs no Doppler account, no
+hosted project, and no shared credentials — see [Local Supabase](#local-supabase-cli-stack).
+
+> Turborepo 2 runs tasks in **strict env mode**: a variable not listed in
+> `globalPassThroughEnv` in [`turbo.json`](../turbo.json) is stripped before your app sees
+> it. If you add a new env key, add it there too or it will silently read as `undefined`.
 
 ## Environment (Doppler)
 
-All local env vars live in **Doppler** project `drax-lis`, config `dev` ([`doppler.yaml`](../doppler.yaml)).
+Doppler is for **hosted** Supabase projects (staging / production). For everyday local work
+use `pnpm dev:local`, which reads the committed [`supabase/local.env`](../supabase/local.env)
+instead and needs none of this setup.
+
+Hosted-project env vars live in **Doppler** project `drax-lis`, config `dev` ([`doppler.yaml`](../doppler.yaml)).
 
 ```bash
 # once
@@ -75,6 +97,10 @@ Defaults avoid clashing with common Next.js apps on `:3000`–`:3002`:
 | Mindray TCP | `5003` |
 | iFlash TCP | `5004` |
 | Zebra ZPL | `9100` |
+| Supabase API | `54321` |
+| Supabase Postgres | `54322` |
+| Supabase Studio | `54323` |
+| Mailpit (test inbox) | `54324` |
 
 ## Install & database
 
@@ -83,17 +109,27 @@ cd medical-lab-app-monorepo
 pnpm install
 pnpm --filter @drax-lis/contracts build
 pnpm --filter @drax-lis/protocols build
+
+# Edge database (SQLite on this machine / the mini PC)
 pnpm db:generate
 pnpm db:push
+
+# Cloud database (local Supabase in Docker) — first run pulls ~8 images
+pnpm supabase:start
 ```
 
 ## Run everything (dev)
 
 ```bash
-pnpm dev
+pnpm dev:local
 ```
 
-(`pnpm dev` uses Doppler when configured; otherwise falls back — see [Environment (Doppler)](#environment-doppler).)
+Starts web + edge-engine + cloud API + simulators wired to the local Supabase stack. The
+API logs `Supabase client configured` on boot — if it says *"using in-memory sync store"*
+instead, the stack is not running (`pnpm supabase:start`).
+
+Use `pnpm dev` instead to point the same processes at a hosted Supabase project via
+Doppler — see [Environment (Doppler)](#environment-doppler).
 
 | Service | URL / port |
 | --- | --- |
@@ -180,43 +216,79 @@ Simulator default barcode is `DHDEMO0001` (Marlon Campbell) so ongoing sim traff
 
 Re-seed patients only: `curl -X POST http://localhost:3101/patients/seed`
 
-## Supabase (cloud clinical store + Auth)
+## Local Supabase (CLI stack)
 
-1. Create a Supabase project.  
-2. SQL editor → run [`infra/supabase/schema.sql`](../infra/supabase/schema.sql).  
-3. Auth → create users. Promote an authorizer:
+The cloud clinical store + Auth run **on your machine** in Docker. No hosted project, no
+Supabase account, no branching plan needed. The edge database is unrelated and stays SQLite.
 
-```sql
-update profiles set role = 'authorizer' where email = 'you@example.com';
+```bash
+pnpm supabase:start     # boot (first run pulls images, a few minutes)
+pnpm supabase:status    # URLs + keys
+pnpm supabase:stop      # shut down (data survives)
+pnpm supabase:reset     # rebuild from migrations + seed — destroys local data
 ```
 
-(Or set `raw_user_meta_data.role` to `authorizer` when inviting so the trigger picks it up.)
-
-If the project was created before profile self-update existed, also run:
-
-```sql
-create policy "profiles_update_own"
-  on profiles for update
-  to authenticated
-  using (auth.uid() = id)
-  with check (auth.uid() = id);
-```
-
-(Skip if you re-ran the full [`schema.sql`](../infra/supabase/schema.sql) that already includes this policy.)
-
-Staff sign-in / sign-out and **Profile** (display name) live in the sidebar. Session works in edge or cloud mode when `VITE_SUPABASE_*` is set.
-
-4. Env — set in **Doppler** (`drax-lis` / `dev`), not in committed files:
-
-| App | Vars |
+| Service | URL |
 | --- | --- |
-| API | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EDGE_SYNC_TOKEN`, `API_PORT` |
-| Edge | `EDGE_SYNC_TOKEN` (same value), `CLOUD_API_URL`, `EDGE_ENGINE_PORT`, `DATABASE_URL` |
-| Web | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_CLOUD_API_URL`, `VITE_LIS_*` |
+| API gateway | http://127.0.0.1:54321 |
+| Postgres | `postgresql://postgres:postgres@127.0.0.1:54322/postgres` |
+| **Studio** (table editor, SQL, auth admin) | http://127.0.0.1:54323 |
+| Mailpit (catches all outbound email) | http://127.0.0.1:54324 |
 
-Without Supabase keys, sync still works **in-memory** on the API (lost on restart). Release queue works with **dev roles** via http://localhost:3100/login → “Continue as authorizer (dev)”.
+### Seeded staff logins
 
-5. Release queue: http://localhost:3100/release — authorizer releases cloud `pending_review` results (`POST /results/:id/release`).
+[`supabase/seed.sql`](../supabase/seed.sql) creates these on every `supabase:reset`:
+
+| Email | Password | Role |
+| --- | --- | --- |
+| `authorizer@draxhall.local` | `password123` | authorizer — can release results |
+| `tech@draxhall.local` | `password123` | tech — bench review only |
+
+Sign in at http://localhost:3100/login. Staff sign-in/out and **Profile** live in the
+sidebar; sessions work in edge or cloud mode. The dev-role shortcut
+(“Continue as authorizer (dev)”) still exists for when Supabase is not running.
+
+Release queue: http://localhost:3100/release — authorizer releases cloud `pending_review`
+results (`POST /results/:id/release`).
+
+### Changing the schema
+
+The schema is version-controlled in [`supabase/migrations/`](../supabase/migrations). **Never
+paste SQL into a dashboard SQL editor** — that is what caused the schema to drift before.
+
+```bash
+pnpm supabase:migration add_qc_table   # creates supabase/migrations/<ts>_add_qc_table.sql
+# edit the file, then:
+pnpm supabase:reset                    # rebuild locally and confirm it applies clean
+```
+
+Regenerate DB types after a schema change: `pnpm supabase:types`.
+
+### Promoting to a cloud project
+
+When the hosted project exists (staging, or production on Pro):
+
+```bash
+pnpm exec supabase link --project-ref <ref>
+pnpm exec supabase db push      # applies pending migrations to the remote
+```
+
+Then set the **hosted** `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` / `VITE_SUPABASE_*`
+in Doppler and run `pnpm dev` instead of `pnpm dev:local`. Never put a hosted
+service_role key in `supabase/local.env`.
+
+### Why `supabase/local.env` is committed
+
+The CLI's local `anon` and `service_role` keys are fixed demo credentials — byte-identical
+on every machine, signed with the public well-known local JWT secret, and only valid
+against Postgres in Docker on `127.0.0.1`. They are not secrets. Real credentials stay in
+Doppler.
+
+### Running without Docker
+
+`pnpm dev:bare` (or any run where `SUPABASE_URL` is unset) makes the API fall back to an
+**in-memory** sync store — fine for a quick demo, lost on restart, and it cannot exercise
+Auth or RLS.
 
 ## Docker Compose
 
@@ -281,6 +353,13 @@ Per-app `.env.example` files list keys for reference. Optional local `.env` file
 | Prisma errors | `pnpm db:generate && pnpm db:push` |
 | Workspace import fails | Build `contracts` / `protocols` first |
 | `EADDRINUSE` on 3000–3002 | Those ports are often other apps; LIS defaults are 3100–3102 |
+| API logs "using in-memory sync store" | Stack down (`pnpm supabase:start`), or the env key is missing from `globalPassThroughEnv` in [`turbo.json`](../turbo.json) |
+| Env var reads as `undefined` in an app | Turborepo strict mode — add the key to `globalPassThroughEnv` in [`turbo.json`](../turbo.json) |
+| `supabase start` cannot reach the Docker daemon | Start Docker Desktop and wait for it to report running |
+| `permission denied for table …` (42501) | Missing `grant` for that role — add one in a new migration, RLS policies alone are not enough |
+| `infinite recursion detected in policy` (42P17) | A policy is querying its own table; resolve the role through `public.current_user_role()` instead |
+| Sign-in fails with "Database error querying schema" | A hand-inserted `auth.users` row left token columns NULL; they must be `''` (see [`supabase/seed.sql`](../supabase/seed.sql)) |
+| Stale servers hold 3100–3102 after a crash | `lsof -nP -iTCP:3101 -sTCP:LISTEN` then kill that PID |
 
 ## Suggested first demo script
 

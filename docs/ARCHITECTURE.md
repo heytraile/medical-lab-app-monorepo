@@ -40,6 +40,8 @@ So we run an **edge gateway** on an Ubuntu mini PC next to the instruments, and 
 
 **Two Nest apps, not one:** the mini PC bridge is `edge-engine`; the cloud backend is `api`. Supabase is the database, not the LIS UI. The browser does not write clinical data straight to Supabase.
 
+**Two databases, deliberately different.** The edge is **SQLite** (single file, WAL, no daemon) because it must survive power loss on lab hardware with no DBA. The cloud is **Postgres via Supabase**. In development that Postgres runs locally through the Supabase CLI (`pnpm dev:local`); production points the same code at a hosted project. Schema lives in [`supabase/migrations/`](../supabase/migrations) — see [LOCAL_DEV.md](./LOCAL_DEV.md).
+
 ## Where everything lives
 
 | Path | Responsibility |
@@ -54,6 +56,7 @@ So we run an **edge gateway** on an Ubuntu mini PC next to the instruments, and 
 | [`packages/tailwind-config`](../packages/tailwind-config) | Shared Tailwind v4 theme |
 | [`packages/eslint-config`](../packages/eslint-config) | Shared ESLint base |
 | [`infra/`](../infra) | Docker Compose + Dockerfiles |
+| [`supabase/`](../supabase) | Cloud Postgres migrations, seed, local CLI stack config |
 | [`docs/`](../docs) | System map, workflow, identity hygiene, roadmap, analyzers, local-dev |
 
 ## Specimen + result journey

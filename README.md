@@ -30,21 +30,27 @@ Analyzers (RS-232 / TCP)
 
 ## Quick start
 
-```bash
-# Doppler CLI + login once; project drax-lis / config dev (see docs/LOCAL_DEV.md)
-doppler setup
+Requires Node 20+, pnpm 11, and Docker Desktop running.
 
+```bash
 pnpm install
-pnpm db:generate
+pnpm db:generate        # edge database (SQLite)
 pnpm db:push
-pnpm dev          # injects secrets via `doppler run`
+pnpm supabase:start     # cloud database (local Supabase in Docker; first run pulls images)
+pnpm dev:local
 ```
 
 - Edge API: http://localhost:3101  
 - Cloud API: http://localhost:3102  
 - Web workbench: http://localhost:3100  
+- Supabase Studio: http://127.0.0.1:54323  
 
-See [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md) for Doppler keys, simulators, Docker, and socat serial PTYs.
+Sign in with `authorizer@draxhall.local` / `password123` (seeded, local only).
+
+`pnpm dev:local` needs no accounts or shared secrets. Use `pnpm dev` to point the same
+apps at a **hosted** Supabase project via Doppler instead.
+
+See [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md) for the Supabase workflow, migrations, Doppler keys, simulators, Docker, and socat serial PTYs.
 
 ## Documentation
 

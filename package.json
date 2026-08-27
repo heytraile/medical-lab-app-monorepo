@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "scripts/with-doppler.sh turbo run dev --parallel",
     "dev:bare": "turbo run dev --parallel",
+    "dev:local": "scripts/with-local-supabase.sh turbo run dev --parallel",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
@@ -19,10 +20,18 @@
     "db:generate": "scripts/with-doppler.sh turbo run db:generate --filter=@drax-lis/edge-engine",
     "db:push": "scripts/with-doppler.sh turbo run db:push --filter=@drax-lis/edge-engine",
     "db:generate:bare": "turbo run db:generate --filter=@drax-lis/edge-engine",
-    "db:push:bare": "turbo run db:push --filter=@drax-lis/edge-engine"
+    "db:push:bare": "turbo run db:push --filter=@drax-lis/edge-engine",
+    "supabase": "supabase",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:reset": "supabase db reset",
+    "supabase:migration": "supabase migration new",
+    "supabase:types": "supabase gen types typescript --local"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",
+    "supabase": "^2.115.0",
     "turbo": "^2.5.4",
     "typescript": "^5.8.3"
   }

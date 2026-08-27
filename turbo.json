@@ -1,5 +1,31 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "//": "Turborepo 2 defaults to strict env mode: any variable not listed here is stripped before a task runs. Without these entries, secrets injected by scripts/with-doppler.sh or scripts/with-local-supabase.sh never reach the app processes.",
+  "globalPassThroughEnv": [
+    "NODE_ENV",
+    "PORT",
+    "API_PORT",
+    "EDGE_ENGINE_PORT",
+    "DATABASE_URL",
+    "EDGE_NODE_ID",
+    "CLOUD_API_URL",
+    "CLOUD_SYNC_ENABLED",
+    "EDGE_SYNC_TOKEN",
+    "SUPABASE_URL",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SYSMEX_TCP_PORT",
+    "SYSMEX_SERIAL_PATH",
+    "MINDRAY_TCP_PORT",
+    "IFLASH_TCP_PORT",
+    "PROLYTE_SERIAL_PATH",
+    "PROLYTE_BAUD",
+    "PROLYTE_BLOCK_IDLE_MS",
+    "ZEBRA_PRINTER_HOST",
+    "ZEBRA_PRINTER_PORT",
+    "EDGE_HOST",
+    "SIM_BARCODE",
+    "VITE_*"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
