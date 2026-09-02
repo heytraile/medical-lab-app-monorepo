@@ -13,7 +13,7 @@ Build this **very soon** after protocol/sync foundations — see [ROADMAP.md](./
 | --- | --- | --- |
 | **Bench tech** | Run analyzers, see results in Bench Review, soft-check, escalate criticals | Finalize / release to the doctor |
 | **Authorizer** (1–2 people) | Review pending results, sign off / release, respond to STAT critical alerts | N/A — they are the release gate |
-| **Reception / phleb** | Register specimens via patient picker (MRN) or provisional local patient create; labels; confirm suspect identities when prompted | Release results |
+| **Reception / phleb** | Accession specimens via patient picker (MRN); register new patients on **Patients**; labels; confirm suspect identities when prompted | Release results |
 | **Doctor / external** (later) | Receive **released** reports only | See `pending_review` results |
 
 Exact role names can map to Supabase Auth + RLS later (`tech`, `authorizer`, `admin`).

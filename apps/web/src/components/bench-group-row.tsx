@@ -9,6 +9,8 @@ import {
   worstFlag,
 } from "./result-status";
 import { cn } from "../lib/utils";
+import { formatPatientName } from "../lib/patient-name";
+import { NotifyAuthorizerButton } from "./notify-authorizer-button";
 
 export type BenchGroupSummary = {
   /** Stable group key: patient id, or `acc:<accession>` when unlinked. */
@@ -22,6 +24,9 @@ export type BenchGroupSummary = {
   worstFlag: string | undefined;
   latestObservedAt: string | undefined;
   hasAlarm: boolean;
+  /** Payload for a review request: the identifiers the cloud API can store. */
+  accessionNumbers: string[];
+  testCodes: string[];
 };
 
 /** Roll a group's leaf results into the counts a collapsed header must show. */
@@ -47,6 +52,8 @@ export function summarizeGroup(
     worstFlag: worst,
     latestObservedAt: latest,
     hasAlarm: isAlarmFlag(worst),
+    accessionNumbers: [...accessions].sort(),
+    testCodes: [...new Set(results.map((r) => r.testCode))].sort(),
   };
 }
 
@@ -82,9 +89,9 @@ export function BenchGroupRow({
         // grey canvas behind the table and wash out to the same colour.
         "border-y border-border transition-colors",
         expanded
-          ? "border-b-2 bg-sky-200 hover:bg-sky-300 dark:bg-sky-800/55"
+          ? "border-b-2 bg-sky-200 hover:bg-sky-300 dark:bg-sky-900/50 dark:hover:bg-sky-900/65"
           : cn(
-              "hover:bg-muted/70",
+              "hover:bg-muted/70 dark:hover:bg-muted",
               alternate ? "bg-background" : "bg-card",
             ),
         alarm && "border-l-[3px] border-l-lab-alarm",
@@ -92,8 +99,14 @@ export function BenchGroupRow({
         selected && "ring-1 ring-inset ring-accent/25",
       )}
     >
-      <td colSpan={colSpan} className="px-2 py-3.5">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+      {/* The name occupies the Patient column proper; everything else spans
+          the remaining columns. Splitting the row this way is what puts the
+          name under its own sortable header instead of in a full-width bar. */}
+      {/* Capped so a long name cannot push Value and Observed out of view, but
+          also floored: with auto table layout the other columns would
+          otherwise squeeze the name down to a few characters. */}
+      <td className="w-[14rem] min-w-[14rem] max-w-[14rem] px-2 py-3.5">
+        <div className="flex items-center gap-x-1.5">
           <button
             type="button"
             onClick={onToggle}
@@ -126,27 +139,34 @@ export function BenchGroupRow({
               // shifts to white on open blocks, where grey would go muddy
               // against the blue header.
               className={cn(
-                "max-w-[18rem] truncate rounded-md px-2 py-1 text-left text-base font-bold tracking-tight underline-offset-2 transition-colors hover:underline",
+                "min-w-0 truncate rounded-md px-2 py-1 text-left text-base font-bold tracking-tight underline-offset-2 transition-colors hover:underline",
                 expanded
-                  ? "bg-white/75 hover:bg-white dark:bg-white/10 dark:hover:bg-white/20"
-                  : "bg-muted hover:bg-border",
+                  ? "bg-white/75 hover:bg-white dark:bg-sky-950/70 dark:hover:bg-sky-950/90 dark:hover:text-foreground"
+                  : "bg-muted hover:bg-border dark:hover:bg-muted/80",
                 selected && "text-accent",
               )}
               title={`Open ${patient.displayName} in the side panel`}
             >
-              {patient.displayName}
+              {formatPatientName(patient)}
             </button>
           ) : (
             <span
               className={cn(
-                "rounded-md px-2 py-1 font-mono text-sm font-bold tracking-tight",
-                expanded ? "bg-white/75 dark:bg-white/10" : "bg-muted",
+                "min-w-0 truncate rounded-md px-2 py-1 font-mono text-sm font-bold tracking-tight",
+                expanded
+                  ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
+                  : "bg-muted",
               )}
+              title={summary.fallbackLabel}
             >
               {summary.fallbackLabel}
             </span>
           )}
+        </div>
+      </td>
 
+      <td colSpan={colSpan - 1} className="px-2 py-3.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
           {patient ? (
             <span className="font-mono text-[11px] tracking-tight text-muted-foreground">
               {patient.mrn}
@@ -190,11 +210,14 @@ export function BenchGroupRow({
             </button>
           )}
 
-          <span className="ml-auto whitespace-nowrap text-xs text-muted-foreground">
-            {summary.latestObservedAt
-              ? new Date(summary.latestObservedAt).toLocaleString()
-              : "—"}
-          </span>
+          <div className="ml-auto flex items-center gap-3">
+            <NotifyAuthorizerButton summary={summary} />
+            <span className="whitespace-nowrap text-xs text-muted-foreground">
+              {summary.latestObservedAt
+                ? new Date(summary.latestObservedAt).toLocaleString()
+                : "—"}
+            </span>
+          </div>
         </div>
       </td>
     </tr>

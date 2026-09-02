@@ -39,8 +39,11 @@ export class SpecimensService {
     patientId: string;
     identityConfirmation?: IdentityConfirmation;
     orderedTests?: Array<{ code: string; name?: string }>;
+    requisitionId?: string;
     printLabel?: boolean;
     copies?: number;
+    specimenType?: string;
+    collectedAt?: string;
   }) {
     const patientId = input.patientId?.trim();
     if (!patientId) {
@@ -139,6 +142,11 @@ export class SpecimensService {
         patientJson: JSON.stringify(patientPayload),
         identityConfirmationJson,
         orderedTestsJson: JSON.stringify(orderedTests),
+        requisitionId: input.requisitionId?.trim() || null,
+        specimenType: input.specimenType?.trim() || "blood",
+        collectedAt: input.collectedAt
+          ? new Date(input.collectedAt)
+          : null,
         status: "registered",
       },
     });
@@ -153,6 +161,7 @@ export class SpecimensService {
         patient: patientPayload,
         specimenType: specimen.specimenType,
         orderedTests,
+        requisitionId: specimen.requisitionId,
         identityConfirmation: identityConfirmationJson
           ? JSON.parse(identityConfirmationJson)
           : null,

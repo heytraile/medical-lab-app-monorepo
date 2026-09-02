@@ -20,6 +20,10 @@ export default defineConfig({
         root,
         "../../packages/contracts/src/index.ts",
       ),
+      "@drax-lis/catalog": path.resolve(
+        root,
+        "../../packages/catalog/src/index.ts",
+      ),
     },
   },
   optimizeDeps: {

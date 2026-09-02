@@ -1,22 +1,42 @@
-import { useDeferredValue, useState } from "react";
+import { useDeferredValue, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { api, type PatientListItem } from "../../lib/api";
 import { PatientDetailDialog } from "../../components/patient-detail-dialog";
+import { RegisterPatientDialog } from "../../components/patients/register-patient-dialog";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { cn } from "../../lib/utils";
 import { useIsDesktop } from "../../lib/use-media-query";
 
+type PatientsSearch = {
+  register?: boolean;
+  seed?: string;
+};
+
 export const Route = createFileRoute("/_lab/patients")({
+  validateSearch: (search: Record<string, unknown>): PatientsSearch => ({
+    register: search.register === true || search.register === "true",
+    seed:
+      typeof search.seed === "string" && search.seed.trim()
+        ? search.seed.trim()
+        : undefined,
+  }),
   component: PatientsPage,
 });
 
 function PatientsPage() {
+  const { register: openRegister, seed } = Route.useSearch();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [registerOpen, setRegisterOpen] = useState(false);
   const isDesktop = useIsDesktop();
+
+  useEffect(() => {
+    if (openRegister) setRegisterOpen(true);
+  }, [openRegister]);
 
   const patientsQ = useQuery({
     queryKey: ["patients", deferredQuery],
@@ -36,15 +56,20 @@ function PatientsPage() {
             Patients
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Local edge MRN registry — operational identity for registration and
-            bench review.
+            Register new patients and browse the local MRN registry used for
+            accessioning and bench review.
           </p>
         </div>
-        <span className="text-xs text-muted-foreground">
-          {patientsQ.isFetching
-            ? "Refreshing…"
-            : `${rows.length} patient${rows.length === 1 ? "" : "s"}`}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {patientsQ.isFetching
+              ? "Refreshing…"
+              : `${rows.length} patient${rows.length === 1 ? "" : "s"}`}
+          </span>
+          <Button type="button" onClick={() => setRegisterOpen(true)}>
+            Register patient
+          </Button>
+        </div>
       </div>
 
       <Input
@@ -69,7 +94,7 @@ function PatientsPage() {
           )}
           {!patientsQ.isLoading && rows.length === 0 && (
             <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
-              No patients found. Seed with{" "}
+              No patients found. Use Register patient above or seed with{" "}
               <code className="text-xs">POST /patients/seed</code>.
             </p>
           )}
@@ -106,87 +131,93 @@ function PatientsPage() {
           ))}
         </div>
       ) : (
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-border bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2.5 font-medium">Name</th>
-                <th className="px-3 py-2.5 font-medium">MRN</th>
-                <th className="px-3 py-2.5 font-medium">DOB</th>
-                <th className="px-3 py-2.5 font-medium">Sex</th>
-                <th className="px-3 py-2.5 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {patientsQ.isLoading && (
+        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="border-b border-border bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <td
-                    colSpan={5}
-                    className="px-3 py-12 text-center text-muted-foreground"
-                  >
-                    Loading…
-                  </td>
+                  <th className="px-3 py-2.5 font-medium">Name</th>
+                  <th className="px-3 py-2.5 font-medium">MRN</th>
+                  <th className="px-3 py-2.5 font-medium">DOB</th>
+                  <th className="px-3 py-2.5 font-medium">Sex</th>
+                  <th className="px-3 py-2.5 font-medium">Status</th>
                 </tr>
-              )}
-              {!patientsQ.isLoading && rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={5}
-                    className="px-3 py-12 text-center text-muted-foreground"
-                  >
-                    No patients found. Seed with{" "}
-                    <code className="text-xs">POST /patients/seed</code>.
-                  </td>
-                </tr>
-              )}
-              {rows.map((p) => (
-                <tr
-                  key={p.id}
-                  className={cn(
-                    "border-t border-border/60 transition-colors hover:bg-muted/35",
-                    selectedId === p.id && "bg-accent/5",
-                  )}
-                >
-                  <td className="px-3 py-2.5 align-middle">
-                    <button
-                      type="button"
-                      className="text-left font-medium underline-offset-2 hover:underline"
-                      onClick={() => setSelectedId(p.id)}
+              </thead>
+              <tbody>
+                {patientsQ.isLoading && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-12 text-center text-muted-foreground"
                     >
-                      {p.displayName}
-                    </button>
-                    <div className="mt-0.5 flex flex-wrap gap-1">
-                      {p.identityOrigin === "local_provisional" && (
-                        <Badge variant="warn" className="px-1 py-0 text-[10px]">
-                          Provisional
-                        </Badge>
-                      )}
-                      {p.requiresIdentityConfirmation && (
-                        <Badge variant="warn" className="px-1 py-0 text-[10px]">
-                          Suspect
-                        </Badge>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-3 py-2.5 align-middle font-mono text-xs tracking-tight">
-                    {p.mrn}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle text-muted-foreground">
-                    {p.dateOfBirth ?? "—"}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle text-muted-foreground">
-                    {p.sex ?? "—"}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
-                    <StatusBadges patient={p} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                      Loading…
+                    </td>
+                  </tr>
+                )}
+                {!patientsQ.isLoading && rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={5}
+                      className="px-3 py-12 text-center text-muted-foreground"
+                    >
+                      No patients found. Use Register patient or seed with{" "}
+                      <code className="text-xs">POST /patients/seed</code>.
+                    </td>
+                  </tr>
+                )}
+                {rows.map((p) => (
+                  <tr
+                    key={p.id}
+                    className={cn(
+                      "border-t border-border/60 transition-colors hover:bg-muted/35",
+                      selectedId === p.id && "bg-accent/5",
+                    )}
+                  >
+                    <td className="px-3 py-2.5 align-middle">
+                      <button
+                        type="button"
+                        className="text-left font-medium underline-offset-2 hover:underline"
+                        onClick={() => setSelectedId(p.id)}
+                      >
+                        {p.displayName}
+                      </button>
+                      <div className="mt-0.5 flex flex-wrap gap-1">
+                        {p.identityOrigin === "local_provisional" && (
+                          <Badge
+                            variant="warn"
+                            className="px-1 py-0 text-[10px]"
+                          >
+                            Provisional
+                          </Badge>
+                        )}
+                        {p.requiresIdentityConfirmation && (
+                          <Badge
+                            variant="warn"
+                            className="px-1 py-0 text-[10px]"
+                          >
+                            Suspect
+                          </Badge>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5 align-middle font-mono text-xs tracking-tight">
+                      {p.mrn}
+                    </td>
+                    <td className="px-3 py-2.5 align-middle text-muted-foreground">
+                      {p.dateOfBirth ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 align-middle text-muted-foreground">
+                      {p.sex ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 align-middle">
+                      <StatusBadges patient={p} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
       )}
 
       <PatientDetailDialog
@@ -195,6 +226,12 @@ function PatientsPage() {
         onOpenChange={(open) => {
           if (!open) setSelectedId(null);
         }}
+      />
+
+      <RegisterPatientDialog
+        open={registerOpen}
+        onOpenChange={setRegisterOpen}
+        nameSeed={seed}
       />
     </div>
   );

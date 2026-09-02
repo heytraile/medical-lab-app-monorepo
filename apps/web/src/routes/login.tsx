@@ -20,17 +20,19 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
-function safeRedirect(path: string | undefined): "/bench" | "/release" | "/profile" | "/sync" | "/register" | "/patients" {
+function safeRedirect(path: string | undefined): "/bench" | "/release" | "/profile" | "/sync" | "/accession" | "/register" | "/patients" | "/staff" {
   const allowed = new Set([
     "/bench",
     "/release",
     "/profile",
     "/sync",
+    "/accession",
     "/register",
     "/patients",
+    "/staff",
   ]);
   if (path && allowed.has(path)) {
-    return path as "/bench" | "/release" | "/profile" | "/sync" | "/register" | "/patients";
+    return path as "/bench" | "/release" | "/profile" | "/sync" | "/accession" | "/register" | "/patients" | "/staff";
   }
   return "/bench";
 }
@@ -45,6 +47,7 @@ function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showDevAccounts, setShowDevAccounts] = useState(false);
 
   const signedIn = Boolean(auth.accessToken);
 
@@ -133,6 +136,36 @@ function LoginPage() {
               {busy ? "Signing in…" : "Sign in"}
             </Button>
             {error && <p className="text-sm text-lab-danger">{error}</p>}
+            <div className="rounded-lg border border-border bg-muted/30">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-muted-foreground"
+                onClick={() => setShowDevAccounts((v) => !v)}
+              >
+                Local dev accounts
+                <span>{showDevAccounts ? "−" : "+"}</span>
+              </button>
+              {showDevAccounts && (
+                <ul className="space-y-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
+                  <li>
+                    <code className="text-foreground">admin@draxhall.local</code>{" "}
+                    — Staff registry, release results, assign authorizers
+                  </li>
+                  <li>
+                    <code className="text-foreground">authorizer@draxhall.local</code>{" "}
+                    — Release queue only
+                  </li>
+                  <li>
+                    <code className="text-foreground">tech@draxhall.local</code>{" "}
+                    — Accession and bench
+                  </li>
+                  <li className="pt-1 text-[11px]">
+                    Password for all: <code>password123</code>. Run{" "}
+                    <code>pnpm supabase:reset</code> if accounts are missing.
+                  </li>
+                </ul>
+              )}
+            </div>
           </form>
         ) : (
           <div className="space-y-3 rounded-xl border border-border bg-card p-4">

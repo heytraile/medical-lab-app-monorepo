@@ -3,6 +3,8 @@ import { ChevronRight } from "lucide-react";
 import type { BenchResult } from "../lib/api";
 import { analyzerLabel } from "../lib/analyzers";
 import { cn } from "../lib/utils";
+import { formatPatientName } from "../lib/patient-name";
+import { NotifyAuthorizerButton } from "./notify-authorizer-button";
 import { Badge } from "./ui/badge";
 import type { BenchGroupSummary } from "./bench-group-row";
 import {
@@ -50,7 +52,9 @@ export function BenchMobileList({
         if (!summary) return null;
 
         const open = row.getIsExpanded();
-        const name = summary.patient?.displayName ?? summary.fallbackLabel;
+        const name = summary.patient
+          ? formatPatientName(summary.patient)
+          : summary.fallbackLabel;
         const selected =
           summary.patient?.id != null &&
           summary.patient.id === selectedPatientId;
@@ -60,7 +64,7 @@ export function BenchMobileList({
             key={row.id}
             className={cn(
               "overflow-hidden rounded-xl border border-border shadow-sm transition-colors",
-              open ? "bg-sky-200 dark:bg-sky-800/55" : "bg-card",
+              open ? "bg-sky-200 dark:bg-sky-900/50" : "bg-card",
               summary.hasAlarm && "border-l-[3px] border-l-lab-alarm",
               selected && "ring-1 ring-inset ring-accent/40",
             )}
@@ -92,7 +96,9 @@ export function BenchMobileList({
                       onClick={() => onSelectPatient(summary.patient!.id)}
                       className={cn(
                         "min-w-0 truncate rounded-md px-2 py-1 text-left text-base font-bold tracking-tight",
-                        open ? "bg-white/75 dark:bg-white/10" : "bg-muted",
+                        open
+                          ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
+                          : "bg-muted",
                         selected && "text-accent",
                       )}
                     >
@@ -133,6 +139,12 @@ export function BenchMobileList({
                     </button>
                   )}
                 </div>
+
+                <NotifyAuthorizerButton
+                  summary={summary}
+                  fullWidth
+                  className="mt-1"
+                />
               </div>
             </div>
 

@@ -6,6 +6,9 @@ export type BenchPatientSummary = {
   id: string;
   mrn: string;
   displayName: string;
+  /** Sent alongside displayName so the bench can sort by surname. */
+  firstName: string;
+  lastName: string;
   dateOfBirth: string | null;
   sex: string | null;
   status: string;
@@ -74,6 +77,8 @@ export class ResultsService {
         id: p.id,
         mrn: p.mrn,
         displayName: displayName(p),
+        firstName: p.firstName,
+        lastName: p.lastName,
         dateOfBirth: p.dateOfBirth,
         sex: p.sex,
         status: p.status,
@@ -101,6 +106,8 @@ export class ResultsService {
           middleName: snap.middleName,
           lastName,
         }),
+        firstName,
+        lastName,
         dateOfBirth: snap.dateOfBirth ?? null,
         sex: snap.sex ?? null,
         status: snap.status ?? "active",

@@ -47,6 +47,8 @@ model Specimen {
   identityConfirmationJson String?
   specimenType           String    @default("blood")
   orderedTestsJson       String    @default("[]")
+  /// Cloud requisition id when reception created an order before accession.
+  requisitionId          String?
   status                 String    @default("registered")
   collectedAt            DateTime?
   registeredAt           DateTime  @default(now())

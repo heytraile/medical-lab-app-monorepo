@@ -12,12 +12,15 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as LabRouteImport } from './routes/_lab'
 import { Route as LoginRouteImport } from './routes/login'
+import { Route as LabAccessionRouteImport } from './routes/_lab/accession'
 import { Route as LabBenchRouteImport } from './routes/_lab/bench'
 import { Route as LabLabelsRouteImport } from './routes/_lab/labels'
+import { Route as LabOrdersRouteImport } from './routes/_lab/orders'
 import { Route as LabPatientsRouteImport } from './routes/_lab/patients'
 import { Route as LabProfileRouteImport } from './routes/_lab/profile'
 import { Route as LabRegisterRouteImport } from './routes/_lab/register'
 import { Route as LabReleaseRouteImport } from './routes/_lab/release'
+import { Route as LabStaffRouteImport } from './routes/_lab/staff'
 import { Route as LabSyncRouteImport } from './routes/_lab/sync'
 
 const IndexRoute = IndexRouteImport.update({
@@ -34,6 +37,11 @@ const LoginRoute = LoginRouteImport.update({
   path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
+const LabAccessionRoute = LabAccessionRouteImport.update({
+  id: '/accession',
+  path: '/accession',
+  getParentRoute: () => LabRoute,
+} as any)
 const LabBenchRoute = LabBenchRouteImport.update({
   id: '/bench',
   path: '/bench',
@@ -42,6 +50,11 @@ const LabBenchRoute = LabBenchRouteImport.update({
 const LabLabelsRoute = LabLabelsRouteImport.update({
   id: '/labels',
   path: '/labels',
+  getParentRoute: () => LabRoute,
+} as any)
+const LabOrdersRoute = LabOrdersRouteImport.update({
+  id: '/orders',
+  path: '/orders',
   getParentRoute: () => LabRoute,
 } as any)
 const LabPatientsRoute = LabPatientsRouteImport.update({
@@ -64,6 +77,11 @@ const LabReleaseRoute = LabReleaseRouteImport.update({
   path: '/release',
   getParentRoute: () => LabRoute,
 } as any)
+const LabStaffRoute = LabStaffRouteImport.update({
+  id: '/staff',
+  path: '/staff',
+  getParentRoute: () => LabRoute,
+} as any)
 const LabSyncRoute = LabSyncRouteImport.update({
   id: '/sync',
   path: '/sync',
@@ -73,23 +91,29 @@ const LabSyncRoute = LabSyncRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/accession': typeof LabAccessionRoute
   '/bench': typeof LabBenchRoute
   '/labels': typeof LabLabelsRoute
+  '/orders': typeof LabOrdersRoute
   '/patients': typeof LabPatientsRoute
   '/profile': typeof LabProfileRoute
   '/register': typeof LabRegisterRoute
   '/release': typeof LabReleaseRoute
+  '/staff': typeof LabStaffRoute
   '/sync': typeof LabSyncRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/accession': typeof LabAccessionRoute
   '/bench': typeof LabBenchRoute
   '/labels': typeof LabLabelsRoute
+  '/orders': typeof LabOrdersRoute
   '/patients': typeof LabPatientsRoute
   '/profile': typeof LabProfileRoute
   '/register': typeof LabRegisterRoute
   '/release': typeof LabReleaseRoute
+  '/staff': typeof LabStaffRoute
   '/sync': typeof LabSyncRoute
 }
 export interface FileRoutesById {
@@ -97,12 +121,15 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_lab': typeof LabRouteWithChildren
   '/login': typeof LoginRoute
+  '/_lab/accession': typeof LabAccessionRoute
   '/_lab/bench': typeof LabBenchRoute
   '/_lab/labels': typeof LabLabelsRoute
+  '/_lab/orders': typeof LabOrdersRoute
   '/_lab/patients': typeof LabPatientsRoute
   '/_lab/profile': typeof LabProfileRoute
   '/_lab/register': typeof LabRegisterRoute
   '/_lab/release': typeof LabReleaseRoute
+  '/_lab/staff': typeof LabStaffRoute
   '/_lab/sync': typeof LabSyncRoute
 }
 export interface FileRouteTypes {
@@ -110,35 +137,44 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/login'
+    | '/accession'
     | '/bench'
     | '/labels'
+    | '/orders'
     | '/patients'
     | '/profile'
     | '/register'
     | '/release'
+    | '/staff'
     | '/sync'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/login'
+    | '/accession'
     | '/bench'
     | '/labels'
+    | '/orders'
     | '/patients'
     | '/profile'
     | '/register'
     | '/release'
+    | '/staff'
     | '/sync'
   id:
     | '__root__'
     | '/'
     | '/_lab'
     | '/login'
+    | '/_lab/accession'
     | '/_lab/bench'
     | '/_lab/labels'
+    | '/_lab/orders'
     | '/_lab/patients'
     | '/_lab/profile'
     | '/_lab/register'
     | '/_lab/release'
+    | '/_lab/staff'
     | '/_lab/sync'
   fileRoutesById: FileRoutesById
 }
@@ -171,6 +207,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_lab/accession': {
+      id: '/_lab/accession'
+      path: '/accession'
+      fullPath: '/accession'
+      preLoaderRoute: typeof LabAccessionRouteImport
+      parentRoute: typeof LabRoute
+    }
     '/_lab/bench': {
       id: '/_lab/bench'
       path: '/bench'
@@ -183,6 +226,13 @@ declare module '@tanstack/react-router' {
       path: '/labels'
       fullPath: '/labels'
       preLoaderRoute: typeof LabLabelsRouteImport
+      parentRoute: typeof LabRoute
+    }
+    '/_lab/orders': {
+      id: '/_lab/orders'
+      path: '/orders'
+      fullPath: '/orders'
+      preLoaderRoute: typeof LabOrdersRouteImport
       parentRoute: typeof LabRoute
     }
     '/_lab/patients': {
@@ -213,6 +263,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LabReleaseRouteImport
       parentRoute: typeof LabRoute
     }
+    '/_lab/staff': {
+      id: '/_lab/staff'
+      path: '/staff'
+      fullPath: '/staff'
+      preLoaderRoute: typeof LabStaffRouteImport
+      parentRoute: typeof LabRoute
+    }
     '/_lab/sync': {
       id: '/_lab/sync'
       path: '/sync'
@@ -224,22 +281,28 @@ declare module '@tanstack/react-router' {
 }
 
 interface LabRouteChildren {
+  LabAccessionRoute: typeof LabAccessionRoute
   LabBenchRoute: typeof LabBenchRoute
   LabLabelsRoute: typeof LabLabelsRoute
+  LabOrdersRoute: typeof LabOrdersRoute
   LabPatientsRoute: typeof LabPatientsRoute
   LabProfileRoute: typeof LabProfileRoute
   LabRegisterRoute: typeof LabRegisterRoute
   LabReleaseRoute: typeof LabReleaseRoute
+  LabStaffRoute: typeof LabStaffRoute
   LabSyncRoute: typeof LabSyncRoute
 }
 
 const LabRouteChildren: LabRouteChildren = {
+  LabAccessionRoute: LabAccessionRoute,
   LabBenchRoute: LabBenchRoute,
   LabLabelsRoute: LabLabelsRoute,
+  LabOrdersRoute: LabOrdersRoute,
   LabPatientsRoute: LabPatientsRoute,
   LabProfileRoute: LabProfileRoute,
   LabRegisterRoute: LabRegisterRoute,
   LabReleaseRoute: LabReleaseRoute,
+  LabStaffRoute: LabStaffRoute,
   LabSyncRoute: LabSyncRoute,
 }
 

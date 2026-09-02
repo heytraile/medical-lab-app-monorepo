@@ -171,11 +171,11 @@ curl -s http://localhost:3101/ingest -H 'content-type: application/json' -d '{
 ## Register + print + analyze (clean loop)
 
 1. Start simulators (includes fake Zebra on `:9100`) if not already running — see [HARDWARE.md](./HARDWARE.md).
-2. Open http://localhost:3100/register  
+2. Open http://localhost:3100/accession  
 3. All patients load in the list immediately — type to filter (debounced). Select a patient and the **draft label preview** appears instantly on the right (no printer required).
 4. Pick test presets (CBC, BMP, etc.) — preview updates as tests change.
-5. **Register & Print Label** — the same preview panel transitions to the registered accession; ZPL is sent to the fake Zebra (terminal log) or physical ZD411.
-6. Use **Open in Labels** or visit http://localhost:3100/labels?accession=DH… to reprint. Labels accepts `?accession=` deep links from Register scans.
+5. **Accession & Print Label** — the same preview panel transitions to the registered accession; ZPL is sent to the fake Zebra (terminal log) or physical ZD411.
+6. Use **Open in Labels** or visit http://localhost:3100/labels?accession=DH… to reprint. Labels accepts `?accession=` deep links from Accession scans.
 7. Copy the accession barcode (or **Copy sim command**) from the preview panel actions.
 8. Run the simulator with **that** barcode, e.g.  
    `pnpm --filter @drax-lis/simulators send:sysmex -- --barcode DH202608260001`  
@@ -183,9 +183,9 @@ curl -s http://localhost:3101/ingest -H 'content-type: application/json' -d '{
 
 Accessions are sequential: `DH{YYYYMMDD}{####}`.
 
-**Labels page:** use the **Register | Labels** tabs to switch workflows. Scan or type an accession, or open `/labels?accession=DH…` from Register. **Printer status** reflects `GET /print/status` (TCP to Zebra) — preview works even when the printer is offline.
+**Labels page:** use the **Accession | Labels** tabs to switch workflows. Scan or type an accession, or open `/labels?accession=DH…` from Accession. **Printer status** reflects `GET /print/status` (TCP to Zebra) — preview works even when the printer is offline.
 
-**Print preview / reprint 404:** If Register shows an edge preview warning, Labels preview is empty, or reprint returns 404, edge-engine is running stale code — rebuild and restart so `/print/*` routes load (`pnpm --filter @drax-lis/edge-engine build`, then restart `pnpm dev`). Labels still shows a cached preview from specimen data when edge preview is unavailable.
+**Print preview / reprint 404:** If Accession shows an edge preview warning, Labels preview is empty, or reprint returns 404, edge-engine is running stale code — rebuild and restart so `/print/*` routes load (`pnpm --filter @drax-lis/edge-engine build`, then restart `pnpm dev`). Labels still shows a cached preview from specimen data when edge preview is unavailable.
 
 Identity rules: [IDENTITY.md](./IDENTITY.md).
 
@@ -239,17 +239,26 @@ pnpm supabase:reset     # rebuild from migrations + seed — destroys local data
 
 [`supabase/seed.sql`](../supabase/seed.sql) creates these on every `supabase:reset`:
 
-| Email | Password | Role |
-| --- | --- | --- |
-| `authorizer@draxhall.local` | `password123` | authorizer — can release results |
-| `tech@draxhall.local` | `password123` | tech — bench review only |
+| Email | Password | Role | Job title |
+| --- | --- | --- | --- |
+| `admin@draxhall.local` | `password123` | admin — staff registry at `/staff`, full authorizer powers | admin staff |
+| `authorizer@draxhall.local` | `password123` | authorizer — can release results | — |
+| `tech@draxhall.local` | `password123` | tech — accession / bench | phlebotomist (Marlon Reid) |
+| `phleb@draxhall.local` | `password123` | tech — accession / bench | lab technologist (Jordan Blake) |
+| `karen@draxhall.local` | `password123` | tech — phlebotomist | phlebotomist (Karen Sinclair) |
+| `reception@draxhall.local` | `password123` | tech — front desk | receptionist (Tanya Clarke) |
+| `labtech@draxhall.local` | `password123` | tech — bench | lab technologist (Devon Matthews) |
 
-Sign in at http://localhost:3100/login. Staff sign-in/out and **Profile** live in the
-sidebar; sessions work in edge or cloud mode. The dev-role shortcut
-(“Continue as authorizer (dev)”) still exists for when Supabase is not running.
+Sign in at http://localhost:3100/login. Use **`admin@draxhall.local`** to open **Staff**
+(`/staff`) and assign who has authorizer permission. If that account or the Staff page is
+missing after pulling new migrations, run **`pnpm supabase:reset`** once to re-seed users.
 
-Release queue: http://localhost:3100/release — authorizer releases cloud `pending_review`
-results (`POST /results/:id/release`).
+Staff sign-in/out and **Profile** live in the sidebar; sessions work in edge or cloud mode.
+The dev-role shortcut (“Continue as admin (dev)”) still exists for when Supabase is not
+running.
+
+Release queue: http://localhost:3100/release — admins and authorizers release cloud
+`pending_review` results (`POST /results/:id/release`).
 
 ### Changing the schema
 

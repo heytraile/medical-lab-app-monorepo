@@ -1,6 +1,14 @@
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { AlertTriangle, Bell, CheckCheck, Trash2, X } from "lucide-react";
+import {
+  AlertTriangle,
+  Bell,
+  BellRing,
+  Check,
+  CheckCheck,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   useNotifications,
   type AppNotification,
@@ -49,41 +57,68 @@ function severityRowClass(severity: AppNotification["severity"]): string {
 function NotificationRow({
   item,
   onOpen,
+  onAcknowledge,
 }: {
   item: AppNotification;
   onOpen: (item: AppNotification) => void;
+  onAcknowledge?: (item: AppNotification) => void;
 }) {
+  // A review request carries its own action, so the row cannot be a single
+  // button — a nested button is invalid markup and unreachable by keyboard.
+  const showAck = Boolean(
+    onAcknowledge && item.source === "review" && item.canAcknowledge && !item.read,
+  );
+
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(item)}
+    <div
       className={cn(
-        "w-full border-b border-border/60 px-3 py-2.5 text-left transition-colors",
+        "border-b border-border/60 transition-colors",
         severityRowClass(item.severity),
         !item.read && "bg-muted/30",
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <p
-          className={cn(
-            "text-sm font-medium leading-snug",
-            item.severity === "critical" && "text-lab-alarm",
-            item.severity === "alarm" && "text-lab-danger",
-          )}
-        >
-          {!item.read && (
-            <span className="mr-1.5 inline-block size-1.5 rounded-full bg-accent align-middle" />
-          )}
-          {item.title}
+      <button
+        type="button"
+        onClick={() => onOpen(item)}
+        className="w-full px-3 py-2.5 text-left"
+      >
+        <div className="flex items-start justify-between gap-2">
+          <p
+            className={cn(
+              "text-sm font-medium leading-snug",
+              item.severity === "critical" && "text-lab-alarm",
+              item.severity === "alarm" && "text-lab-danger",
+            )}
+          >
+            {!item.read && (
+              <span className="mr-1.5 inline-block size-1.5 rounded-full bg-accent align-middle" />
+            )}
+            {item.title}
+          </p>
+          <span className="shrink-0 text-[10px] text-muted-foreground">
+            {relativeTime(item.at)}
+          </span>
+        </div>
+        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+          {item.body}
         </p>
-        <span className="shrink-0 text-[10px] text-muted-foreground">
-          {relativeTime(item.at)}
-        </span>
-      </div>
-      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
-        {item.body}
-      </p>
-    </button>
+      </button>
+
+      {showAck && (
+        <div className="px-3 pb-2.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={() => onAcknowledge?.(item)}
+          >
+            <Check className="mr-1 size-3.5" aria-hidden />
+            Acknowledge
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -91,10 +126,12 @@ function Section({
   title,
   items,
   onOpen,
+  onAcknowledge,
 }: {
   title: string;
   items: AppNotification[];
   onOpen: (item: AppNotification) => void;
+  onAcknowledge?: (item: AppNotification) => void;
 }) {
   if (!items.length) return null;
   return (
@@ -103,7 +140,12 @@ function Section({
         {title}
       </p>
       {items.map((item) => (
-        <NotificationRow key={item.id} item={item} onOpen={onOpen} />
+        <NotificationRow
+          key={item.id}
+          item={item}
+          onOpen={onOpen}
+          onAcknowledge={onAcknowledge}
+        />
       ))}
     </div>
   );
@@ -114,13 +156,18 @@ export function NotificationCenter() {
   const {
     notifications,
     unreadCount,
+    criticalCount,
     markRead,
     markAllRead,
     clearAll,
   } = useNotifications();
 
+  const escalated = criticalCount > 0;
+
   function openNotification(item: AppNotification) {
-    markRead(item.id);
+    // Opening a review request to look at it is not the same as signing it
+    // off, so only the explicit Acknowledge button clears one.
+    if (item.source !== "review") markRead(item.id);
     if (item.accessionNumber) {
       void navigate({
         to: "/bench",
@@ -134,12 +181,16 @@ export function NotificationCenter() {
     }
   }
 
-  const unreadCritical = notifications.filter(
+  // Open review requests pin to the top: they are work items waiting on a
+  // person, not a feed entry that scrolls away.
+  const openReviews = notifications.filter(
+    (n) => n.source === "review" && !n.read,
+  );
+  const feed = notifications.filter((n) => !openReviews.includes(n));
+  const unreadCritical = feed.filter(
     (n) => !n.read && n.severity === "critical",
   );
-  const rest = notifications.filter(
-    (n) => !( !n.read && n.severity === "critical" ),
-  );
+  const rest = feed.filter((n) => !(!n.read && n.severity === "critical"));
   const today = rest.filter((n) => isToday(n.at));
   const earlier = rest.filter((n) => !isToday(n.at));
 
@@ -150,11 +201,38 @@ export function NotificationCenter() {
           variant="ghost"
           size="icon"
           className="relative"
-          aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+          // The pulse alone is not a signal a screen reader can convey.
+          aria-label={[
+            "Notifications",
+            unreadCount ? `${unreadCount} unread` : null,
+            criticalCount ? `${criticalCount} needing urgent attention` : null,
+          ]
+            .filter(Boolean)
+            .join(", ")}
         >
-          <Bell className="size-5" />
+          {escalated && (
+            <span
+              className="pointer-events-none absolute inset-1 animate-alarm-ring rounded-full bg-lab-alarm/40"
+              aria-hidden
+            />
+          )}
+          {escalated ? (
+            <BellRing
+              className="relative size-5 animate-alarm-shake text-lab-alarm"
+              strokeWidth={2.5}
+            />
+          ) : (
+            <Bell className="size-5" />
+          )}
           {unreadCount > 0 && (
-            <span className="absolute -right-0.5 -top-0.5 flex min-w-[1.125rem] items-center justify-center rounded-full bg-lab-alarm px-1 text-[10px] font-bold text-white">
+            <span
+              className={cn(
+                "absolute -right-0.5 -top-0.5 flex min-w-[1.125rem] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white",
+                escalated
+                  ? "bg-lab-alarm ring-2 ring-card"
+                  : "bg-lab-alarm",
+              )}
+            >
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
@@ -201,6 +279,12 @@ export function NotificationCenter() {
             </p>
           ) : (
             <>
+              <Section
+                title="Review requests"
+                items={openReviews}
+                onOpen={openNotification}
+                onAcknowledge={(item) => markRead(item.id)}
+              />
               <Section
                 title="Critical"
                 items={unreadCritical}

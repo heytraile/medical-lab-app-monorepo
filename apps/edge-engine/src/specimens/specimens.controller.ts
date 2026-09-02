@@ -24,8 +24,11 @@ export class SpecimensController {
         confirmedBy?: string;
       };
       orderedTests?: Array<{ code: string; name?: string }>;
+      requisitionId?: string;
       printLabel?: boolean;
       copies?: number;
+      specimenType?: string;
+      collectedAt?: string;
     },
   ) {
     return this.specimens.register(body);

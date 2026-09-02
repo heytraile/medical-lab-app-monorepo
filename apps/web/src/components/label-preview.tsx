@@ -76,17 +76,17 @@ export function LabelPreview({
   const isDraft = mode === "draft";
 
   return (
-    <div className={cn("space-y-2", className)}>
+    <div className={cn("min-w-0 max-w-full space-y-2", className)}>
       <div
         className={cn(
-          "relative overflow-hidden rounded-lg border-2 bg-white p-3 text-black shadow-sm dark:bg-zinc-100",
+          "relative w-full max-w-full overflow-hidden rounded-lg border-2 bg-white p-3 text-black shadow-sm dark:bg-zinc-100",
           isDraft ? "border-dashed border-zinc-400" : "border-foreground/80",
         )}
-        style={{ aspectRatio: "2 / 1", maxWidth: 380 }}
+        style={{ aspectRatio: "2 / 1" }}
       >
-        <div className="flex h-full flex-col justify-between text-[10px] leading-tight sm:text-xs">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
+        <div className="flex h-full min-w-0 flex-col justify-between text-[10px] leading-tight sm:text-xs">
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="min-w-0 flex-1 overflow-hidden">
               <p
                 className={cn(
                   "truncate font-bold text-sm sm:text-base",
@@ -96,10 +96,10 @@ export function LabelPreview({
                 {fields.accessionNumber}
               </p>
               <p className="truncate font-medium">{fields.patientName}</p>
-              <p className="text-[10px] text-zinc-600">
+              <p className="truncate text-[10px] text-zinc-600">
                 {fields.dateOfBirth} · {fields.specimenType}
               </p>
-              <p className="truncate text-[10px] text-zinc-600">
+              <p className="line-clamp-2 text-[10px] leading-tight text-zinc-600">
                 {fields.orderedTests}
               </p>
             </div>
@@ -118,10 +118,11 @@ export function LabelPreview({
               ))}
             </div>
           </div>
-          <div className="px-1">
+          <div className="min-w-0 px-1">
             <svg
               viewBox={`0 0 ${barW} ${barH}`}
-              className="h-12 w-full text-black sm:h-14"
+              className="h-12 w-full max-w-full text-black sm:h-14"
+              preserveAspectRatio="xMidYMid meet"
               aria-hidden
             >
               <g
@@ -148,7 +149,7 @@ export function LabelPreview({
             : `Print failed: ${printStatus.error ?? "unknown error"}`}
         </p>
       )}
-      <p className="text-[10px] text-muted-foreground">
+      <p className="break-words text-[10px] text-muted-foreground">
         ZD411 · 2&quot;×1&quot; · Code 128 + Data Matrix
         {isDraft ? " · draft" : ` · ${fields.barcode}`}
       </p>

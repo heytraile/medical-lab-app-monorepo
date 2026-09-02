@@ -7,22 +7,35 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { io, type Socket } from "socket.io-client";
 import {
   BenchEventSchema,
   type BenchEvent,
   type BenchIngestItem,
 } from "@drax-lis/contracts";
-import { getWsBaseUrl } from "./api";
+import { api, getWsBaseUrl, type ReviewRequest } from "./api";
 import { analyzerLabel } from "./analyzers";
+import { canAuthorize, useAuth } from "./auth";
 
 export type NotificationSeverity = "critical" | "alarm" | "info";
-export type NotificationType = "result" | "specimen";
+export type NotificationType = "result" | "specimen" | "review";
+
+/**
+ * `local` items come from the analyzer socket and live in localStorage.
+ * `review` items are rows on the server, so their read state is the
+ * acknowledgement and must not be faked client-side.
+ */
+export type NotificationSource = "local" | "review";
 
 export type AppNotification = {
   id: string;
   type: NotificationType;
+  source: NotificationSource;
   severity: NotificationSeverity;
   title: string;
   body: string;
@@ -32,6 +45,8 @@ export type AppNotification = {
   analyzerId?: string;
   testCode?: string;
   flag?: string;
+  reviewRequestId?: string;
+  canAcknowledge?: boolean;
 };
 
 const STORAGE_KEY = "lis-notifications";
@@ -40,6 +55,8 @@ const MAX_ITEMS = 100;
 type NotificationState = {
   notifications: AppNotification[];
   unreadCount: number;
+  /** Unread items that warrant the escalated, pulsing bell. */
+  criticalCount: number;
   markRead: (id: string) => void;
   markAllRead: () => void;
   clearAll: () => void;
@@ -92,6 +109,7 @@ function notificationsFromIngest(event: Extract<BenchEvent, { type: "results.ing
     return {
       id: `${event.at}-${item.id}-${item.kind}`,
       type: "result" as const,
+      source: "local" as const,
       severity,
       title: `${kindLabel} · ${analyzer}`,
       body: `${prefix}${event.accessionNumber} — ${formatResultBody(item)}`,
@@ -112,6 +130,7 @@ function notificationFromSpecimen(
   return {
     id: `${event.at}-specimen-${event.accessionNumber}`,
     type: "specimen",
+    source: "local",
     severity: "info",
     title: "Specimen registered",
     body: `${patient}${event.accessionNumber}`,
@@ -143,8 +162,36 @@ function pushFromBenchEvent(
   return { items: merged, toasts };
 }
 
+function notificationFromReviewRequest(
+  row: ReviewRequest,
+  canAcknowledge: boolean,
+): AppNotification {
+  const patient = row.patientDisplayName ?? row.accessionNumbers.join(", ");
+  const flag = row.worstFlag ?? "";
+  const who = row.requestedByEmail ? ` · from ${row.requestedByEmail}` : "";
+  const detail = row.note
+    ? `“${row.note}”`
+    : `${row.resultCount} result${row.resultCount === 1 ? "" : "s"} awaiting sign-off`;
+
+  return {
+    id: `review-${row.id}`,
+    type: "review",
+    source: "review",
+    severity: severityFromFlag(flag),
+    title: `Review requested${flag && flag !== "normal" ? ` · ${flagLabel(flag)}` : ""}`,
+    body: `${patient} — ${detail}${who}`,
+    at: row.requestedAt,
+    read: Boolean(row.acknowledgedAt),
+    accessionNumber: row.accessionNumbers[0],
+    flag: flag || undefined,
+    reviewRequestId: row.id,
+    canAcknowledge,
+  };
+}
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
+  const auth = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>(() =>
     loadStored(),
   );
@@ -187,17 +234,67 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     };
   }, [handleBenchEvent]);
 
-  const markRead = useCallback((id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    );
-  }, []);
+  // Review requests are cross-user, so they cannot come from localStorage.
+  // Polled rather than pushed: the cloud API has no socket, and the release
+  // queue already polls on the same cadence.
+  const canAcknowledge = canAuthorize(auth.role);
+  const { data: reviewRequests } = useQuery({
+    queryKey: ["review-requests"],
+    queryFn: () => api.listReviewRequests(),
+    enabled: Boolean(auth.accessToken),
+    refetchInterval: 15_000,
+  });
+
+  const acknowledge = useMutation({
+    mutationFn: (id: string) => api.acknowledgeReviewRequest(id),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["review-requests"] });
+    },
+  });
+
+  const reviewNotifications = useMemo(
+    () =>
+      (reviewRequests ?? []).map((row) =>
+        notificationFromReviewRequest(row, canAcknowledge),
+      ),
+    [reviewRequests, canAcknowledge],
+  );
+
+  const merged = useMemo(
+    () =>
+      [...reviewNotifications, ...notifications].sort((a, b) =>
+        b.at.localeCompare(a.at),
+      ),
+    [reviewNotifications, notifications],
+  );
+
+  const markRead = useCallback(
+    (id: string) => {
+      const item = merged.find((n) => n.id === id);
+      // A review request's read state is the server-side acknowledgement, so
+      // only a reviewer can clear it, and only through the API.
+      if (item?.source === "review") {
+        if (item.reviewRequestId && item.canAcknowledge && !item.read) {
+          acknowledge.mutate(item.reviewRequestId);
+        }
+        return;
+      }
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+      );
+    },
+    [merged, acknowledge],
+  );
 
   const markAllRead = useCallback(() => {
+    // Local feed only. Bulk-clearing review requests would sign off work the
+    // authorizer has not looked at, so each one needs its own acknowledgement.
     setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
   }, []);
 
   const clearAll = useCallback(() => {
+    // Only the local feed is clearable: a review request is a work item, not a
+    // message, and hiding it would lose the sign-off.
     setNotifications([]);
     setPendingToasts([]);
   }, []);
@@ -206,14 +303,34 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setPendingToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  // A tech cannot acknowledge, so their own pending request would otherwise
+  // leave the bell pulsing with no way to clear it — alarm fatigue by design.
+  // It still appears in the list, just not as an unread demand for action.
+  const actionable = useCallback(
+    (n: AppNotification) =>
+      !n.read && (n.source !== "review" || Boolean(n.canAcknowledge)),
+    [],
+  );
+
   const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.read).length,
-    [notifications],
+    () => merged.filter(actionable).length,
+    [merged, actionable],
+  );
+
+  const criticalCount = useMemo(
+    () =>
+      merged.filter(
+        (n) =>
+          actionable(n) &&
+          (n.severity === "critical" || n.severity === "alarm"),
+      ).length,
+    [merged, actionable],
   );
 
   const value: NotificationState = {
-    notifications,
+    notifications: merged,
     unreadCount,
+    criticalCount,
     markRead,
     markAllRead,
     clearAll,

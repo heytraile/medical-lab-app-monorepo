@@ -23,12 +23,12 @@ const NAV_HITS: SearchHit[] = [
     href: "/bench",
   },
   {
-    id: "nav-register",
+    id: "nav-accession",
     kind: "nav",
-    title: "Register",
-    subtitle: "New specimen & label",
-    haystack: "register specimen accession print label patient",
-    href: "/register",
+    title: "Accession",
+    subtitle: "Order tests & print label",
+    haystack: "accession specimen order tests print label patient",
+    href: "/accession",
   },
   {
     id: "nav-labels",
@@ -61,6 +61,14 @@ const NAV_HITS: SearchHit[] = [
     subtitle: "Local MRN registry",
     haystack: "patients registry mrn identity demographics",
     href: "/patients",
+  },
+  {
+    id: "nav-staff",
+    kind: "nav",
+    title: "Staff",
+    subtitle: "Register lab staff",
+    haystack: "staff phlebotomist lab technologist admin registry",
+    href: "/staff",
   },
   {
     id: "nav-profile",

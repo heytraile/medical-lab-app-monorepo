@@ -23,6 +23,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@drax-lis/catalog':
+        specifier: workspace:*
+        version: link:../../packages/catalog
       '@drax-lis/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -155,6 +158,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@drax-lis/catalog':
+        specifier: workspace:*
+        version: link:../../packages/catalog
       '@drax-lis/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -258,6 +264,15 @@ importers:
       vite-tsconfig-paths:
         specifier: ^5.1.4
         version: 5.1.4(typescript@5.9.3)(vite@6.4.3(@types/node@22.20.1)(jiti@2.7.0)(lightningcss@1.33.0)(terser@5.50.0)(tsx@4.23.12))
+
+  packages/catalog:
+    devDependencies:
+      '@drax-lis/tsconfig':
+        specifier: workspace:*
+        version: link:../tsconfig
+      typescript:
+        specifier: ^5.8.3
+        version: 5.9.3
 
   packages/contracts:
     dependencies:

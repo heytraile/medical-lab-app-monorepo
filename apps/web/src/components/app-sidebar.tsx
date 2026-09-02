@@ -15,11 +15,12 @@ import {
   Search,
   UserRound,
   Users,
+  UserCog,
   Wifi,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { analyzerLabel } from "../lib/analyzers";
-import { useAuth } from "../lib/auth";
+import { useAuth, isAdmin } from "../lib/auth";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import { Sheet, SheetContent, SheetCloseButton } from "./ui/sheet";
@@ -223,10 +224,10 @@ function SidebarBody({
             onNavigate={onNavigate}
           />
           <NavItem
-            to="/register"
+            to="/accession"
             icon={ClipboardCheck}
-            label="Register"
-            active={pathname === "/register"}
+            label="Accession"
+            active={pathname === "/accession"}
             collapsed={collapsed}
             onNavigate={onNavigate}
           />
@@ -235,6 +236,14 @@ function SidebarBody({
             icon={Printer}
             label="Labels"
             active={pathname === "/labels"}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
+          <NavItem
+            to="/orders"
+            icon={FlaskConical}
+            label="Orders"
+            active={pathname === "/orders"}
             collapsed={collapsed}
             onNavigate={onNavigate}
           />
@@ -262,7 +271,40 @@ function SidebarBody({
             collapsed={collapsed}
             onNavigate={onNavigate}
           />
+          {isAdmin(auth.role) && (
+            <NavItem
+              to="/staff"
+              icon={UserCog}
+              label="Staff"
+              active={pathname === "/staff"}
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
+          )}
         </div>
+
+        {isAdmin(auth.role) && (
+          <div className="space-y-1">
+            {!collapsed && (
+              <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
+                Admin
+              </p>
+            )}
+            {collapsed && (
+              <div className="flex justify-center py-1" title="Admin">
+                <UserCog className="size-4 opacity-60" />
+              </div>
+            )}
+            <NavItem
+              to="/staff"
+              icon={UserCog}
+              label="Staff registry"
+              active={pathname === "/staff"}
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
+          </div>
+        )}
 
         <div className="space-y-1">
           {!collapsed && (
@@ -311,67 +353,63 @@ function SidebarBody({
         {signedIn ? (
           <div
             className={cn(
-              "rounded-md bg-sidebar-muted/40 p-2",
-              collapsed && "flex flex-col items-center gap-1 p-1",
+              "overflow-hidden rounded-lg border border-sidebar-border/80 bg-sidebar-muted/30",
+              collapsed ? "p-1.5" : "p-2",
             )}
           >
             {collapsed ? (
-              <Link
-                to="/profile"
-                title={`${auth.displayName}${auth.role ? ` · ${auth.role}` : ""}`}
-                className="flex size-9 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-accent-foreground"
-              >
-                {initials}
-              </Link>
-            ) : (
-              <div className="mb-1.5 flex min-w-0 items-center gap-2">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-[11px] font-semibold text-accent-foreground">
+              <div className="flex flex-col items-center gap-1">
+                <Link
+                  to="/profile"
+                  title={`${auth.displayName}${auth.role ? ` · ${auth.role}` : ""}`}
+                  onClick={onNavigate}
+                  className="flex size-9 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-accent-foreground ring-2 ring-sidebar-border/50"
+                >
                   {initials}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium leading-tight">
-                    {auth.displayName}
-                  </p>
-                  {auth.role && (
-                    <Badge variant="muted" className="mt-0.5 capitalize">
-                      {auth.role}
-                    </Badge>
-                  )}
-                </div>
+                </Link>
+                <SidebarUserActions
+                  collapsed
+                  pathname={pathname}
+                  isAdminUser={isAdmin(auth.role)}
+                  onNavigate={onNavigate}
+                  onSignOut={() => void onSignOut()}
+                />
               </div>
+            ) : (
+              <>
+                <Link
+                  to="/profile"
+                  onClick={onNavigate}
+                  className="flex items-center gap-2.5 rounded-md p-1.5 transition-colors hover:bg-sidebar-muted/60"
+                >
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-accent-foreground ring-2 ring-sidebar-border/40">
+                    {initials}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium leading-none">
+                      {auth.displayName}
+                    </p>
+                    {auth.role ? (
+                      <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-sidebar-foreground/55">
+                        {auth.role}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[10px] text-amber-500">
+                        Role unknown
+                      </p>
+                    )}
+                  </div>
+                </Link>
+                <div className="my-1.5 border-t border-sidebar-border/60" />
+                <SidebarUserActions
+                  collapsed={false}
+                  pathname={pathname}
+                  isAdminUser={isAdmin(auth.role)}
+                  onNavigate={onNavigate}
+                  onSignOut={() => void onSignOut()}
+                />
+              </>
             )}
-            <div
-              className={cn(
-                "flex gap-1",
-                collapsed ? "flex-col" : "items-center",
-              )}
-            >
-              <Link
-                to="/profile"
-                title="Profile"
-                onClick={onNavigate}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-sidebar-muted",
-                  pathname === "/profile" && "bg-sidebar-muted",
-                  collapsed && "justify-center px-1.5",
-                )}
-              >
-                <UserRound className="size-3.5 shrink-0" />
-                {!collapsed && <span>Profile</span>}
-              </Link>
-              <button
-                type="button"
-                title="Sign out"
-                onClick={() => void onSignOut()}
-                className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-sidebar-muted",
-                  collapsed && "justify-center px-1.5",
-                )}
-              >
-                <LogOut className="size-3.5 shrink-0" />
-                {!collapsed && <span>Sign out</span>}
-              </button>
-            </div>
           </div>
         ) : (
           <Link
@@ -419,6 +457,67 @@ function SidebarBody({
   );
 }
 
+function SidebarUserActions({
+  collapsed,
+  pathname,
+  isAdminUser,
+  onNavigate,
+  onSignOut,
+}: {
+  collapsed: boolean;
+  pathname: string;
+  isAdminUser: boolean;
+  onNavigate?: () => void;
+  onSignOut: () => void;
+}) {
+  const itemClass = (active: boolean) =>
+    cn(
+      "flex w-full items-center gap-2.5 rounded-md text-xs font-medium transition-colors",
+      collapsed ? "justify-center p-2" : "px-2.5 py-2",
+      active
+        ? "bg-sidebar-accent/90 text-accent-foreground"
+        : "text-sidebar-foreground/80 hover:bg-sidebar-muted/70 hover:text-sidebar-foreground",
+    );
+
+  return (
+    <nav
+      className={cn("flex flex-col", collapsed ? "gap-0.5" : "gap-0.5")}
+      aria-label="Account"
+    >
+      {collapsed && (
+        <Link
+          to="/profile"
+          title="Profile"
+          onClick={onNavigate}
+          className={itemClass(pathname === "/profile")}
+        >
+          <UserRound className="size-3.5 shrink-0 opacity-80" />
+        </Link>
+      )}
+      {isAdminUser && (
+        <Link
+          to="/staff"
+          title="Staff registry"
+          onClick={onNavigate}
+          className={itemClass(pathname === "/staff")}
+        >
+          <UserCog className="size-3.5 shrink-0 opacity-80" />
+          {!collapsed && <span className="truncate">Staff</span>}
+        </Link>
+      )}
+      <button
+        type="button"
+        title="Sign out"
+        onClick={onSignOut}
+        className={itemClass(false)}
+      >
+        <LogOut className="size-3.5 shrink-0 opacity-80" />
+        {!collapsed && <span className="truncate">Sign out</span>}
+      </button>
+    </nav>
+  );
+}
+
 function NavItem({
   to,
   search,
@@ -430,7 +529,7 @@ function NavItem({
   title,
   onNavigate,
 }: {
-  to: "/bench" | "/register" | "/labels" | "/sync" | "/release" | "/patients" | "/profile";
+  to: "/bench" | "/accession" | "/labels" | "/orders" | "/sync" | "/release" | "/patients" | "/profile" | "/staff";
   search?: { analyzer?: string; q?: string };
   icon: React.ComponentType<{ className?: string }>;
   label: string;

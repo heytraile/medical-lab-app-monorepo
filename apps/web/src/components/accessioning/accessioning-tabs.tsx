@@ -2,7 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { cn } from "../../lib/utils";
 
 const TABS = [
-  { to: "/register" as const, label: "Register" },
+  { to: "/accession" as const, label: "Accession" },
   { to: "/labels" as const, label: "Labels" },
 ];
 

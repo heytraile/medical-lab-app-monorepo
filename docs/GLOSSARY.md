@@ -31,7 +31,7 @@ Codes below are **common clinical abbreviations**. Exact strings from Sysmex / M
 | **Edge** | Local bridge on the lab mini PC (`apps/edge-engine`) | Talks to analyzers; SQLite + outbox; works offline |
 | **Cloud API** | NestJS backend in the cloud (`apps/api`) | Receives edge pushes; writes Supabase; release/notify APIs |
 | **Supabase** | Hosted Postgres + Auth (+ optional Realtime) | Cloud system of record — **not** the UI |
-| **UI** | User interface | `apps/web` — Bench Review, Register, Release queue |
+| **UI** | User interface | `apps/web` — Bench Review, Accession, Release queue |
 | **API** | Application Programming Interface | HTTP/JSON contracts between web, edge, and cloud |
 | **REST** | Representational State Transfer | Style of HTTP APIs (`GET /results`, `POST /sync/events`) |
 | **CRUD** | Create, Read, Update, Delete | Basic data operations |
@@ -71,9 +71,16 @@ Codes below are **common clinical abbreviations**. Exact strings from Sysmex / M
 | **EMR / EHR** | Electronic Medical / Health Record | Doctor’s system; outbound later |
 | **Delta check** | Compare to patient’s prior result | Soft safety check on Bench Review (later) |
 | **Aliquot** | Portion of a specimen split into another tube | Labeling / routing later |
-| **Phlebotomy / phleb** | Blood draw | Reception/collection role |
+| **Phlebotomy / phleb** | Blood draw | Collectors are staff with job title phlebotomist or lab technologist |
+| **Job title** | What someone does at the bench (phlebotomist, lab technologist, …) | Stored on `profiles.job_title`; separate from permission **role** |
+| **Permission role** | What the app lets you do (`tech`, `authorizer`, `admin`) | Supabase Auth + RLS; see Staff page for job title assignment |
 
-Full workflow rules: [WORKFLOW.md](./WORKFLOW.md).
+| **Requisition** | Doctor/reception test order before or at draw | Cloud `requisitions` row with `ordered_selections` + expanded `ordered_tests` |
+| **Test panel** | Bundle of tests ordered as one profile (e.g. Anaemia I) | Expands to member analyte codes at register |
+| **Test catalog** | Lab’s orderable test + panel list | `test_catalog_items` / `test_panels` in Supabase; bundled in `@drax-lis/catalog` |
+| **Ordered vs received** | Work requested vs results on the bench | v1 shows ordered list; reconciliation (pending/received) is follow-up |
+
+Full workflow rules: [WORKFLOW.md](./WORKFLOW.md). Requisition & catalog: [REQUISITION.md](./REQUISITION.md).
 
 ---
 

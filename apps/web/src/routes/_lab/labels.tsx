@@ -14,6 +14,7 @@ import { AccessioningShell } from "../../components/accessioning/accessioning-sh
 import { LabelPreviewPanel } from "../../components/accessioning/label-preview-panel";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Select } from "../../components/ui/select";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../lib/utils";
 
@@ -252,17 +253,16 @@ function LabelsPage() {
           <div className="flex flex-wrap items-center gap-3 [&>button]:h-11 [&>button]:flex-1 sm:[&>button]:h-9 sm:[&>button]:flex-none">
             <label className="flex items-center gap-2 text-sm">
               Copies
-              <select
-                className="h-9 rounded-md border border-border bg-background px-2"
-                value={copies}
-                onChange={(e) => setCopies(Number(e.target.value))}
-              >
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+              <Select
+                className="h-9 w-[4.5rem]"
+                value={String(copies)}
+                onValueChange={(v) => setCopies(Number(v))}
+                aria-label="Label copies"
+                options={[1, 2, 3, 4, 5].map((n) => ({
+                  value: String(n),
+                  label: String(n),
+                }))}
+              />
             </label>
             <Button
               type="button"
@@ -295,7 +295,7 @@ function LabelsPage() {
                 <li className="px-3 py-3 text-sm text-muted-foreground">
                   No specimens yet.{" "}
                   <Link
-                    to="/register"
+                    to="/accession"
                     className="font-medium text-foreground underline-offset-4 hover:underline"
                   >
                     Register a new specimen →

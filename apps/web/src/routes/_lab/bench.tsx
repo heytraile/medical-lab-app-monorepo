@@ -24,6 +24,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { api, type BenchResult } from "../../lib/api";
 import { analyzerLabel } from "../../lib/analyzers";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
+import { formatPatientName, patientSortKey } from "../../lib/patient-name";
 import { BenchPatientPanel } from "../../components/bench-patient-panel";
 import { BenchMobileList } from "../../components/bench-mobile-list";
 import { Sheet, SheetContent } from "../../components/ui/sheet";
@@ -107,7 +108,6 @@ const columnHelper = createColumnHelper<BenchResult>();
  * also wipes the expanded state.
  */
 const GROUPING = ["patientGroup"];
-const COLUMN_VISIBILITY = { patientGroup: false };
 const NO_RESULTS: BenchResult[] = [];
 
 type TabFilter = "all" | "pending" | "flagged";
@@ -220,11 +220,34 @@ function BenchPage() {
 
   const columns = useMemo(
     () => [
-      // Hidden: drives grouping only. The patient name is rendered once in the
-      // group header instead of repeating on every result row.
+      // Drives grouping, and carries the sortable Patient header. The accessor
+      // stays identity-based on purpose: grouping by name would merge two
+      // different patients who happen to share one into a single block, which
+      // is exactly the confusion the suspect-sibling handling exists to catch.
+      // Only the comparator looks at names.
       columnHelper.accessor(groupKeyFor, {
         id: "patientGroup",
-        header: "Patient",
+        header: ({ column }) => <SortHeader label="Patient" column={column} />,
+        // Leaf rows leave this cell empty: the name belongs to the block, and
+        // the empty cell is the nesting indent. Group rows never reach here,
+        // since BenchGroupRow renders them.
+        cell: () => null,
+        sortingFn: (a, b) => {
+          // Group rows are built from leafRows[0].original, so this comparator
+          // sees a real patient at block level, not just on leaves.
+          const pa = a.original.patient;
+          const pb = b.original.patient;
+          if (!pa && !pb) {
+            return a.original.accessionNumber.localeCompare(
+              b.original.accessionNumber,
+            );
+          }
+          // Unlinked specimens collect at the end rather than interleaving
+          // among named patients under whatever their accession sorts as.
+          if (!pa) return 1;
+          if (!pb) return -1;
+          return patientSortKey(pa).localeCompare(patientSortKey(pb));
+        },
       }),
       columnHelper.accessor("observedAt", {
         header: ({ column }) => (
@@ -315,7 +338,6 @@ function BenchPage() {
       sorting,
       expanded,
       grouping: GROUPING,
-      columnVisibility: COLUMN_VISIBILITY,
     },
     onSortingChange: setSorting,
     onExpandedChange: setExpanded,
@@ -384,14 +406,34 @@ function BenchPage() {
           </TabsList>
         </Tabs>
         {groupSummaries.size > 0 && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => table.toggleAllRowsExpanded(!allExpanded)}
-          >
-            {allExpanded ? "Collapse all" : "Expand all"}
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* A phone has no thead to click, so the sort needs its own
+                control. Hidden from md up, where the header takes over. */}
+            <Tabs
+              value={sorting[0]?.id === "patientGroup" ? "patient" : "newest"}
+              onValueChange={(v) =>
+                setSorting([
+                  v === "patient"
+                    ? { id: "patientGroup", desc: false }
+                    : { id: "observedAt", desc: true },
+                ])
+              }
+              className="md:hidden"
+            >
+              <TabsList>
+                <TabsTrigger value="newest">Newest</TabsTrigger>
+                <TabsTrigger value="patient">Patient</TabsTrigger>
+              </TabsList>
+            </Tabs>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => table.toggleAllRowsExpanded(!allExpanded)}
+            >
+              {allExpanded ? "Collapse all" : "Expand all"}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -541,7 +583,7 @@ function BenchPage() {
                             ? (focusedRowRef as React.Ref<HTMLTableRowElement>)
                             : undefined
                         }
-                        className="[&:hover>td]:bg-sky-200 dark:[&:hover>td]:bg-sky-900/70"
+                        className="[&:hover>td]:bg-sky-200 dark:[&:hover>td]:bg-sky-900/85"
                       >
                         {cells.map((cell, ci) => {
                           const isLastCell = ci === cells.length - 1;

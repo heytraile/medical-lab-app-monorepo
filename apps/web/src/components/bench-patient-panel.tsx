@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import {
@@ -6,6 +7,7 @@ import {
   type BenchPatientSummary,
   type BenchResult,
 } from "../lib/api";
+import { orderedTestsForPatient } from "../lib/ordered-tests";
 import { analyzerLabel } from "../lib/analyzers";
 import {
   AlarmSign,
@@ -60,6 +62,16 @@ export function BenchPatientPanel({
     queryKey: ["patient", patientId],
     queryFn: () => api.patient(patientId),
   });
+
+  const specimensQ = useQuery({
+    queryKey: ["specimens"],
+    queryFn: () => api.specimens(),
+  });
+
+  const orderedByAccession = orderedTestsForPatient(
+    specimensQ.data ?? [],
+    patientId,
+  );
 
   const p = detailQ.data;
   const displayName =
@@ -183,6 +195,35 @@ export function BenchPatientPanel({
             </div>
           )}
         </div>
+
+        {orderedByAccession.length > 0 && (
+          <div className="border-b border-border px-4 py-3">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Ordered tests
+            </p>
+            <ul className="space-y-3">
+              {orderedByAccession.map((row) => (
+                <li key={row.accessionNumber}>
+                  <Link
+                    to="/orders"
+                    search={{ accession: row.accessionNumber }}
+                    className="font-mono text-xs text-primary hover:underline"
+                  >
+                    {row.accessionNumber}
+                  </Link>
+                  <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                    {row.tests.map((t) => (
+                      <li key={`${row.accessionNumber}-${t.code}`}>
+                        <span className="font-mono text-[10px]">{t.code}</span>{" "}
+                        {t.name ?? t.code}
+                      </li>
+                    ))}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <div className="px-4 py-3">
           <div className="mb-2 flex items-baseline justify-between gap-2">

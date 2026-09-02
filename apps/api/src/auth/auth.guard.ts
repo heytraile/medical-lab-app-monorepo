@@ -73,7 +73,12 @@ export class SupabaseAuthGuard implements CanActivate {
         .select("role, email")
         .eq("id", data.user.id)
         .maybeSingle();
-      const role = (profile?.role as AuthUser["role"]) ?? "tech";
+      const metaRole = data.user.user_metadata?.role as string | undefined;
+      const role =
+        (profile?.role as AuthUser["role"]) ??
+        (["tech", "authorizer", "admin"].includes(metaRole ?? "")
+          ? (metaRole as AuthUser["role"])
+          : "tech");
       req.user = {
         id: data.user.id,
         email: profile?.email ?? data.user.email,

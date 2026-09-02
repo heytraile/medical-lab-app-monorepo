@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
-import { useAuth } from "../../lib/auth";
+import { canAuthorize, isAdmin, useAuth } from "../../lib/auth";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -112,6 +112,35 @@ function ProfilePage() {
           )}
         </div>
       </div>
+
+      {auth.role && (
+        <div className="space-y-3 rounded-xl border border-border bg-card p-5">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Capabilities
+          </p>
+          {isAdmin(auth.role) ? (
+            <>
+              <p className="text-sm text-muted-foreground">
+                You can release results, acknowledge review requests, and manage
+                staff — including who has authorizer permission.
+              </p>
+              <Button asChild variant="secondary" size="sm">
+                <Link to="/staff">Manage staff</Link>
+              </Button>
+            </>
+          ) : canAuthorize(auth.role) ? (
+            <p className="text-sm text-muted-foreground">
+              You can release results and acknowledge review requests on the
+              Release queue.
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              You can accession specimens, review bench results, and register
+              patients. Ask an admin or authorizer to release results.
+            </p>
+          )}
+        </div>
+      )}
 
       {canEditName ? (
         <form

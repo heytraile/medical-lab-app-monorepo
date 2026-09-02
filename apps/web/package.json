@@ -12,6 +12,7 @@
     "test": "echo \"no web tests yet\""
   },
   "dependencies": {
+    "@drax-lis/catalog": "workspace:*",
     "@drax-lis/contracts": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.23",
     "@radix-ui/react-dropdown-menu": "^2.1.24",

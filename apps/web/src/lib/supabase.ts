@@ -28,6 +28,32 @@ export type Profile = {
   full_name: string | null;
 };
 
+const PROFILE_ROLES = new Set<ProfileRole>(["tech", "authorizer", "admin"]);
+
+export function parseProfileRole(value: unknown): ProfileRole | null {
+  if (typeof value === "string" && PROFILE_ROLES.has(value as ProfileRole)) {
+    return value as ProfileRole;
+  }
+  return null;
+}
+
+export function profileFromAuthUser(user: User): Profile {
+  const role =
+    parseProfileRole(user.user_metadata?.role) ??
+    parseProfileRole(user.app_metadata?.role) ??
+    "tech";
+  const fullName =
+    typeof user.user_metadata?.full_name === "string"
+      ? user.user_metadata.full_name
+      : null;
+  return {
+    id: user.id,
+    email: user.email ?? null,
+    role,
+    full_name: fullName,
+  };
+}
+
 export async function fetchProfile(userId: string): Promise<Profile | null> {
   if (!supabase) return null;
   const { data, error } = await supabase
@@ -35,8 +61,13 @@ export async function fetchProfile(userId: string): Promise<Profile | null> {
     .select("id, email, role, full_name")
     .eq("id", userId)
     .maybeSingle();
-  if (error || !data) return null;
-  return data as Profile;
+  if (error) {
+    console.warn("[auth] profile fetch failed:", error.message);
+    return null;
+  }
+  if (!data) return null;
+  const role = parseProfileRole(data.role) ?? "tech";
+  return { ...(data as Profile), role };
 }
 
 export async function updateProfile(

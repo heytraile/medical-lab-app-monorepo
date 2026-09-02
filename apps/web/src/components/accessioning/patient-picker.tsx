@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ScanLine } from "lucide-react";
+import { ScanLine, UserPlus } from "lucide-react";
 import { api, type PatientListItem } from "../../lib/api";
 import { ACCESSION_RE } from "../../lib/label-preview-draft";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
@@ -8,6 +9,7 @@ import { useBarcodeScanner, useScanInput } from "../../lib/use-barcode-scanner";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { cn } from "../../lib/utils";
 
 function filterPatients(
   patients: PatientListItem[],
@@ -35,20 +37,19 @@ type Props = {
   selected: PatientListItem | null;
   onSelect: (patient: PatientListItem | null) => void;
   onAccessionScan: (accession: string) => void;
-  showCreate: boolean;
-  onShowCreate: (show: boolean) => void;
-  onOpenCreateFromSearch: (filterValue: string) => void;
   scanEnabled?: boolean;
+  /** Fill parent column height; patient list scrolls internally. */
+  fillHeight?: boolean;
+  className?: string;
 };
 
 export function PatientPicker({
   selected,
   onSelect,
   onAccessionScan,
-  showCreate,
-  onShowCreate,
-  onOpenCreateFromSearch,
   scanEnabled = true,
+  fillHeight = false,
+  className,
 }: Props) {
   const [filter, setFilter] = useState("");
   const [hint, setHint] = useState<string | null>(null);
@@ -82,21 +83,19 @@ export function PatientPicker({
     );
     if (exact) {
       onSelect(exact);
-      onShowCreate(false);
       setHint(`Selected ${exact.displayName} (${exact.mrn})`);
       return;
     }
     const matches = filterPatients(allPatients, trimmed);
     if (matches.length === 1) {
       onSelect(matches[0]!);
-      onShowCreate(false);
       setHint(`Selected ${matches[0]!.displayName}`);
       return;
     }
     setHint(
       matches.length > 0
         ? `${matches.length} matches — pick from list`
-        : "No patient match — register new or adjust filter",
+        : "No patient match — register on Patients page",
     );
   }
 
@@ -106,7 +105,7 @@ export function PatientPicker({
   });
 
   useBarcodeScanner({
-    enabled: scanEnabled && !showCreate,
+    enabled: scanEnabled,
     onScan: resolveScan,
   });
 
@@ -116,11 +115,18 @@ export function PatientPicker({
       : `${allPatients.length} patient${allPatients.length === 1 ? "" : "s"}`;
 
   return (
-    <div className="space-y-3">
-      <label className="block space-y-1.5">
-        <span className="flex items-center gap-2 text-sm font-medium">
+    <div
+      className={cn(
+        fillHeight
+          ? "flex min-h-0 flex-1 flex-col gap-3"
+          : "space-y-3",
+        className,
+      )}
+    >
+      <label className="block shrink-0 space-y-1.5">
+        <span className="flex items-center gap-2 text-base font-semibold">
           <ScanLine className="size-4" />
-          Scan MRN or filter patients
+          Patient
         </span>
         <Input
           value={filter}
@@ -131,6 +137,7 @@ export function PatientPicker({
           placeholder="Type to filter, or scan patient MRN…"
           autoComplete="off"
           autoFocus
+          className="h-10"
           {...scanHandlers}
           onKeyDown={(e) => {
             scanHandlers.onKeyDown(e);
@@ -143,7 +150,7 @@ export function PatientPicker({
       </label>
 
       {selected && (
-        <div className="rounded-md border border-accent/40 bg-accent/5 px-3 py-2 text-sm">
+        <div className="shrink-0 rounded-lg border border-accent/40 bg-accent/5 px-3 py-3 text-sm">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium">{selected.displayName}</span>
             <Badge variant="muted">{selected.mrn}</Badge>
@@ -172,18 +179,34 @@ export function PatientPicker({
 
       {!selected && (
         <>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-muted-foreground">{countLabel}</span>
+          <div className="flex shrink-0 flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">{countLabel}</span>
+            </div>
             <Button
               type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => onOpenCreateFromSearch(filter)}
+              variant="default"
+              size="lg"
+              className="h-10 w-full shadow-sm"
+              asChild
             >
-              Register new patient
+              <Link
+                to="/patients"
+                search={{ register: true, seed: filter.trim() || undefined }}
+              >
+                <UserPlus className="size-4" aria-hidden />
+                Register new patient
+              </Link>
             </Button>
           </div>
-          <ul className="max-h-72 overflow-auto rounded-md border border-border divide-y divide-border">
+          <ul
+            className={cn(
+              "divide-y divide-border rounded-lg border border-border",
+              fillHeight
+                ? "min-h-0 flex-1 overflow-y-auto"
+                : "max-h-[min(40vh,20rem)] overflow-auto",
+            )}
+          >
             {patientsQ.isLoading && (
               <li className="px-3 py-2 text-sm text-muted-foreground">
                 Loading patients…
@@ -197,8 +220,14 @@ export function PatientPicker({
             {!patientsQ.isLoading &&
               !patientsQ.isError &&
               allPatients.length === 0 && (
-                <li className="px-3 py-2 text-sm text-muted-foreground">
-                  No patients on file — register a new patient.
+                <li className="space-y-3 px-3 py-3 text-sm text-muted-foreground">
+                  <p>No patients on file.</p>
+                  <Button type="button" variant="default" className="w-full shadow-sm" asChild>
+                    <Link to="/patients" search={{ register: true }}>
+                      <UserPlus className="size-4" aria-hidden />
+                      Register new patient
+                    </Link>
+                  </Button>
                 </li>
               )}
             {!patientsQ.isLoading &&
@@ -213,11 +242,8 @@ export function PatientPicker({
               <li key={p.id}>
                 <button
                   type="button"
-                  className="flex w-full flex-col gap-0.5 px-3 py-2 text-left text-sm hover:bg-muted"
-                  onClick={() => {
-                    onSelect(p);
-                    onShowCreate(false);
-                  }}
+                  className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left text-sm hover:bg-muted/50"
+                  onClick={() => onSelect(p)}
                 >
                   <span className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{p.displayName}</span>

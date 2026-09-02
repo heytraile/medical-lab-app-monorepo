@@ -12,6 +12,7 @@
     "test": "echo \"no api tests yet\""
   },
   "dependencies": {
+    "@drax-lis/catalog": "workspace:*",
     "@drax-lis/contracts": "workspace:*",
     "@nestjs/common": "^11.1.2",
     "@nestjs/core": "^11.1.2",

@@ -27,6 +27,54 @@
   --color-sidebar-border: #1a3358;
   --color-ring: #0d9488;
   --color-destructive: #dc2626;
+
+  /* Unacknowledged critical alert on the notification bell. Deliberately
+     slower and larger than Tailwind's `ping` so it reads as an alarm across
+     the room rather than a loading hint. */
+  --animate-alarm-ring: alarm-ring 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-alarm-shake: alarm-shake 1.6s ease-in-out infinite;
+}
+
+@keyframes alarm-ring {
+  0% {
+    opacity: 0.75;
+    transform: scale(0.85);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.9);
+  }
+}
+
+@keyframes alarm-shake {
+  0%,
+  60%,
+  100% {
+    transform: rotate(0deg);
+  }
+  65% {
+    transform: rotate(-11deg);
+  }
+  75% {
+    transform: rotate(9deg);
+  }
+  85% {
+    transform: rotate(-5deg);
+  }
+}
+
+/* A pulsing red icon in a clinical setting is a real accessibility hazard, so
+   motion collapses to a static alarm colour rather than being merely slowed. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-alarm-ring {
+    animation: none;
+    opacity: 0.4;
+    transform: scale(1.35);
+  }
+  .animate-alarm-shake {
+    animation: none;
+  }
 }
 
 .dark {

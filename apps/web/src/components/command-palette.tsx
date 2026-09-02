@@ -146,14 +146,16 @@ export function CommandPalette({ open, onOpenChange }: Props) {
       const q = url.searchParams.get("q") ?? undefined;
       if (url.pathname === "/bench") {
         void navigate({ to: "/bench", search: { analyzer, q } });
-      } else if (url.pathname === "/register") {
-        void navigate({ to: "/register" });
+      } else if (url.pathname === "/accession" || url.pathname === "/register") {
+        void navigate({ to: "/accession" });
       } else if (url.pathname === "/sync") {
         void navigate({ to: "/sync" });
       } else if (url.pathname === "/release") {
         void navigate({ to: "/release" });
       } else if (url.pathname === "/patients") {
         void navigate({ to: "/patients" });
+      } else if (url.pathname === "/staff") {
+        void navigate({ to: "/staff" });
       }
     },
     [navigate, onOpenChange],

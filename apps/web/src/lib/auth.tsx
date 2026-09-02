@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   fetchProfile,
+  profileFromAuthUser,
   supabase,
   supabaseConfigured,
   updateProfile,
@@ -102,7 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.session?.user) {
         setDevRole(null);
         localStorage.removeItem(DEV_TOKEN_KEY);
-        setProfile(await fetchProfile(data.session.user.id));
+        const loaded =
+          (await fetchProfile(data.session.user.id)) ??
+          profileFromAuthUser(data.session.user);
+        setProfile(loaded);
       }
       setReady(true);
     });
@@ -112,7 +116,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (next?.user) {
         setDevRole(null);
         localStorage.removeItem(DEV_TOKEN_KEY);
-        void fetchProfile(next.user.id).then(setProfile);
+        void (async () => {
+          const loaded =
+            (await fetchProfile(next.user.id)) ?? profileFromAuthUser(next.user);
+          setProfile(loaded);
+        })();
         return;
       }
       const saved = localStorage.getItem(DEV_TOKEN_KEY);
@@ -169,8 +177,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshProfile = useCallback(async () => {
     const uid = session?.user?.id;
     if (!uid) return;
-    setProfile(await fetchProfile(uid));
-  }, [session?.user?.id]);
+    const loaded =
+      (await fetchProfile(uid)) ??
+      (session?.user ? profileFromAuthUser(session.user) : null);
+    if (loaded) setProfile(loaded);
+  }, [session?.user]);
 
   const saveFullName = useCallback(
     async (fullName: string) => {
@@ -229,6 +240,16 @@ export function useAuth() {
   return ctx;
 }
 
-export function canRelease(role: ProfileRole | null) {
+export function isAdmin(role: ProfileRole | null): boolean {
+  return role === "admin";
+}
+
+/** Authorizers and admins may release results and acknowledge review requests. */
+export function canAuthorize(role: ProfileRole | null): boolean {
   return role === "authorizer" || role === "admin";
+}
+
+/** @deprecated Use canAuthorize */
+export function canRelease(role: ProfileRole | null) {
+  return canAuthorize(role);
 }

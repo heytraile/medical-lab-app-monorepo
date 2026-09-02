@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, type CloudResult } from "../../lib/api";
-import { canRelease, useAuth } from "../../lib/auth";
+import { canAuthorize, isAdmin, useAuth } from "../../lib/auth";
 import { isCloudMode } from "../../lib/supabase";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
@@ -36,7 +36,7 @@ function sortForRelease(rows: CloudResult[]) {
 function ReleasePage() {
   const auth = useAuth();
   const qc = useQueryClient();
-  const allowed = canRelease(auth.role);
+  const allowed = canAuthorize(auth.role);
   const isDesktop = useIsDesktop();
 
   const resultsQ = useQuery({
@@ -99,6 +99,16 @@ function ReleasePage() {
           <Link to="/login" className="underline underline-offset-2">
             Go to login
           </Link>
+        </p>
+      )}
+
+      {auth.accessToken && allowed && isAdmin(auth.role) && (
+        <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          As admin you have full authorizer access. Use{" "}
+          <Link to="/staff" className="font-medium text-foreground underline-offset-2 hover:underline">
+            Staff
+          </Link>{" "}
+          to grant authorizer permission to others.
         </p>
       )}
 

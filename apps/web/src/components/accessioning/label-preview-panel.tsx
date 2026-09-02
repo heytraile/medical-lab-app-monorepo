@@ -70,7 +70,7 @@ export function LabelPreviewPanel({
   return (
     <div
       className={cn(
-        "space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm lg:sticky lg:top-4 lg:self-start",
+        "min-w-0 max-w-full space-y-3 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm lg:sticky lg:top-4 lg:self-start",
         className,
       )}
     >

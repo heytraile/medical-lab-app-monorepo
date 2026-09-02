@@ -1,3 +1,19 @@
+import type {
+  CatalogResponse,
+  LabRequisition,
+  RegisterSpecimenRequest,
+  RequisitionCreate,
+  ReviewRequest,
+  ReviewRequestCreate,
+  StaffCollector,
+  StaffMember,
+  StaffMemberCreate,
+  StaffMemberUpdate,
+} from "@drax-lis/contracts";
+
+export type { ReviewRequest, ReviewRequestCreate, CatalogResponse, LabRequisition };
+export type { StaffCollector, StaffMember, StaffMemberCreate, StaffMemberUpdate };
+
 const EDGE_API_URL =
   (typeof import.meta !== "undefined" &&
     import.meta.env?.VITE_LIS_API_URL) ||
@@ -67,6 +83,9 @@ export type BenchPatientSummary = {
   id: string;
   mrn: string;
   displayName: string;
+  /** Optional: older edge builds only sent displayName. */
+  firstName?: string;
+  lastName?: string;
   dateOfBirth: string | null;
   sex: string | null;
   status: string;
@@ -139,6 +158,7 @@ export type SpecimenRow = {
   identityConfirmationJson?: string | null;
   specimenType?: string;
   orderedTestsJson?: string;
+  requisitionId?: string | null;
   status: string;
   registeredAt: string;
 };
@@ -249,13 +269,7 @@ export const api = {
       method: "POST",
       auth: false,
     }),
-  registerSpecimen: (body: {
-    patientId: string;
-    identityConfirmation?: IdentityConfirmation;
-    orderedTests?: Array<{ code: string; name?: string }>;
-    printLabel?: boolean;
-    copies?: number;
-  }) =>
+  registerSpecimen: (body: RegisterSpecimenRequest) =>
     request<{
       specimen: SpecimenRow;
       printResult?: PrintResult;
@@ -332,6 +346,80 @@ export const api = {
   releaseResult: (id: string) =>
     request<CloudResult>(`/results/${id}/release`, {
       method: "POST",
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+
+  /** Review requests — the bench asking an authorizer to sign off. */
+  listReviewRequests: (openOnly?: boolean) =>
+    request<ReviewRequest[]>(
+      `/review-requests${openOnly ? "?open=true" : ""}`,
+      { baseUrl: CLOUD_API_URL, auth: true },
+    ),
+  createReviewRequest: (body: ReviewRequestCreate) =>
+    request<ReviewRequest>("/review-requests", {
+      method: "POST",
+      body: JSON.stringify(body),
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  acknowledgeReviewRequest: (id: string) =>
+    request<ReviewRequest>(`/review-requests/${id}/ack`, {
+      method: "POST",
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+
+  /** Test catalog + requisitions (cloud). */
+  getCatalog: () =>
+    request<CatalogResponse>("/catalog", {
+      baseUrl: CLOUD_API_URL,
+      auth: false,
+    }),
+  createRequisition: (body: RequisitionCreate) =>
+    request<LabRequisition>("/requisitions", {
+      method: "POST",
+      body: JSON.stringify(body),
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  linkRequisition: (
+    id: string,
+    body: { accessionNumber: string; edgeSpecimenId: string },
+  ) =>
+    request<LabRequisition>(`/requisitions/${id}/link`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  getRequisitionByAccession: (accession: string) =>
+    request<LabRequisition | null>(
+      `/requisitions?accession=${encodeURIComponent(accession)}`,
+      { baseUrl: CLOUD_API_URL, auth: true },
+    ),
+
+  listCollectors: () =>
+    request<StaffCollector[]>("/lab/staff/collectors", {
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  listStaff: () =>
+    request<StaffMember[]>("/lab/staff", {
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  createStaff: (body: StaffMemberCreate) =>
+    request<StaffMember>("/lab/staff", {
+      method: "POST",
+      body: JSON.stringify(body),
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  updateStaff: (id: string, body: StaffMemberUpdate) =>
+    request<StaffMember>(`/lab/staff/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
       baseUrl: CLOUD_API_URL,
       auth: true,
     }),
