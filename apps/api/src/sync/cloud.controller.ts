@@ -1,24 +1,110 @@
 import {
+  BadRequestException,
+  Body,
   Controller,
   Get,
+  Param,
+  Post,
   Query,
   UseGuards,
 } from "@nestjs/common";
+import { EmailPatientReportRequestSchema } from "@drax-lis/contracts";
 import { SyncService } from "./sync.service";
-import { SupabaseAuthGuard } from "../auth/auth.guard";
+import { ReportsService } from "../reports/reports.service";
+import { MailService } from "../reports/mail.service";
+import { AuditService } from "../audit/audit.service";
+import {
+  CurrentUser,
+  SupabaseAuthGuard,
+  toActorSnapshot,
+  type AuthUser,
+} from "../auth/auth.guard";
+import {
+  formatJobTitle,
+  staffSenderReference,
+} from "../lab-staff/staff-labels";
 
 @Controller("cloud")
 @UseGuards(SupabaseAuthGuard)
 export class CloudReadController {
-  constructor(private readonly sync: SyncService) {}
+  constructor(
+    private readonly sync: SyncService,
+    private readonly reports: ReportsService,
+    private readonly mail: MailService,
+    private readonly audit: AuditService,
+  ) {}
 
   @Get("results")
   results(@Query("status") status?: string) {
     return this.sync.listResults({ status });
   }
 
+  @Get("release-queue")
+  releaseQueue() {
+    return this.sync.listReleaseQueue();
+  }
+
   @Get("specimens")
   specimens() {
     return this.sync.listSpecimens();
+  }
+
+  @Get("patients/:edgePatientId/report")
+  patientReport(@Param("edgePatientId") edgePatientId: string) {
+    return this.reports.buildPatientReport(edgePatientId);
+  }
+
+  @Post("patients/:edgePatientId/report/email")
+  async emailPatientReport(
+    @Param("edgePatientId") edgePatientId: string,
+    @Body() body: unknown,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const parsed = EmailPatientReportRequestSchema.parse(body);
+    const payload = await this.reports.buildPatientReport(edgePatientId);
+    if (payload.summary.resultCount === 0) {
+      throw new BadRequestException(
+        "No released results for this patient — release results first",
+      );
+    }
+
+    const actor = toActorSnapshot(user);
+    const senderReference = staffSenderReference(user.id);
+    const senderName =
+      user.fullName?.trim() || user.email?.trim() || "Lab staff";
+
+    await this.mail.sendPatientReportEmail({
+      to: parsed.to,
+      payload,
+      recipientType: parsed.recipientType,
+      message: parsed.message,
+      sender: {
+        staffId: user.id,
+        senderReference,
+        fullName: senderName,
+        jobTitleLabel: formatJobTitle(user.jobTitle),
+        email: user.email ?? null,
+        role: user.role,
+      },
+    });
+
+    await this.audit.log({
+      eventType: "report.emailed",
+      entityType: "patient",
+      entityId: edgePatientId,
+      actor,
+      payload: {
+        to: parsed.to,
+        recipientType: parsed.recipientType,
+        resultCount: payload.summary.resultCount,
+        mrn: payload.patient.mrn,
+        senderStaffId: user.id,
+        senderReference,
+        senderName,
+        senderJobTitle: user.jobTitle ?? null,
+      },
+    });
+
+    return { ok: true };
   }
 }

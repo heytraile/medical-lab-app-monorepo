@@ -1,6 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  EditStaffFormSchema,
+  type EditStaffFormValues,
+} from "@drax-lis/contracts";
 import type { StaffJobTitle, StaffMember, StaffRole } from "@drax-lis/contracts";
 import { api } from "../../lib/api";
 import { isAdmin, useAuth } from "../../lib/auth";
@@ -18,7 +24,9 @@ import {
 } from "../../components/staff/staff-labels";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
+import { FormErrorSummary, FormField } from "../../components/forms/form-field";
 import { cn } from "../../lib/utils";
 
 export const Route = createFileRoute("/_lab/staff")({
@@ -186,79 +194,123 @@ function StaffRow({
   onToggleActive: () => void;
   togglePending: boolean;
 }) {
-  const [fullName, setFullName] = useState(member.fullName ?? "");
-  const [role, setRole] = useState<StaffRole>(member.role);
-  const [jobTitle, setJobTitle] = useState<StaffJobTitle>(
-    member.jobTitle ?? "other",
-  );
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<EditStaffFormValues>({
+    resolver: zodResolver(EditStaffFormSchema),
+    defaultValues: {
+      fullName: member.fullName ?? "",
+      role: member.role,
+      jobTitle: member.jobTitle ?? "other",
+    },
+    mode: "onBlur",
+    reValidateMode: "onChange",
+  });
+
+  const role = watch("role");
+  const jobTitle = watch("jobTitle");
+
+  useEffect(() => {
+    if (editing) {
+      reset({
+        fullName: member.fullName ?? "",
+        role: member.role,
+        jobTitle: member.jobTitle ?? "other",
+      });
+    }
+  }, [editing, member, reset]);
 
   const saveMutation = useMutation({
-    mutationFn: () =>
-      api.updateStaff(member.id, {
-        fullName: fullName.trim(),
-        role,
-        jobTitle,
-      }),
+    mutationFn: (values: EditStaffFormValues) =>
+      api.updateStaff(member.id, EditStaffFormSchema.parse(values)),
     onSuccess: onSaved,
   });
+
+  const serverError =
+    saveMutation.error instanceof Error
+      ? saveMutation.error.message
+      : null;
 
   if (editing) {
     return (
       <tr className="border-b border-border">
-        <td className="px-4 py-3">
-          <input
-            className="h-9 w-full rounded-md border border-border bg-background px-2 text-sm"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-          />
-        </td>
-        <td className="px-4 py-3 text-muted-foreground">{member.email ?? "—"}</td>
-        <td className="px-4 py-3">
-          <Select
-            value={role}
-            onValueChange={(v) => setRole(v as StaffRole)}
-            aria-label="Permission role"
-            options={ROLE_OPTIONS.map((r) => ({
-              value: r,
-              label: ROLE_LABELS[r],
-            }))}
-          />
-        </td>
-        <td className="px-4 py-3">
-          <Select
-            value={jobTitle}
-            onValueChange={(v) => setJobTitle(v as StaffJobTitle)}
-            aria-label="Job title"
-            options={JOB_TITLE_OPTIONS.map((t) => ({
-              value: t,
-              label: JOB_TITLE_LABELS[t],
-            }))}
-          />
-        </td>
-        <td className="px-4 py-3">
-          <Badge variant={member.isActive ? "default" : "muted"}>
-            {member.isActive ? "Active" : "Inactive"}
-          </Badge>
-        </td>
-        <td className="px-4 py-3">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              disabled={saveMutation.isPending}
-              onClick={() => saveMutation.mutate()}
+        <td className="px-4 py-3" colSpan={6}>
+          <form
+            className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-start"
+            noValidate
+            onSubmit={handleSubmit((values) => saveMutation.mutate(values))}
+          >
+            <FormField
+              label="Full name"
+              htmlFor={`staff-name-${member.id}`}
+              error={errors.fullName}
+              required
             >
-              Save
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              onClick={onCancelEdit}
-            >
-              Cancel
-            </Button>
-          </div>
+              <Input
+                id={`staff-name-${member.id}`}
+                aria-invalid={Boolean(errors.fullName)}
+                {...register("fullName")}
+              />
+            </FormField>
+            <FormField label="Permission role" error={errors.role} required>
+              <Select
+                value={role}
+                onValueChange={(v) =>
+                  setValue("role", v as StaffRole, {
+                    shouldValidate: true,
+                    shouldDirty: true,
+                  })
+                }
+                aria-label="Permission role"
+                options={ROLE_OPTIONS.map((r) => ({
+                  value: r,
+                  label: ROLE_LABELS[r],
+                }))}
+              />
+            </FormField>
+            <FormField label="Job title" error={errors.jobTitle} required>
+              <Select
+                value={jobTitle}
+                onValueChange={(v) =>
+                  setValue("jobTitle", v as StaffJobTitle, {
+                    shouldValidate: true,
+                    shouldDirty: true,
+                  })
+                }
+                aria-label="Job title"
+                options={JOB_TITLE_OPTIONS.map((t) => ({
+                  value: t,
+                  label: JOB_TITLE_LABELS[t],
+                }))}
+              />
+            </FormField>
+            <div className="flex flex-wrap gap-2 sm:pt-6">
+              <Button
+                type="submit"
+                size="sm"
+                disabled={saveMutation.isPending || isSubmitting}
+              >
+                Save
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                onClick={onCancelEdit}
+              >
+                Cancel
+              </Button>
+            </div>
+            <div className="sm:col-span-4">
+              <p className="text-xs text-muted-foreground">{member.email ?? "—"}</p>
+              <FormErrorSummary message={serverError} className="mt-2" />
+            </div>
+          </form>
         </td>
       </tr>
     );

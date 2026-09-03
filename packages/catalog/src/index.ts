@@ -18,3 +18,25 @@ export {
   type CatalogItemSeed,
   type PanelSeed,
 } from "./dhms-catalog";
+
+export {
+  ANALYZER_SIM_ANALYTES,
+  MANUAL_CATALOG_CODES,
+  MANUAL_CATEGORIES,
+  allSimulatorInstrumentCodes,
+  analytesForOrder,
+  analyzerHasWork,
+  getAnalyzerForCatalogCode,
+  getCatalogDisplayName,
+  getCatalogItem,
+  getFulfillment,
+  instrumentToCatalogCodes,
+  isResultExpectedOnOrder,
+  manualTestsInOrder,
+  normalizeCode,
+  parseOrderedTestCodes,
+  pickCatalogCodeForResult,
+  type AnalyzerId,
+  type Fulfillment,
+  type SimAnalyte,
+} from "./test-fulfillment";

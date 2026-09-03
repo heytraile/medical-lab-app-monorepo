@@ -79,6 +79,9 @@ doppler secrets set SUPABASE_URL=https://xxxx.supabase.co
 | `SYSMEX_TCP_PORT` / `MINDRAY_TCP_PORT` / `IFLASH_TCP_PORT` | edge / sims | Defaults 5001 / 5003 / 5004 |
 | `ZEBRA_PRINTER_HOST` / `ZEBRA_PRINTER_PORT` | edge | Defaults `127.0.0.1` / `9100` |
 | `PROLYTE_SERIAL_PATH` / `PROLYTE_BAUD` | edge / sims | Optional RS-232 |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | api | Local Mailpit only — see [EMAIL.md](./EMAIL.md) |
+| `RESEND_API_KEY` | api | Production/staging — Resend (per client); empty locally |
+| `REVIEW_ALERT_EMAIL_FROM` | api | From address for authorizer alert email — see [EMAIL.md](./EMAIL.md) |
 
 Vite only exposes keys prefixed with `VITE_` to the browser — name them that way in Doppler.
 
@@ -158,6 +161,20 @@ pnpm --filter @drax-lis/simulators send:iflash -- --barcode DHDEMO001-IA --query
 
 Then open **Bench** — CBC / chemistry / TSH rows should appear with units, flags, and `pending_review`. Check `GET http://localhost:3101/analyzers/status` or the Bench status strip. **Sync** shows outbox counters draining to the cloud API (in-memory if Supabase env is empty).
 
+### Submit → release → export (local)
+
+1. Sign in as **tech** (`tech@draxhall.local` / `password123`).
+2. On **Bench**, expand a patient group and click **Submit for release** (not the same as **Notify authorizer**).
+3. Open **Sync** → **Drain now** if the release queue stays empty (flushes edge outbox).
+4. Sign in as **authorizer** (`authorizer@draxhall.local`) → **Release** queue → click **Release** once on the accession group, or **Return to bench** to send it back to the tech (confirmation dialog; optional reason).
+5. As **tech**, after submit you can **Recall from release queue** on Bench if you submitted too early (confirmation required).
+6. Back on **Bench** (or **Patients**), confirm the group shows **Released** (no recall/submit). Use the **Released** tab to browse completed accessions.
+7. **Export report** → PDF, JSON, or **Email to doctor** (JSON attachment). Local email lands in [Mailpit](http://127.0.0.1:54324) (SMTP port `54325`). **Production email uses [Resend](./EMAIL.md)** — one Resend setup per client lab.
+
+Patient names in the release queue come from the specimen synced with submit. If you see **Unknown patient** after `pnpm supabase:reset`, re-accession the patient (or submit again so the edge includes `specimensByAccession` in the sync payload).
+
+Audit rows appear in Supabase `clinical_audit_log` — see [AUDIT.md](./AUDIT.md).
+
 ## Manual ingest (no simulator)
 
 ```bash
@@ -212,6 +229,33 @@ Then open:
 
 Simulator default barcode is `DHDEMO0001` (Marlon Campbell) so ongoing sim traffic stays patient-linked. Override with `SIM_BARCODE=…` if needed.
 
+### Order-aware simulators (catalog remap)
+
+Simulators read the accession’s `orderedTestsJson` from edge (`GET /specimens?accession=…`) and only send analytes that match the order. Ingestion remaps machine codes (e.g. `GLU` → `GLUCOSE_RAND`, `BUN` → `UREA_BUN`) so Bench shows request-form names. Results not on the order get a **Not ordered** badge.
+
+| Env | Effect |
+| --- | --- |
+| `SIM_BARCODE` | Barcode/accession to simulate (default `DHDEMO0001`) |
+| `SIM_STRICT=1` | Send nothing until that accession is registered with an order |
+
+**Full four-analyzer demo order** — on Accession, register `DHDEMO0001` (or your barcode) with:
+
+- `CBC` (Sysmex)
+- `CREATININE`, `ALT_SGPT`, `TOTAL_CHOLESTEROL` (Mindray)
+- `ELECTROLYTES` (ProLyte — set `PROLYTE_SERIAL_PATH` per socat recipe below)
+- `TSH` (iFlash)
+
+CBC-only orders produce Sysmex results only; chemistry-only skips Sysmex. See [MACHINE_TO_REQUEST_FORM.md](./MACHINE_TO_REQUEST_FORM.md) for the full remap table.
+
+### Patient report export (PDF / JSON)
+
+1. Sign in (e.g. `authorizer@draxhall.local` / `password123`).
+2. Accession a specimen and wait for simulator results to sync to cloud.
+3. Open **Release** (`/release`) and release pending rows for that patient.
+4. On **Bench**, open the patient focus panel → **Export report** → choose **PDF (Letter)**, **PDF (Legal)**, or **JSON**.
+
+Reports include **released results only**. Lab header branding comes from `labs.settings.report` (re-seed with `pnpm supabase:reset` if you need the demo address block). Set `settings.report.logoUrl` in Supabase Studio to replace the logo placeholder.
+
 **Notifications:** the bell (top-right) fills when analyzers report **new** results or when a flag **escalates** to high/critical. Simulator retransmits every ~30s update values quietly — they do not spam the notification center.
 
 Re-seed patients only: `curl -X POST http://localhost:3101/patients/seed`
@@ -258,7 +302,7 @@ The dev-role shortcut (“Continue as admin (dev)”) still exists for when Supa
 running.
 
 Release queue: http://localhost:3100/release — admins and authorizers release cloud
-`pending_review` results (`POST /results/:id/release`).
+`pending_authorization` accessions (`POST /results/release-accession`).
 
 ### Changing the schema
 

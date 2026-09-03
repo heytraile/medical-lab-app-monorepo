@@ -3,6 +3,7 @@ import * as RadixDialog from "@radix-ui/react-dialog";
 import { Command as CommandPrimitive } from "cmdk";
 import { Search } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { ScrollContainer } from "./scroll-container";
 
 export const Dialog = RadixDialog.Root;
 export const DialogPortal = RadixDialog.Portal;
@@ -79,12 +80,16 @@ CommandInput.displayName = CommandPrimitive.Input.displayName;
 export const CommandList = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.List>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.List>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.List
-    ref={ref}
-    className={cn("max-h-80 overflow-y-auto overflow-x-hidden p-2", className)}
-    {...props}
-  />
+>(({ className, children, ...props }, ref) => (
+  <ScrollContainer className={cn("max-h-80", className)}>
+    <CommandPrimitive.List
+      ref={ref}
+      className="overflow-x-hidden p-2"
+      {...props}
+    >
+      {children}
+    </CommandPrimitive.List>
+  </ScrollContainer>
 ));
 CommandList.displayName = CommandPrimitive.List.displayName;
 

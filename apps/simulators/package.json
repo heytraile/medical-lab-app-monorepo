@@ -16,6 +16,7 @@
     "zebra": "tsx src/zebra.ts"
   },
   "dependencies": {
+    "@drax-lis/catalog": "workspace:*",
     "@drax-lis/protocols": "workspace:*"
   },
   "devDependencies": {

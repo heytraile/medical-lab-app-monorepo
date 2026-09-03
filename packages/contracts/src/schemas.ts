@@ -1,4 +1,11 @@
 import { z } from "zod";
+import {
+  emailField,
+  optionalPersonNameField,
+  passwordField,
+  personNameField,
+  profileFullNameField,
+} from "./form-validators";
 
 /** Four physical analyzers at Drax Hall. */
 export const AnalyzerIdSchema = z.enum([
@@ -42,6 +49,7 @@ export type ResultFlag = z.infer<typeof ResultFlagSchema>;
 /** Clinical review state on a Result row (Bench → authorizer). */
 export const ClinicalResultStatusSchema = z.enum([
   "pending_review",
+  "pending_authorization",
   "released",
   "held",
   "rejected",
@@ -78,9 +86,9 @@ export const PatientSchema = z.object({
 export type Patient = z.infer<typeof PatientSchema>;
 
 export const CreatePatientRequestSchema = z.object({
-  firstName: z.string().min(1),
-  lastName: z.string().min(1),
-  middleName: z.string().optional(),
+  firstName: personNameField,
+  lastName: personNameField,
+  middleName: optionalPersonNameField,
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   sex: z.enum(["M", "F", "O", "U"]).optional(),
 });
@@ -161,6 +169,8 @@ export const OutboxEventTypeSchema = z.enum([
   "specimen.registered",
   "result.received",
   "result.batch",
+  "result.submitted",
+  "result.recalled",
   "instrument.status",
   "patient.provisional_created",
 ]);
@@ -285,16 +295,16 @@ export const StaffMemberSchema = z.object({
 export type StaffMember = z.infer<typeof StaffMemberSchema>;
 
 export const StaffMemberCreateSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(8),
-  fullName: z.string().min(1).max(200),
+  email: emailField,
+  password: passwordField,
+  fullName: profileFullNameField,
   role: StaffRoleSchema.default("tech"),
   jobTitle: StaffJobTitleSchema,
 });
 export type StaffMemberCreate = z.infer<typeof StaffMemberCreateSchema>;
 
 export const StaffMemberUpdateSchema = z.object({
-  fullName: z.string().min(1).max(200).optional(),
+  fullName: profileFullNameField.optional(),
   role: StaffRoleSchema.optional(),
   jobTitle: StaffJobTitleSchema.optional(),
   isActive: z.boolean().optional(),

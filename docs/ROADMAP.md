@@ -46,8 +46,9 @@ First customer: **Drax Hall Clinical Laboratory**. Architecture stays multi-lab-
 - **Bench Review gallery** for techs (filters, live) ✅ (edge)
 - Roles: tech vs **authorizer** via Supabase Auth `profiles.role` ✅
 - Authorizer-only **Release queue** + `POST /results/:id/release` audit ✅
+- **Patient report export** (PDF Letter/Legal + JSON, released-only) ✅
 - Critical / STAT email notifications — later
-- Doctor/report path — later
+- Doctor portal / automated delivery — later
 
 ## Phase 4 — Lab hardware deployment
 
@@ -62,7 +63,7 @@ First customer: **Drax Hall Clinical Laboratory**. Architecture stays multi-lab-
 ## Phase 5 — Full LIS product surface
 
 - Auth, roles, multi-site / multi-lab packaging
-- PDF reports, cumulative history
+- PDF reports ✅ (v1: per-patient Letter/Legal + JSON); cumulative history — later
 - QC lots / Westgard (incremental)
 - Configurable critical ranges UI per lab
 - Inventory / reagents (optional)

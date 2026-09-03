@@ -5,6 +5,12 @@ import { SyncService } from "../sync/sync.service";
 import { displayName } from "../patients/patient-normalize";
 import type { BenchIngestItem } from "@drax-lis/contracts";
 import {
+  getCatalogDisplayName,
+  parseOrderedTestCodes,
+  pickCatalogCodeForResult,
+  type AnalyzerId,
+} from "@drax-lis/catalog";
+import {
   parseAstmFrame,
   parseE1394,
   parseOru,
@@ -71,6 +77,10 @@ export class IngestionService {
     const barcode = message.barcode ?? `UNK-${raw.id.slice(0, 8)}`;
     const accessionNumber = barcode;
 
+    const existingSpecimen = await this.prisma.specimen.findUnique({
+      where: { accessionNumber },
+    });
+
     await this.prisma.specimen.upsert({
       where: { accessionNumber },
       create: {
@@ -82,13 +92,27 @@ export class IngestionService {
       update: { status: "partial" },
     });
 
+    const orderedCatalogCodes = parseOrderedTestCodes(
+      existingSpecimen?.orderedTestsJson,
+    );
+    const analyzerId = input.analyzerId as AnalyzerId;
+
     const createdResults = [];
     const notifiableItems: BenchIngestItem[] = [];
     for (const r of message.analytes) {
+      const mapped = pickCatalogCodeForResult(
+        analyzerId,
+        r.testCode,
+        orderedCatalogCodes,
+      );
+      const catalogCode = mapped.catalogCode;
+      const instrumentTestCode = mapped.instrumentCode;
+      const testName = getCatalogDisplayName(catalogCode);
+
       const existing = await this.prisma.result.findFirst({
         where: {
           accessionNumber,
-          testCode: r.testCode,
+          testCode: catalogCode,
           analyzerId: input.analyzerId,
         },
         orderBy: { observedAt: "desc" },
@@ -100,7 +124,7 @@ export class IngestionService {
         // Retransmit / update: refresh values. Do not clobber a released result.
         if (existing.status === "released") {
           this.logger.warn(
-            `Skip update for released ${accessionNumber}/${r.testCode} (${input.analyzerId})`,
+            `Skip update for released ${accessionNumber}/${catalogCode} (${input.analyzerId})`,
           );
           createdResults.push(existing);
           continue;
@@ -109,7 +133,8 @@ export class IngestionService {
           where: { id: existing.id },
           data: {
             barcode,
-            testName: existing.testName,
+            testName,
+            instrumentTestCode,
             value: r.value,
             units: r.units,
             referenceLow: r.referenceLow,
@@ -141,7 +166,9 @@ export class IngestionService {
             accessionNumber,
             barcode,
             analyzerId: input.analyzerId,
-            testCode: r.testCode,
+            testCode: catalogCode,
+            instrumentTestCode,
+            testName,
             value: r.value,
             units: r.units,
             referenceLow: r.referenceLow,

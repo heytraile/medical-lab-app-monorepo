@@ -1,10 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { LoginFormSchema, type LoginFormValues } from "@drax-lis/contracts";
 import { useAuth } from "../lib/auth";
 import { supabaseConfigured } from "../lib/supabase";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { FormErrorSummary, FormField } from "../components/forms/form-field";
 
 type LoginSearch = {
   redirect?: string;
@@ -43,29 +47,36 @@ function LoginPage() {
   const { redirect } = Route.useSearch();
   const dest = safeRedirect(redirect);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [showDevAccounts, setShowDevAccounts] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    setError,
+    clearErrors,
+  } = useForm<LoginFormValues>({
+    resolver: zodResolver(LoginFormSchema),
+    defaultValues: { email: "", password: "" },
+    mode: "onBlur",
+    reValidateMode: "onChange",
+  });
 
   const signedIn = Boolean(auth.accessToken);
+  const [showDevAccounts, setShowDevAccounts] = useState(false);
 
   async function goAfterAuth() {
     void navigate({ to: dest });
   }
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
+  async function onSubmit(values: LoginFormValues) {
+    clearErrors("root");
     try {
-      await auth.signIn(email.trim(), password);
+      const parsed = LoginFormSchema.parse(values);
+      await auth.signIn(parsed.email, parsed.password);
       await goAfterAuth();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-in failed");
-    } finally {
-      setBusy(false);
+      setError("root", {
+        message: err instanceof Error ? err.message : "Sign-in failed",
+      });
     }
   }
 
@@ -111,31 +122,47 @@ function LoginPage() {
             </div>
           </div>
         ) : supabaseConfigured ? (
-          <form className="space-y-3" onSubmit={onSubmit}>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Email</span>
+          <form
+            className="space-y-3"
+            noValidate
+            onSubmit={handleSubmit(onSubmit)}
+          >
+            <FormField
+              label="Email"
+              htmlFor="login-email"
+              error={errors.email}
+              required
+            >
               <Input
+                id="login-email"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
                 autoComplete="username"
+                aria-invalid={Boolean(errors.email)}
+                {...register("email")}
               />
-            </label>
-            <label className="block space-y-1.5">
-              <span className="text-sm font-medium">Password</span>
+            </FormField>
+            <FormField
+              label="Password"
+              htmlFor="login-password"
+              error={errors.password}
+              required
+            >
               <Input
+                id="login-password"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
                 autoComplete="current-password"
+                aria-invalid={Boolean(errors.password)}
+                {...register("password")}
               />
-            </label>
-            <Button type="submit" className="w-full" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
+            </FormField>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? "Signing in…" : "Sign in"}
             </Button>
-            {error && <p className="text-sm text-lab-danger">{error}</p>}
+            <FormErrorSummary message={errors.root?.message ?? null} />
             <div className="rounded-lg border border-border bg-muted/30">
               <button
                 type="button"

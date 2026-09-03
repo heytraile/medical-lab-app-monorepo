@@ -1,59 +1,97 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, ApiError, type CloudResult } from "../../lib/api";
+import { useState } from "react";
+import { api, ApiError } from "../../lib/api";
 import { canAuthorize, isAdmin, useAuth } from "../../lib/auth";
-import { isCloudMode } from "../../lib/supabase";
-import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
-import {
-  AlarmSign,
-  FlagChip,
-  flagBarColor,
-  flagRowClass,
-  flagValueClass,
-  isAlarmFlag,
-} from "../../components/result-status";
-import { cn } from "../../lib/utils";
+import { ReleaseQueueEmptyState } from "../../components/release-queue-empty-state";
+import { ReleaseQueueGroupRow } from "../../components/release-queue-group-row";
 import { useIsDesktop } from "../../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab/release")({
   component: ReleasePage,
 });
 
-function sortForRelease(rows: CloudResult[]) {
-  const score = (r: CloudResult) => {
-    if (r.urgency === "stat") return 0;
-    if (r.flag?.startsWith("critical")) return 1;
-    return 2;
-  };
-  return [...rows].sort((a, b) => {
-    const d = score(a) - score(b);
-    if (d !== 0) return d;
-    return String(b.observed_at).localeCompare(String(a.observed_at));
-  });
-}
-
 function ReleasePage() {
   const auth = useAuth();
   const qc = useQueryClient();
   const allowed = canAuthorize(auth.role);
   const isDesktop = useIsDesktop();
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [releasingAccession, setReleasingAccession] = useState<string | null>(
+    null,
+  );
 
-  const resultsQ = useQuery({
-    queryKey: ["cloud-results", "pending_review"],
-    queryFn: () => api.cloudResults("pending_review"),
-    enabled: Boolean(auth.accessToken),
+  const [returningAccession, setReturningAccession] = useState<string | null>(
+    null,
+  );
+
+  const queueQ = useQuery({
+    queryKey: ["release-queue"],
+    queryFn: () => api.releaseQueue(),
+    enabled: auth.ready && Boolean(auth.accessToken),
     refetchInterval: 10_000,
+    retry: (count, err) =>
+      count < 2 && !(err instanceof ApiError && err.status === 401),
   });
 
   const releaseM = useMutation({
-    mutationFn: (id: string) => api.releaseResult(id),
+    mutationFn: async (accessionNumber: string) => {
+      const released = await api.releaseAccession(accessionNumber);
+      try {
+        await api.markAccessionReleased(accessionNumber);
+      } catch {
+        // Cloud release succeeded; edge mirror may fail if edge is down
+      }
+      return released;
+    },
+    onMutate: (accessionNumber) => setReleasingAccession(accessionNumber),
+    onSettled: () => setReleasingAccession(null),
     onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["release-queue"] });
       void qc.invalidateQueries({ queryKey: ["cloud-results"] });
+      void qc.invalidateQueries({ queryKey: ["results"] });
+      void qc.invalidateQueries({ queryKey: ["patient-report-summary"] });
     },
   });
 
-  const rows = sortForRelease(resultsQ.data ?? []);
+  const returnM = useMutation({
+    mutationFn: ({
+      accessionNumber,
+      reason,
+    }: {
+      accessionNumber: string;
+      reason?: string;
+    }) =>
+      api.recallResults({
+        accessionNumbers: [accessionNumber],
+        reason,
+      }),
+    onMutate: ({ accessionNumber }) => setReturningAccession(accessionNumber),
+    onSettled: () => setReturningAccession(null),
+    onSuccess: async () => {
+      void qc.invalidateQueries({ queryKey: ["release-queue"] });
+      void qc.invalidateQueries({ queryKey: ["cloud-results"] });
+      void qc.invalidateQueries({ queryKey: ["results"] });
+      void qc.invalidateQueries({ queryKey: ["syncStatus"] });
+      void qc.invalidateQueries({ queryKey: ["patient-report-summary"] });
+      try {
+        await api.drainSync();
+        void qc.invalidateQueries({ queryKey: ["release-queue"] });
+        void qc.invalidateQueries({ queryKey: ["cloud-results"] });
+        void qc.invalidateQueries({ queryKey: ["syncStatus"] });
+        void qc.invalidateQueries({ queryKey: ["patient-report-summary"] });
+      } catch {
+        // Sync page has manual drain
+      }
+    },
+  });
+
+  const groups = queueQ.data ?? [];
+
+  function toggleGroup(accession: string) {
+    setExpanded((prev) => ({ ...prev, [accession]: !prev[accession] }));
+  }
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
@@ -66,15 +104,8 @@ function ReleasePage() {
             Release queue
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Cloud pending results. Only authorizers (or admins) can release to
-            the doctor path.
-            {!isCloudMode && (
-              <>
-                {" "}
-                Tip: set <code className="text-xs">VITE_LIS_MODE=cloud</code> for
-                the full cloud login flow.
-              </>
-            )}
+            Patient groups submitted by bench techs — review context, then release
+            the whole accession for doctor export.
           </p>
         </div>
         <div className="text-sm text-muted-foreground">
@@ -118,166 +149,59 @@ function ReleasePage() {
         </p>
       )}
 
-      {resultsQ.isError && (
-        <p className="text-sm text-lab-danger">
-          {resultsQ.error instanceof ApiError
-            ? resultsQ.error.message
-            : "Failed to load cloud results"}
+      {!auth.ready && auth.accessToken && (
+        <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
+          Verifying session…
         </p>
       )}
 
-      {!isDesktop ? (
-        <div className="space-y-2">
-          {resultsQ.isLoading && (
-            <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
-              Loading…
-            </p>
+      {auth.accessToken && queueQ.isError && (
+        <p className="text-sm text-lab-danger">
+          {queueQ.error instanceof ApiError && queueQ.error.status === 401 ? (
+            <>
+              Session expired or invalid — often after{" "}
+              <code className="text-xs">pnpm supabase:reset</code>.{" "}
+              <Link to="/login" search={{ redirect: "/release" }} className="underline underline-offset-2">
+                Sign in again
+              </Link>
+            </>
+          ) : queueQ.error instanceof ApiError ? (
+            queueQ.error.message
+          ) : (
+            "Failed to load release queue"
           )}
-          {!resultsQ.isLoading && rows.length === 0 && (
-            <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
-              No pending_review results in cloud.
-            </p>
-          )}
-          {rows.map((r) => (
-            <article
-              key={r.id}
-              className="rounded-xl border border-border bg-card p-3 shadow-sm"
-              style={{ boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag)}` }}
-            >
-              <div className="flex items-baseline justify-between gap-2 pl-1">
-                <span className="min-w-0 truncate font-medium">
-                  {r.test_code}
-                  {r.test_name ? (
-                    <span className="text-muted-foreground">
-                      {" "}
-                      · {r.test_name}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="shrink-0 text-lg font-semibold tabular-nums">
-                  <span className={flagValueClass(r.flag)}>{r.value}</span>
-                  {r.units ? (
-                    <span className="ml-1 text-sm font-medium text-muted-foreground">
-                      {r.units}
-                    </span>
-                  ) : null}
-                </span>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-1">
-                <AlarmSign flag={r.flag} />
-                <FlagChip flag={r.flag} />
-              </div>
-              <p className="mt-2 pl-1 text-[11px] text-muted-foreground">
-                <span className="font-mono">{r.accession_number}</span>
-              </p>
-              <p className="pl-1 text-sm font-medium tabular-nums text-foreground/85">
-                {new Date(r.observed_at).toLocaleString()}
-              </p>
-              <Button
-                className="mt-3 h-11 w-full"
-                disabled={!allowed || releaseM.isPending}
-                onClick={() => releaseM.mutate(r.id)}
-              >
-                Release
-              </Button>
-            </article>
+        </p>
+      )}
+
+      {queueQ.isLoading && (
+        <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
+          Loading release queue…
+        </p>
+      )}
+
+      {!queueQ.isLoading && groups.length === 0 && auth.accessToken && (
+        <ReleaseQueueEmptyState />
+      )}
+
+      {!queueQ.isLoading && groups.length > 0 && (
+        <div className="space-y-3">
+          {groups.map((group) => (
+            <ReleaseQueueGroupRow
+              key={group.accessionNumber}
+              group={group}
+              expanded={expanded[group.accessionNumber] ?? true}
+              onToggle={() => toggleGroup(group.accessionNumber)}
+              canRelease={allowed}
+              releasingAccession={releasingAccession}
+              onReleaseAccession={(accession) => releaseM.mutate(accession)}
+              returningAccession={returningAccession}
+              onReturnToBench={(accession, reason) =>
+                returnM.mutate({ accessionNumber: accession, reason })
+              }
+              compact={!isDesktop}
+            />
           ))}
         </div>
-      ) : (
-      <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-border bg-muted/40 text-xs uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2.5 font-medium">Observed</th>
-                <th className="px-3 py-2.5 font-medium">Accession</th>
-                <th className="px-3 py-2.5 font-medium">Test</th>
-                <th className="px-3 py-2.5 font-medium">Value</th>
-                <th className="px-3 py-2.5 font-medium">Flag</th>
-                <th className="px-3 py-2.5 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {resultsQ.isLoading && (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-3 py-12 text-center text-muted-foreground"
-                  >
-                    Loading…
-                  </td>
-                </tr>
-              )}
-              {!resultsQ.isLoading && rows.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={6}
-                    className="px-3 py-12 text-center text-muted-foreground"
-                  >
-                    No pending_review results in cloud.
-                  </td>
-                </tr>
-              )}
-              {rows.map((r) => (
-                <tr
-                  key={r.id}
-                  className={cn(
-                    "border-t border-border/60 transition-colors",
-                    !isAlarmFlag(r.flag) && "hover:bg-muted/35",
-                    flagRowClass(r.flag),
-                  )}
-                >
-                  <td className="px-3 py-2.5 whitespace-nowrap text-sm font-medium tabular-nums text-foreground/85 align-middle">
-                    {new Date(r.observed_at).toLocaleString()}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-xs tracking-tight align-middle">
-                    {r.accession_number}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
-                    <span className="font-medium">{r.test_code}</span>
-                    {r.test_name ? (
-                      <span className="text-muted-foreground">
-                        {" "}
-                        · {r.test_name}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle whitespace-nowrap">
-                    <span
-                      className={cn(
-                        "text-base font-semibold tabular-nums",
-                        flagValueClass(r.flag),
-                      )}
-                    >
-                      {r.value}
-                    </span>
-                    {r.units ? (
-                      <span className="ml-1 text-sm font-medium text-muted-foreground">
-                        {r.units}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2.5 align-middle">
-                    <span className="inline-flex items-center gap-1.5">
-                      <AlarmSign flag={r.flag} />
-                      <FlagChip flag={r.flag} />
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-right align-middle">
-                    <Button
-                      size="sm"
-                      disabled={!allowed || releaseM.isPending}
-                      onClick={() => releaseM.mutate(r.id)}
-                    >
-                      Release
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
       )}
 
       {releaseM.isError && (
@@ -285,6 +209,14 @@ function ReleasePage() {
           {releaseM.error instanceof ApiError
             ? releaseM.error.message
             : "Release failed"}
+        </p>
+      )}
+
+      {returnM.isError && (
+        <p className="text-sm text-lab-danger">
+          {returnM.error instanceof ApiError
+            ? returnM.error.message
+            : "Return to bench failed"}
         </p>
       )}
     </div>

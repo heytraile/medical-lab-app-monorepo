@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { searchQueryField } from "@drax-lis/contracts";
 import { api, type PatientListItem } from "../../lib/api";
 import { PatientDetailDialog } from "../../components/patient-detail-dialog";
 import { RegisterPatientDialog } from "../../components/patients/register-patient-dialog";
@@ -29,6 +30,7 @@ export const Route = createFileRoute("/_lab/patients")({
 function PatientsPage() {
   const { register: openRegister, seed } = Route.useSearch();
   const [query, setQuery] = useState("");
+  const [queryError, setQueryError] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -74,10 +76,29 @@ function PatientsPage() {
 
       <Input
         value={query}
-        onChange={(e) => setQuery(e.target.value)}
+        onChange={(e) => {
+          setQueryError(null);
+          setQuery(e.target.value);
+        }}
+        onBlur={() => {
+          const parsed = searchQueryField.safeParse(query);
+          if (!parsed.success) {
+            setQueryError(parsed.error.issues[0]?.message ?? "Invalid search");
+            return;
+          }
+          if (parsed.data !== query) setQuery(parsed.data);
+          setQueryError(null);
+        }}
         placeholder="Search name or MRN…"
         className="max-w-md"
+        maxLength={200}
+        aria-invalid={Boolean(queryError)}
       />
+      {queryError ? (
+        <p className="text-xs text-lab-danger" role="alert">
+          {queryError}
+        </p>
+      ) : null}
 
       {patientsQ.isError && (
         <p className="text-sm text-lab-danger">
@@ -168,19 +189,23 @@ function PatientsPage() {
                 {rows.map((p) => (
                   <tr
                     key={p.id}
+                    onClick={() => setSelectedId(p.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedId(p.id);
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Open ${p.displayName}`}
                     className={cn(
-                      "border-t border-border/60 transition-colors hover:bg-muted/35",
+                      "cursor-pointer border-t border-border/60 transition-colors hover:bg-muted/35",
                       selectedId === p.id && "bg-accent/5",
                     )}
                   >
                     <td className="px-3 py-2.5 align-middle">
-                      <button
-                        type="button"
-                        className="text-left font-medium underline-offset-2 hover:underline"
-                        onClick={() => setSelectedId(p.id)}
-                      >
-                        {p.displayName}
-                      </button>
+                      <span className="font-medium">{p.displayName}</span>
                       <div className="mt-0.5 flex flex-wrap gap-1">
                         {p.identityOrigin === "local_provisional" && (
                           <Badge

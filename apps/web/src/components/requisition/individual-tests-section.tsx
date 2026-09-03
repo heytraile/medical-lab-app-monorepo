@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { CatalogResponse } from "@drax-lis/contracts";
 import type { OrderSelection } from "@drax-lis/catalog";
 import { Input } from "../ui/input";
+import { ScrollContainer } from "../ui/scroll-container";
 import { CategoryPill } from "./category-pill";
 import { cn } from "../../lib/utils";
 
@@ -74,7 +75,7 @@ export function IndividualTestsSection({
     <section className={cn("flex min-h-0 flex-col", className)}>
       <p className="mb-2 text-base font-semibold">Individual tests</p>
 
-      <div className="mb-3 max-h-24 overflow-y-auto pr-1">
+      <ScrollContainer className="mb-3 max-h-24">
         <div className="flex flex-wrap gap-1.5">
         <CategoryPill
           label="All"
@@ -92,7 +93,7 @@ export function IndividualTestsSection({
           />
         ))}
         </div>
-      </div>
+      </ScrollContainer>
 
       <Input
         value={testSearch}
@@ -101,7 +102,7 @@ export function IndividualTestsSection({
         className="mb-3 h-10"
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border border-border">
+      <ScrollContainer className="min-h-0 flex-1 rounded-lg border border-border">
         {filteredItems.length === 0 ? (
           <p className="px-3 py-8 text-center text-sm text-muted-foreground">
             No tests match your search.
@@ -136,7 +137,7 @@ export function IndividualTestsSection({
             })}
           </ul>
         )}
-      </div>
+      </ScrollContainer>
     </section>
   );
 }

@@ -23,6 +23,7 @@ import { analyzerLabel } from "../lib/analyzers";
 import { useAuth, isAdmin } from "../lib/auth";
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
+import { ScrollContainer } from "./ui/scroll-container";
 import { Sheet, SheetContent, SheetCloseButton } from "./ui/sheet";
 import { ThemeToggle } from "./theme-provider";
 import { Badge } from "./ui/badge";
@@ -207,7 +208,8 @@ function SidebarBody({
         </Button>
       </div>
 
-      <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2 pb-3">
+      <ScrollContainer className="min-h-0 flex-1">
+      <nav className="flex flex-col gap-4 px-2 pb-3">
         <div className="space-y-1">
           {!collapsed && (
             <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
@@ -348,6 +350,7 @@ function SidebarBody({
           ))}
         </div>
       </nav>
+      </ScrollContainer>
 
       <div className="mt-auto space-y-2 border-t border-sidebar-border p-2">
         {signedIn ? (

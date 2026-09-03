@@ -1,16 +1,20 @@
+import type { MouseEvent } from "react";
 import { ChevronRight } from "lucide-react";
 import type { BenchResult } from "../lib/api";
 import { Badge } from "./ui/badge";
 import {
   AlarmSign,
   FlagChip,
+  WorkflowStatusChip,
   flagLabel,
   isAlarmFlag,
   worstFlag,
 } from "./result-status";
 import { cn } from "../lib/utils";
-import { formatPatientName } from "../lib/patient-name";
+import { usePatientNameOrder } from "../lib/patient-name-order";
 import { NotifyAuthorizerButton } from "./notify-authorizer-button";
+import { RecallFromReleaseButton } from "./recall-from-release-button";
+import { SubmitForReleaseButton } from "./submit-for-release-button";
 
 export type BenchGroupSummary = {
   /** Stable group key: patient id, or `acc:<accession>` when unlinked. */
@@ -21,6 +25,9 @@ export type BenchGroupSummary = {
   testCount: number;
   accessionCount: number;
   pendingCount: number;
+  submittedCount: number;
+  releasedCount: number;
+  allReleased: boolean;
   worstFlag: string | undefined;
   latestObservedAt: string | undefined;
   hasAlarm: boolean;
@@ -49,6 +56,13 @@ export function summarizeGroup(
     pendingCount: results.filter(
       (r) => (r.status ?? "pending_review") === "pending_review",
     ).length,
+    submittedCount: results.filter(
+      (r) => r.status === "pending_authorization",
+    ).length,
+    releasedCount: results.filter((r) => r.status === "released").length,
+    allReleased:
+      results.length > 0 &&
+      results.every((r) => r.status === "released"),
     worstFlag: worst,
     latestObservedAt: latest,
     hasAlarm: isAlarmFlag(worst),
@@ -57,9 +71,20 @@ export function summarizeGroup(
   };
 }
 
+function SummaryPlaceholder() {
+  return (
+    <span
+      className="text-sm text-muted-foreground/50"
+      aria-hidden
+      title="Expand for test-level details"
+    >
+      —
+    </span>
+  );
+}
+
 export function BenchGroupRow({
   summary,
-  colSpan,
   expanded,
   alternate,
   selected,
@@ -68,7 +93,6 @@ export function BenchGroupRow({
   onJumpToFlag,
 }: {
   summary: BenchGroupSummary;
-  colSpan: number;
   expanded: boolean;
   /** Every other patient sits a shade lighter, on top of the block gaps. */
   alternate: boolean;
@@ -78,15 +102,53 @@ export function BenchGroupRow({
   /** Opens the block and scrolls to its first worst-flagged result. */
   onJumpToFlag: () => void;
 }) {
+  const { formatName } = usePatientNameOrder();
   const { patient } = summary;
   const alarm = summary.hasAlarm;
 
+  function stopRowSelect(e: MouseEvent) {
+    e.stopPropagation();
+  }
+
+  function openPatient() {
+    if (patient) onSelectPatient(patient.id);
+  }
+
+  const accessionLabel =
+    summary.accessionCount === 1
+      ? summary.accessionNumbers[0]
+      : `${summary.accessionCount} accessions`;
+
+  const workflowStatus = summary.allReleased
+    ? "released"
+    : summary.submittedCount > 0 && summary.pendingCount === 0
+      ? "pending_authorization"
+      : null;
+
+  const cellClass = "px-3 py-3.5 align-middle";
+
   return (
     <tr
+      data-row-kind="summary"
+      onClick={patient ? openPatient : undefined}
+      onKeyDown={
+        patient
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                openPatient();
+              }
+            }
+          : undefined
+      }
+      tabIndex={patient ? 0 : undefined}
+      role={patient ? "button" : undefined}
+      aria-label={
+        patient
+          ? `Open ${formatName(patient)} in patient panel`
+          : undefined
+      }
       className={cn(
-        // Top and bottom edges of the patient block, so it reads as one card.
-        // Every tint must be opaque: a translucent one would composite over the
-        // grey canvas behind the table and wash out to the same colour.
         "border-y border-border transition-colors",
         expanded
           ? "border-b-2 bg-sky-200 hover:bg-sky-300 dark:bg-sky-900/50 dark:hover:bg-sky-900/65"
@@ -95,21 +157,19 @@ export function BenchGroupRow({
               alternate ? "bg-background" : "bg-card",
             ),
         alarm && "border-l-[3px] border-l-lab-alarm",
-        // Focus is the ring only, so an open block keeps its blue fill.
+        patient && "cursor-pointer",
         selected && "ring-1 ring-inset ring-accent/25",
       )}
     >
-      {/* The name occupies the Patient column proper; everything else spans
-          the remaining columns. Splitting the row this way is what puts the
-          name under its own sortable header instead of in a full-width bar. */}
-      {/* Capped so a long name cannot push Value and Observed out of view, but
-          also floored: with auto table layout the other columns would
-          otherwise squeeze the name down to a few characters. */}
-      <td className="w-[14rem] min-w-[14rem] max-w-[14rem] px-2 py-3.5">
-        <div className="flex items-center gap-x-1.5">
+      {/* Patient */}
+      <td className={cn(cellClass, "min-w-[14rem] w-auto align-top")}>
+        <div className="flex items-start gap-x-1.5">
           <button
             type="button"
-            onClick={onToggle}
+            onClick={(e) => {
+              stopRowSelect(e);
+              onToggle();
+            }}
             aria-expanded={expanded}
             aria-label={
               expanded
@@ -128,95 +188,142 @@ export function BenchGroupRow({
             />
           </button>
 
-          <AlarmSign flag={summary.worstFlag} />
-
-          {patient ? (
-            <button
-              type="button"
-              onClick={() => onSelectPatient(patient.id)}
-              // Deliberately a step up from the 14px leaf rows: this is the
-              // row you scan for, the tests underneath are detail. The pill
-              // shifts to white on open blocks, where grey would go muddy
-              // against the blue header.
-              className={cn(
-                "min-w-0 truncate rounded-md px-2 py-1 text-left text-base font-bold tracking-tight underline-offset-2 transition-colors hover:underline",
-                expanded
-                  ? "bg-white/75 hover:bg-white dark:bg-sky-950/70 dark:hover:bg-sky-950/90 dark:hover:text-foreground"
-                  : "bg-muted hover:bg-border dark:hover:bg-muted/80",
-                selected && "text-accent",
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-start gap-1.5">
+              <AlarmSign flag={summary.worstFlag} />
+              {patient ? (
+                <span
+                  className={cn(
+                    "rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight whitespace-normal",
+                    expanded
+                      ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
+                      : "bg-muted",
+                    selected && "text-accent",
+                  )}
+                >
+                  {formatName(patient)}
+                </span>
+              ) : (
+                <span
+                  className={cn(
+                    "rounded-md px-2 py-1 font-mono text-sm font-bold leading-snug tracking-tight whitespace-normal",
+                    expanded
+                      ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
+                      : "bg-muted",
+                  )}
+                  title={summary.fallbackLabel}
+                >
+                  {summary.fallbackLabel}
+                </span>
               )}
-              title={`Open ${patient.displayName} in the side panel`}
-            >
-              {formatPatientName(patient)}
-            </button>
-          ) : (
-            <span
-              className={cn(
-                "min-w-0 truncate rounded-md px-2 py-1 font-mono text-sm font-bold tracking-tight",
-                expanded
-                  ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
-                  : "bg-muted",
+            </div>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pl-0.5">
+              {patient ? (
+                <span className="font-mono text-[11px] tracking-tight text-muted-foreground">
+                  {patient.mrn}
+                </span>
+              ) : (
+                <Badge variant="muted" className="px-1 py-0 text-[10px]">
+                  No patient linked
+                </Badge>
               )}
-              title={summary.fallbackLabel}
-            >
-              {summary.fallbackLabel}
-            </span>
-          )}
+              {patient?.identityOrigin === "local_provisional" && (
+                <Badge variant="warn" className="px-1 py-0 text-[10px]">
+                  Provisional
+                </Badge>
+              )}
+              {patient?.status === "quarantined" && (
+                <Badge variant="danger" className="px-1 py-0 text-[10px]">
+                  Quarantined
+                </Badge>
+              )}
+            </div>
+          </div>
         </div>
       </td>
 
-      <td colSpan={colSpan - 1} className="px-2 py-3.5">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          {patient ? (
-            <span className="font-mono text-[11px] tracking-tight text-muted-foreground">
-              {patient.mrn}
-            </span>
-          ) : (
-            <Badge variant="muted" className="px-1 py-0 text-[10px]">
-              No patient linked
-            </Badge>
-          )}
+      {/* Observed */}
+      <td className={cellClass}>
+        <span className="whitespace-nowrap text-sm font-medium tabular-nums text-foreground/85">
+          {summary.latestObservedAt
+            ? new Date(summary.latestObservedAt).toLocaleString()
+            : "—"}
+        </span>
+      </td>
 
-          {patient?.identityOrigin === "local_provisional" && (
-            <Badge variant="warn" className="px-1 py-0 text-[10px]">
-              Provisional
-            </Badge>
+      {/* Accession */}
+      <td className={cellClass}>
+        <span
+          className={cn(
+            "text-xs tracking-tight",
+            summary.accessionCount === 1
+              ? "font-mono"
+              : "text-muted-foreground",
           )}
-          {patient?.status === "quarantined" && (
-            <Badge variant="danger" className="px-1 py-0 text-[10px]">
-              Quarantined
-            </Badge>
-          )}
+        >
+          {accessionLabel}
+        </span>
+      </td>
 
-          <span className="text-xs text-muted-foreground">
-            {summary.testCount} {summary.testCount === 1 ? "test" : "tests"}
-            {summary.accessionCount > 1 &&
-              ` · ${summary.accessionCount} accessions`}
-            {summary.pendingCount > 0 && ` · ${summary.pendingCount} pending`}
-          </span>
+      {/* Analyzer */}
+      <td className={cellClass}>
+        <SummaryPlaceholder />
+      </td>
 
-          {/* A collapsed group must never hide an abnormal result. Clicking
-              the chip opens the block and jumps to the first such result. */}
-          {summary.worstFlag && summary.worstFlag !== "normal" && (
-            <button
-              type="button"
-              onClick={onJumpToFlag}
-              aria-label={`Show first ${flagLabel(summary.worstFlag)} result for ${
-                patient?.displayName ?? summary.fallbackLabel
-              }`}
-              className="rounded-md transition hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              <FlagChip flag={summary.worstFlag} />
-            </button>
-          )}
+      {/* Test */}
+      <td className={cellClass}>
+        <span className="text-xs text-muted-foreground">
+          {summary.testCount} {summary.testCount === 1 ? "test" : "tests"}
+          {summary.pendingCount > 0 && ` · ${summary.pendingCount} pending`}
+        </span>
+      </td>
 
-          <div className="ml-auto flex items-center gap-3">
+      {/* Value */}
+      <td className={cellClass}>
+        <SummaryPlaceholder />
+      </td>
+
+      {/* Units */}
+      <td className={cellClass}>
+        <SummaryPlaceholder />
+      </td>
+
+      {/* Flag */}
+      <td className={cellClass}>
+        {summary.worstFlag && summary.worstFlag !== "normal" ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              stopRowSelect(e);
+              onJumpToFlag();
+            }}
+            aria-label={`Show first ${flagLabel(summary.worstFlag)} result for ${
+              patient?.displayName ?? summary.fallbackLabel
+            }`}
+            className="rounded-md transition hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <FlagChip flag={summary.worstFlag} />
+          </button>
+        ) : (
+          <SummaryPlaceholder />
+        )}
+      </td>
+
+      {/* Status + actions */}
+      <td className={cn(cellClass, "min-w-[10rem]")}>
+        <div
+          className="flex min-w-[9rem] flex-col gap-1.5"
+          onClick={stopRowSelect}
+          onKeyDown={(e) => e.stopPropagation()}
+          role="presentation"
+        >
+          {workflowStatus ? (
+            <WorkflowStatusChip status={workflowStatus} />
+          ) : null}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <SubmitForReleaseButton summary={summary} />
+            <RecallFromReleaseButton summary={summary} />
             <NotifyAuthorizerButton summary={summary} />
-            <span className="whitespace-nowrap text-xs text-muted-foreground">
-              {summary.latestObservedAt
-                ? new Date(summary.latestObservedAt).toLocaleString()
-                : "—"}
-            </span>
           </div>
         </div>
       </td>

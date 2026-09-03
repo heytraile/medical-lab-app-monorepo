@@ -39,8 +39,8 @@ export class NotifierService {
   }
 
   /**
-   * The single seam for real delivery. Replace the body with a provider call
-   * (Resend, SMTP) and the rest of the feature needs no changes.
+   * The single seam for real delivery. Production uses Resend (see docs/EMAIL.md).
+   * Local dev logs to the terminal until RESEND_API_KEY is configured.
    */
   async sendEmail(to: string[], subject: string, body: string): Promise<void> {
     const from = process.env.REVIEW_ALERT_EMAIL_FROM ?? "lis@local.dev";

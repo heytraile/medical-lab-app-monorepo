@@ -189,13 +189,26 @@ where u.id = p.id
   and u.raw_user_meta_data ? 'full_name';
 
 -- Drax Hall lab row for catalog + requisitions (multi-lab scaffold).
-insert into public.labs (id, code, name)
+insert into public.labs (id, code, name, settings)
 values (
   'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   'drax-hall',
-  'Drax Hall Clinical Laboratory'
+  'Drax Hall Clinical Laboratory',
+  jsonb_build_object(
+    'report', jsonb_build_object(
+      'addressLines', jsonb_build_array(
+        'Drax Hall Medical Centre',
+        'St. Ann, Jamaica'
+      ),
+      'phone', '+1 (876) 555-0100',
+      'email', 'lab@draxhall.local',
+      'website', 'https://draxhall.local',
+      'disclaimer', 'For clinical use only. Verify critical values before therapeutic decisions. This report contains released results only.'
+    )
+  )
 )
-on conflict (id) do nothing;
+on conflict (id) do update set
+  settings = excluded.settings;
 
 update public.profiles
 set lab_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'

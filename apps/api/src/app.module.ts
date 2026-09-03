@@ -8,12 +8,14 @@ import { CatalogModule } from "./catalog/catalog.module";
 import { LabRequisitionsModule } from "./lab-requisitions/lab-requisitions.module";
 import { LabStaffModule } from "./lab-staff/lab-staff.module";
 import { AuthModule } from "./auth/auth.module";
+import { AuditModule } from "./audit/audit.module";
 
 @Module({
   imports: [
     HealthModule,
     SupabaseModule,
     AuthModule,
+    AuditModule,
     SyncModule,
     ResultsModule,
     ReviewRequestsModule,

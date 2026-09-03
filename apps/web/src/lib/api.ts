@@ -1,6 +1,8 @@
 import type {
   CatalogResponse,
   LabRequisition,
+  PatientReportPayload,
+  ReleaseQueueGroup,
   RegisterSpecimenRequest,
   RequisitionCreate,
   ReviewRequest,
@@ -13,6 +15,7 @@ import type {
 
 export type { ReviewRequest, ReviewRequestCreate, CatalogResponse, LabRequisition };
 export type { StaffCollector, StaffMember, StaffMemberCreate, StaffMemberUpdate };
+export type { PatientReportPayload, ReleaseQueueGroup };
 
 const EDGE_API_URL =
   (typeof import.meta !== "undefined" &&
@@ -44,9 +47,55 @@ export class ApiError extends Error {
 }
 
 let authTokenProvider: (() => string | null) | null = null;
+let authRefreshProvider: (() => Promise<string | null>) | null = null;
+let authInvalidatedHandler: (() => void) | null = null;
 
 export function setAuthTokenProvider(fn: () => string | null) {
   authTokenProvider = fn;
+}
+
+/** Called from AuthProvider — refresh Supabase session and return a new access token. */
+export function setAuthRefreshProvider(fn: () => Promise<string | null>) {
+  authRefreshProvider = fn;
+}
+
+/** Called when cloud API rejects the session — clear stale local auth state. */
+export function setAuthInvalidatedHandler(fn: () => void) {
+  authInvalidatedHandler = fn;
+}
+
+async function fetchWithAuth(
+  url: string,
+  init: RequestInit & { auth?: boolean },
+  retried = false,
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init.headers as Record<string, string> | undefined),
+  };
+  if (init.auth !== false) {
+    const token = authTokenProvider?.();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, { ...init, headers });
+
+  if (
+    res.status === 401 &&
+    init.auth !== false &&
+    !retried &&
+    authRefreshProvider
+  ) {
+    const fresh = await authRefreshProvider();
+    if (fresh) {
+      headers.Authorization = `Bearer ${fresh}`;
+      const retry = await fetch(url, { ...init, headers });
+      if (retry.ok || retry.status !== 401) return retry;
+    }
+    authInvalidatedHandler?.();
+  }
+
+  return res;
 }
 
 async function request<T>(
@@ -54,18 +103,10 @@ async function request<T>(
   init?: RequestInit & { baseUrl?: string; auth?: boolean },
 ): Promise<T> {
   const base = init?.baseUrl ?? API_URL;
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    ...(init?.headers as Record<string, string> | undefined),
-  };
-  if (init?.auth !== false) {
-    const token = authTokenProvider?.();
-    if (token) headers.Authorization = `Bearer ${token}`;
-  }
   const { baseUrl: _b, auth: _a, ...rest } = init ?? {};
-  const res = await fetch(`${base}${path}`, {
+  const res = await fetchWithAuth(`${base}${path}`, {
     ...rest,
-    headers,
+    auth: init?.auth,
   });
   if (!res.ok) {
     let body: unknown = null;
@@ -98,6 +139,7 @@ export type BenchResult = {
   barcode: string;
   analyzerId: string;
   testCode: string;
+  instrumentTestCode?: string | null;
   testName: string | null;
   value: string;
   units: string | null;
@@ -106,6 +148,8 @@ export type BenchResult = {
   flag: string;
   status?: string;
   observedAt: string;
+  /** False when result catalog code was not on the accession order. */
+  expectedOnOrder?: boolean;
   patient?: BenchPatientSummary | null;
 };
 
@@ -277,7 +321,6 @@ export const api = {
     }>("/specimens", {
       method: "POST",
       body: JSON.stringify(body),
-      auth: false,
     }),
 
   printStatus: () =>
@@ -338,6 +381,11 @@ export const api = {
       auth: true,
     });
   },
+  releaseQueue: () =>
+    request<ReleaseQueueGroup[]>("/cloud/release-queue", {
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
   cloudSpecimens: () =>
     request<unknown[]>("/cloud/specimens", {
       baseUrl: CLOUD_API_URL,
@@ -349,6 +397,74 @@ export const api = {
       baseUrl: CLOUD_API_URL,
       auth: true,
     }),
+  releaseAccession: (accessionNumber: string) =>
+    request<{ accessionNumber: string; releasedCount: number; resultIds: string[] }>(
+      "/results/release-accession",
+      {
+        method: "POST",
+        baseUrl: CLOUD_API_URL,
+        auth: true,
+        body: JSON.stringify({ accessionNumber }),
+      },
+    ),
+  patientReport: (edgePatientId: string) =>
+    request<PatientReportPayload>(
+      `/cloud/patients/${encodeURIComponent(edgePatientId)}/report`,
+      {
+        baseUrl: CLOUD_API_URL,
+        auth: true,
+      },
+    ),
+  submitResults: (body: { accessionNumbers?: string[]; patientId?: string }) =>
+    request<{ submitted: number; accessionNumbers: string[] }>(
+      "/results/submit",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      },
+    ),
+  recallResults: (body: { accessionNumbers: string[]; reason?: string }) =>
+    request<{ recalled: number; accessionNumbers: string[] }>(
+      "/results/recall",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      },
+    ),
+  markAccessionReleased: (accessionNumber: string) =>
+    request<{ accessionNumber: string; releasedCount: number; resultIds: string[] }>(
+      "/results/mark-released",
+      {
+        method: "POST",
+        body: JSON.stringify({ accessionNumber }),
+        auth: true,
+      },
+    ),
+  drainSync: () =>
+    request<{ ok: boolean }>("/sync/drain", {
+      method: "POST",
+      auth: false,
+    }),
+  emailPatientReport: (
+    edgePatientId: string,
+    body: {
+      to: string;
+      recipientType: "doctor" | "patient";
+      pageSize?: "letter" | "legal";
+      message?: string;
+    },
+  ) =>
+    request<{ ok: boolean }>(
+      `/cloud/patients/${encodeURIComponent(edgePatientId)}/report/email`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        baseUrl: CLOUD_API_URL,
+        auth: true,
+      },
+    ),
 
   /** Review requests — the bench asking an authorizer to sign off. */
   listReviewRequests: (openOnly?: boolean) =>

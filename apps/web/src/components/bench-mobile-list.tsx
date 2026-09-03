@@ -1,10 +1,13 @@
+import type { MouseEvent } from "react";
 import type { Row } from "@tanstack/react-table";
 import { ChevronRight } from "lucide-react";
 import type { BenchResult } from "../lib/api";
 import { analyzerLabel } from "../lib/analyzers";
 import { cn } from "../lib/utils";
-import { formatPatientName } from "../lib/patient-name";
+import { usePatientNameOrder } from "../lib/patient-name-order";
 import { NotifyAuthorizerButton } from "./notify-authorizer-button";
+import { SubmitForReleaseButton } from "./submit-for-release-button";
+import { RecallFromReleaseButton } from "./recall-from-release-button";
 import { Badge } from "./ui/badge";
 import type { BenchGroupSummary } from "./bench-group-row";
 import {
@@ -44,6 +47,8 @@ export function BenchMobileList({
   onToggleGroup: (row: Row<BenchResult>) => void;
   onJumpToFlag: (row: Row<BenchResult>, summary: BenchGroupSummary) => void;
 }) {
+  const { formatName } = usePatientNameOrder();
+
   return (
     <div className="space-y-3">
       {rows.map((row) => {
@@ -53,11 +58,21 @@ export function BenchMobileList({
 
         const open = row.getIsExpanded();
         const name = summary.patient
-          ? formatPatientName(summary.patient)
+          ? formatName(summary.patient)
           : summary.fallbackLabel;
         const selected =
           summary.patient?.id != null &&
           summary.patient.id === selectedPatientId;
+
+        const patientId = summary.patient?.id;
+
+        function stopCardSelect(e: MouseEvent) {
+          e.stopPropagation();
+        }
+
+        function openPatient() {
+          if (patientId) onSelectPatient(patientId);
+        }
 
         return (
           <section
@@ -87,15 +102,34 @@ export function BenchMobileList({
                 />
               </button>
 
-              <div className="min-w-0 flex-1 space-y-1.5">
+              <div
+                className={cn(
+                  "min-w-0 flex-1 space-y-1.5",
+                  patientId && "cursor-pointer",
+                )}
+                onClick={patientId ? openPatient : undefined}
+                onKeyDown={
+                  patientId
+                    ? (e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          openPatient();
+                        }
+                      }
+                    : undefined
+                }
+                tabIndex={patientId ? 0 : undefined}
+                role={patientId ? "button" : undefined}
+                aria-label={
+                  patientId ? `Open ${name} in patient panel` : undefined
+                }
+              >
                 <div className="flex items-center gap-2">
                   <AlarmSign flag={summary.worstFlag} />
                   {summary.patient ? (
-                    <button
-                      type="button"
-                      onClick={() => onSelectPatient(summary.patient!.id)}
+                    <span
                       className={cn(
-                        "min-w-0 truncate rounded-md px-2 py-1 text-left text-base font-bold tracking-tight",
+                        "rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight whitespace-normal",
                         open
                           ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
                           : "bg-muted",
@@ -103,9 +137,9 @@ export function BenchMobileList({
                       )}
                     >
                       {name}
-                    </button>
+                    </span>
                   ) : (
-                    <span className="truncate rounded-md bg-muted px-2 py-1 font-mono text-sm font-bold">
+                    <span className="rounded-md bg-muted px-2 py-1 font-mono text-sm font-bold leading-snug whitespace-normal">
                       {name}
                     </span>
                   )}
@@ -131,20 +165,37 @@ export function BenchMobileList({
                   {summary.worstFlag && summary.worstFlag !== "normal" && (
                     <button
                       type="button"
-                      onClick={() => onJumpToFlag(row, summary)}
+                      onClick={(e) => {
+                        stopCardSelect(e);
+                        onJumpToFlag(row, summary);
+                      }}
                       aria-label={`Show first ${flagLabel(summary.worstFlag)} result for ${name}`}
                       className="rounded-md"
                     >
                       <FlagChip flag={summary.worstFlag} />
                     </button>
                   )}
+                  {summary.allReleased ? (
+                    <WorkflowStatusChip status="released" />
+                  ) : summary.submittedCount > 0 && summary.pendingCount === 0 ? (
+                    <WorkflowStatusChip status="pending_authorization" />
+                  ) : null}
                 </div>
 
-                <NotifyAuthorizerButton
-                  summary={summary}
-                  fullWidth
-                  className="mt-1"
-                />
+                <div
+                  className="flex flex-col gap-2"
+                  onClick={stopCardSelect}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  role="presentation"
+                >
+                  <SubmitForReleaseButton summary={summary} fullWidth />
+                  <RecallFromReleaseButton summary={summary} fullWidth />
+                  <NotifyAuthorizerButton
+                    summary={summary}
+                    fullWidth
+                    className="mt-0"
+                  />
+                </div>
               </div>
             </div>
 
@@ -192,7 +243,9 @@ function ResultCard({
       style={{ boxShadow: `inset 3px 0 0 0 ${flagBarColor(result.flag)}` }}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="pl-1 font-medium">{result.testCode}</span>
+        <span className="pl-1 font-medium">
+          {result.testName?.trim() || result.testCode}
+        </span>
         <span
           className={cn(
             "shrink-0 text-lg font-semibold tabular-nums",
@@ -209,6 +262,11 @@ function ResultCard({
       </div>
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-1">
+        {result.expectedOnOrder === false ? (
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+            Not ordered
+          </span>
+        ) : null}
         <AlarmSign flag={result.flag} />
         <FlagChip flag={result.flag} />
         <WorkflowStatusChip status={result.status} />

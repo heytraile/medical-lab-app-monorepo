@@ -24,7 +24,8 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import { api, type BenchResult } from "../../lib/api";
 import { analyzerLabel } from "../../lib/analyzers";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
-import { formatPatientName, patientSortKey } from "../../lib/patient-name";
+import { PatientNameOrderSelect } from "../../components/patient-name-order-select";
+import { patientSortKey } from "../../lib/patient-name";
 import { BenchPatientPanel } from "../../components/bench-patient-panel";
 import { BenchMobileList } from "../../components/bench-mobile-list";
 import { Sheet, SheetContent } from "../../components/ui/sheet";
@@ -110,7 +111,7 @@ const columnHelper = createColumnHelper<BenchResult>();
 const GROUPING = ["patientGroup"];
 const NO_RESULTS: BenchResult[] = [];
 
-type TabFilter = "all" | "pending" | "flagged";
+type TabFilter = "all" | "pending" | "flagged" | "released";
 
 function BenchPage() {
   const { analyzer, q } = Route.useSearch();
@@ -160,6 +161,8 @@ function BenchPage() {
       rows = rows.filter(
         (r) => (r.status ?? "pending_review") === "pending_review",
       );
+    } else if (tab === "released") {
+      rows = rows.filter((r) => r.status === "released");
     } else if (tab === "flagged") {
       rows = rows.filter(
         (r) => r.flag && r.flag !== "normal" && r.flag !== "unknown",
@@ -284,9 +287,26 @@ function BenchPage() {
       }),
       columnHelper.accessor("testCode", {
         header: ({ column }) => <SortHeader label="Test" column={column} />,
-        cell: (info) => (
-          <span className="font-medium">{info.getValue()}</span>
-        ),
+        cell: (info) => {
+          const row = info.row.original;
+          const label = row.testName?.trim() || info.getValue();
+          return (
+            <span className="inline-flex flex-col gap-0.5">
+              <span className="font-medium">{label}</span>
+              {row.expectedOnOrder === false ? (
+                <span className="w-fit rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                  Not ordered
+                </span>
+              ) : null}
+              {row.instrumentTestCode &&
+              row.instrumentTestCode !== row.testCode ? (
+                <span className="font-mono text-[10px] text-muted-foreground">
+                  {row.instrumentTestCode}
+                </span>
+              ) : null}
+            </span>
+          );
+        },
       }),
       columnHelper.accessor("value", {
         header: ({ column }) => <SortHeader label="Value" column={column} />,
@@ -385,7 +405,9 @@ function BenchPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             Live results from edge ingest
             {q ? ` · filter “${q}”` : ""}.
-            {split ? " Click a patient name to focus; Esc closes." : ""}
+            {split ? " Click a patient row to focus; Esc closes." : ""}
+            {" "}
+            Expand a patient row to see test-level values.
           </p>
         </div>
         <span className="text-xs text-muted-foreground">
@@ -402,11 +424,13 @@ function BenchPage() {
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="pending">Pending review</TabsTrigger>
+            <TabsTrigger value="released">Released</TabsTrigger>
             <TabsTrigger value="flagged">Flagged</TabsTrigger>
           </TabsList>
         </Tabs>
         {groupSummaries.size > 0 && (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <PatientNameOrderSelect className="w-[9.5rem]" />
             {/* A phone has no thead to click, so the sort needs its own
                 control. Hidden from md up, where the header takes over. */}
             <Tabs
@@ -455,7 +479,9 @@ function BenchPage() {
         {!isDesktop ? (
           modelRows.length === 0 ? (
             <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
-              No results for this view. Run a simulator or clear filters.
+              {tab === "released"
+                ? "No released results yet. Authorizer release moves accessions here."
+                : "No results for this view. Run a simulator or clear filters."}
             </p>
           ) : (
             <BenchMobileList
@@ -508,8 +534,9 @@ function BenchPage() {
                       colSpan={visibleColumnCount}
                       className="px-3 py-12 text-center text-muted-foreground"
                     >
-                      No results for this view. Run a simulator or clear
-                      filters.
+                      {tab === "released"
+                        ? "No released results yet. Authorizer release moves accessions here."
+                        : "No results for this view. Run a simulator or clear filters."}
                     </td>
                   </tr>
                 ) : (
@@ -532,7 +559,6 @@ function BenchPage() {
                           )}
                           <BenchGroupRow
                             summary={summary}
-                            colSpan={visibleColumnCount}
                             expanded={isOpen}
                             alternate={blockIndex % 2 === 1}
                             selected={

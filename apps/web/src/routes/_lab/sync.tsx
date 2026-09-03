@@ -1,16 +1,28 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { api } from "../../lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2, RefreshCw } from "lucide-react";
+import { api, ApiError } from "../../lib/api";
+import { Button } from "../../components/ui/button";
 
 export const Route = createFileRoute("/_lab/sync")({
   component: SyncPage,
 });
 
 function SyncPage() {
+  const qc = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ["syncStatus"],
     queryFn: () => api.syncStatus(),
     refetchInterval: 5_000,
+  });
+
+  const drainM = useMutation({
+    mutationFn: () => api.drainSync(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["syncStatus"] });
+      void qc.invalidateQueries({ queryKey: ["cloud-results"] });
+      void qc.invalidateQueries({ queryKey: ["release-queue"] });
+    },
   });
 
   const cards = [
@@ -47,8 +59,32 @@ function SyncPage() {
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Edge outbox queue. Offline events stay <strong>pending</strong> and
-          drain when the cloud API is reachable.
+          drain when the cloud API is reachable. After bench submit, use{" "}
+          <strong>Drain now</strong> if the release queue is still empty.
         </p>
+        <div className="mt-3">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={drainM.isPending}
+            onClick={() => drainM.mutate()}
+          >
+            {drainM.isPending ? (
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
+            )}
+            Drain now
+          </Button>
+          {drainM.isError && (
+            <p className="mt-2 text-xs text-lab-danger">
+              {drainM.error instanceof ApiError
+                ? drainM.error.message
+                : "Drain failed"}
+            </p>
+          )}
+        </div>
       </div>
 
       {isLoading && <p className="text-muted-foreground">Loading sync status…</p>}

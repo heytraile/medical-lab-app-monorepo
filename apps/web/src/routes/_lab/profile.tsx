@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { Link, createFileRoute } from "@tanstack/react-router";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  ProfileNameFormSchema,
+  type ProfileNameFormValues,
+} from "@drax-lis/contracts";
 import { canAuthorize, isAdmin, useAuth } from "../../lib/auth";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { FormErrorSummary, FormField } from "../../components/forms/form-field";
 
 export const Route = createFileRoute("/_lab/profile")({
   component: ProfilePage,
@@ -14,27 +21,37 @@ function ProfilePage() {
   const signedIn = Boolean(auth.accessToken);
   const canEditName = Boolean(auth.session?.user?.id) && !auth.isDevSession;
 
-  const [fullName, setFullName] = useState(auth.profile?.full_name ?? "");
-  const [busy, setBusy] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setError,
+    clearErrors,
+    formState: { errors, isSubmitting },
+  } = useForm<ProfileNameFormValues>({
+    resolver: zodResolver(ProfileNameFormSchema),
+    defaultValues: { fullName: auth.profile?.full_name ?? "" },
+    mode: "onBlur",
+    reValidateMode: "onChange",
+  });
+
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setFullName(auth.profile?.full_name ?? "");
-  }, [auth.profile?.full_name]);
+    reset({ fullName: auth.profile?.full_name ?? "" });
+  }, [auth.profile?.full_name, reset]);
 
-  async function onSave(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true);
-    setError(null);
+  async function onSubmit(values: ProfileNameFormValues) {
+    clearErrors("root");
     setMessage(null);
     try {
-      await auth.saveFullName(fullName);
+      const parsed = ProfileNameFormSchema.parse(values);
+      await auth.saveFullName(parsed.fullName);
       setMessage("Name saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save name");
-    } finally {
-      setBusy(false);
+      setError("root", {
+        message: err instanceof Error ? err.message : "Could not save name",
+      });
     }
   }
 
@@ -145,26 +162,32 @@ function ProfilePage() {
       {canEditName ? (
         <form
           className="space-y-3 rounded-xl border border-border bg-card p-5"
-          onSubmit={(e) => void onSave(e)}
+          noValidate
+          onSubmit={handleSubmit(onSubmit)}
         >
-          <label className="block space-y-1.5">
-            <span className="text-sm font-medium">Full name</span>
+          <FormField
+            label="Full name"
+            htmlFor="profile-full-name"
+            error={errors.fullName}
+            required
+          >
             <Input
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              id="profile-full-name"
               placeholder="e.g. Jordan Blake"
               autoComplete="name"
+              aria-invalid={Boolean(errors.fullName)}
+              {...register("fullName")}
             />
-          </label>
-          <Button type="submit" disabled={busy}>
-            {busy ? "Saving…" : "Save name"}
+          </FormField>
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "Saving…" : "Save name"}
           </Button>
           {message && (
             <p className="text-sm text-emerald-700 dark:text-emerald-300">
               {message}
             </p>
           )}
-          {error && <p className="text-sm text-lab-danger">{error}</p>}
+          <FormErrorSummary message={errors.root?.message ?? null} />
         </form>
       ) : (
         <p className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">

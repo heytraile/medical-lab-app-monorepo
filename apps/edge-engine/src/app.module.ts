@@ -10,11 +10,15 @@ import { SpecimensModule } from "./specimens/specimens.module";
 import { ResultsModule } from "./results/results.module";
 import { PatientsModule } from "./patients/patients.module";
 import { DemoModule } from "./demo/demo.module";
+import { SupabaseModule } from "./supabase/supabase.module";
+import { AuditModule } from "./audit/audit.module";
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
     PrismaModule,
+    SupabaseModule,
+    AuditModule,
     HealthModule,
     IngestionModule,
     PrinterModule,

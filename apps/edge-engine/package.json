@@ -14,8 +14,10 @@
     "test": "echo \"no edge tests yet\""
   },
   "dependencies": {
+    "@drax-lis/catalog": "workspace:*",
     "@drax-lis/contracts": "workspace:*",
     "@drax-lis/protocols": "workspace:*",
+    "@supabase/supabase-js": "^2.49.8",
     "@nestjs/common": "^11.1.2",
     "@nestjs/core": "^11.1.2",
     "@nestjs/platform-express": "^11.1.2",

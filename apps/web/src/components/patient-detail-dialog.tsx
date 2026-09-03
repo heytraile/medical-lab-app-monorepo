@@ -2,6 +2,7 @@ import { type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api";
 import { Badge } from "./ui/badge";
+import { PatientReportExportMenu } from "./patient-report-export-menu";
 import {
   Dialog,
   DialogContent,
@@ -154,6 +155,15 @@ export function PatientDetailDialog({
             </>
           )}
         </div>
+
+        {p && patientId ? (
+          <div className="flex justify-end border-t border-border px-5 py-3">
+            <PatientReportExportMenu
+              patientId={patientId}
+              patientLabel={p.displayName}
+            />
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );

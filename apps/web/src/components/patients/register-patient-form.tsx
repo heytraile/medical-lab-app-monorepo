@@ -1,19 +1,23 @@
-import { useState } from "react";
+import { useForm } from "react-hook-form";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  RegisterPatientFormSchema,
+  toCreatePatientRequest,
+  type RegisterPatientFormValues,
+} from "@drax-lis/contracts";
 import { ApiError, api } from "../../lib/api";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select } from "../ui/select";
+import {
+  FormErrorSummary,
+  FormField,
+} from "../forms/form-field";
 
-export type RegisterPatientFormState = {
-  firstName: string;
-  middleName: string;
-  lastName: string;
-  dateOfBirth: string;
-  sex: "" | "M" | "F" | "O" | "U";
-};
+export type RegisterPatientFormState = RegisterPatientFormValues;
 
-export const emptyRegisterPatientForm = (): RegisterPatientFormState => ({
+export const emptyRegisterPatientForm = (): RegisterPatientFormValues => ({
   firstName: "",
   middleName: "",
   lastName: "",
@@ -27,26 +31,37 @@ export function RegisterPatientForm({
   onCancel,
   submitLabel = "Register patient",
 }: {
-  initial?: Partial<RegisterPatientFormState>;
+  initial?: Partial<RegisterPatientFormValues>;
   onSuccess?: (patientId: string) => void;
   onCancel?: () => void;
   submitLabel?: string;
 }) {
   const qc = useQueryClient();
-  const [form, setForm] = useState<RegisterPatientFormState>({
-    ...emptyRegisterPatientForm(),
-    ...initial,
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<RegisterPatientFormValues>({
+    resolver: zodResolver(RegisterPatientFormSchema),
+    defaultValues: {
+      ...emptyRegisterPatientForm(),
+      ...initial,
+    },
+    mode: "onBlur",
+    reValidateMode: "onChange",
   });
 
+  const sex = watch("sex") ?? "";
+
   const mutation = useMutation({
-    mutationFn: () =>
-      api.createPatient({
-        firstName: form.firstName.trim(),
-        lastName: form.lastName.trim(),
-        middleName: form.middleName.trim() || undefined,
-        dateOfBirth: form.dateOfBirth.trim() || undefined,
-        sex: form.sex || undefined,
-      }),
+    mutationFn: (values: RegisterPatientFormValues) => {
+      const payload = toCreatePatientRequest(
+        RegisterPatientFormSchema.parse(values),
+      );
+      return api.createPatient(payload);
+    },
     onSuccess: (patient) => {
       void qc.invalidateQueries({ queryKey: ["patients-all"] });
       void qc.invalidateQueries({ queryKey: ["patients"] });
@@ -55,67 +70,84 @@ export function RegisterPatientForm({
     },
   });
 
+  const serverError =
+    mutation.error instanceof ApiError
+      ? mutation.error.message
+      : mutation.error instanceof Error
+        ? mutation.error.message
+        : null;
+
   return (
     <form
       className="space-y-4 px-5 py-4"
-      onSubmit={(e) => {
-        e.preventDefault();
-        mutation.mutate();
-      }}
+      noValidate
+      onSubmit={handleSubmit((values) => mutation.mutate(values))}
     >
       <p className="text-sm text-muted-foreground">
         Creates a local TEMP MRN for accessioning. Syncs upstream when the
         registry link is online.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="block space-y-1">
-          <span className="text-xs font-medium">First name</span>
+        <FormField
+          label="First name"
+          htmlFor="patient-first-name"
+          error={errors.firstName}
+          required
+        >
           <Input
-            value={form.firstName}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, firstName: e.target.value }))
-            }
-            required
+            id="patient-first-name"
+            autoComplete="given-name"
+            aria-invalid={Boolean(errors.firstName)}
+            {...register("firstName")}
           />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-medium">Middle name</span>
+        </FormField>
+        <FormField
+          label="Middle name"
+          htmlFor="patient-middle-name"
+          error={errors.middleName}
+        >
           <Input
-            value={form.middleName}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, middleName: e.target.value }))
-            }
+            id="patient-middle-name"
+            autoComplete="additional-name"
+            aria-invalid={Boolean(errors.middleName)}
+            {...register("middleName")}
           />
-        </label>
-        <label className="block space-y-1 sm:col-span-2">
-          <span className="text-xs font-medium">Last name</span>
+        </FormField>
+        <FormField
+          label="Last name"
+          htmlFor="patient-last-name"
+          error={errors.lastName}
+          required
+          className="sm:col-span-2"
+        >
           <Input
-            value={form.lastName}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, lastName: e.target.value }))
-            }
-            required
+            id="patient-last-name"
+            autoComplete="family-name"
+            aria-invalid={Boolean(errors.lastName)}
+            {...register("lastName")}
           />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-medium">Date of birth</span>
+        </FormField>
+        <FormField
+          label="Date of birth"
+          htmlFor="patient-dob"
+          error={errors.dateOfBirth}
+          description="Optional. Format YYYY-MM-DD."
+        >
           <Input
+            id="patient-dob"
             type="date"
-            value={form.dateOfBirth}
-            onChange={(e) =>
-              setForm((f) => ({ ...f, dateOfBirth: e.target.value }))
-            }
+            aria-invalid={Boolean(errors.dateOfBirth)}
+            {...register("dateOfBirth")}
           />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-xs font-medium">Sex</span>
+        </FormField>
+        <FormField label="Sex" error={errors.sex}>
           <Select
-            value={form.sex}
+            value={sex}
             onValueChange={(v) =>
-              setForm((f) => ({
-                ...f,
-                sex: v as RegisterPatientFormState["sex"],
-              }))
+              setValue("sex", v as RegisterPatientFormValues["sex"], {
+                shouldValidate: true,
+                shouldDirty: true,
+              })
             }
             placeholder="—"
             aria-label="Sex"
@@ -127,26 +159,13 @@ export function RegisterPatientForm({
               { value: "U", label: "U" },
             ]}
           />
-        </label>
+        </FormField>
       </div>
 
-      {mutation.isError && (
-        <p className="text-sm text-lab-danger">
-          {mutation.error instanceof ApiError
-            ? mutation.error.message
-            : "Could not register patient"}
-        </p>
-      )}
+      <FormErrorSummary message={serverError} />
 
       <div className="flex flex-wrap gap-2">
-        <Button
-          type="submit"
-          disabled={
-            mutation.isPending ||
-            !form.firstName.trim() ||
-            !form.lastName.trim()
-          }
-        >
+        <Button type="submit" disabled={isSubmitting || mutation.isPending}>
           {mutation.isPending ? "Registering…" : submitLabel}
         </Button>
         {onCancel && (

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { CatalogResponse } from "@drax-lis/contracts";
 import type { OrderSelection } from "@drax-lis/catalog";
 import { Input } from "../ui/input";
+import { ScrollContainer } from "../ui/scroll-container";
 import { PanelCard } from "./panel-card";
 import { cn } from "../../lib/utils";
 
@@ -40,7 +41,8 @@ export function PanelOrderSection({
         placeholder="Search panels…"
         className="mb-3 h-10"
       />
-      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+      <ScrollContainer className="min-h-0 flex-1">
+        <div className="space-y-2 pr-1">
         {catalog.panels.map((panel) => (
           <PanelCard
             key={panel.code}
@@ -50,7 +52,8 @@ export function PanelOrderSection({
             search={panelSearch}
           />
         ))}
-      </div>
+        </div>
+      </ScrollContainer>
     </section>
   );
 }

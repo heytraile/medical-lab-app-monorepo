@@ -1,27 +1,39 @@
+export type PatientNameOrder = "last-first" | "first-last";
+
 type NameParts = {
   displayName: string;
   firstName?: string;
   lastName?: string;
 };
 
-/**
- * "Last, First M" — the order a tech scans a worklist in.
- *
- * Falls back to displayName when the parts are missing, so an older edge build
- * that only sends the joined name still renders something sensible.
- */
-export function formatPatientName(p: NameParts): string {
-  if (!p.lastName) return p.displayName;
-  // Anything between the first and last name in displayName is the middle
-  // name(s); reduced to initials so the pill stays scannable.
-  const middle = p.displayName
+function middleInitials(p: NameParts): string {
+  return p.displayName
     .replace(p.firstName ?? "", "")
-    .replace(p.lastName, "")
+    .replace(p.lastName ?? "", "")
     .trim()
     .split(/\s+/)
     .filter(Boolean)
     .map((part) => `${part[0]}.`)
     .join(" ");
+}
+
+/**
+ * Formats a patient name for worklists.
+ *
+ * - `last-first`: "Last, First M." — default lab sort order
+ * - `first-last`: "First M. Last"
+ *
+ * Falls back to displayName when parts are missing.
+ */
+export function formatPatientName(
+  p: NameParts,
+  order: PatientNameOrder = "last-first",
+): string {
+  if (!p.lastName) return p.displayName;
+  const middle = middleInitials(p);
+  if (order === "first-last") {
+    return [p.firstName, middle, p.lastName].filter(Boolean).join(" ");
+  }
   const given = [p.firstName, middle].filter(Boolean).join(" ");
   return given ? `${p.lastName}, ${given}` : p.lastName;
 }

@@ -9,6 +9,7 @@ import { useBarcodeScanner, useScanInput } from "../../lib/use-barcode-scanner";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
+import { ScrollContainer } from "../ui/scroll-container";
 import { cn } from "../../lib/utils";
 
 function filterPatients(
@@ -199,14 +200,15 @@ export function PatientPicker({
               </Link>
             </Button>
           </div>
-          <ul
+          <ScrollContainer
             className={cn(
-              "divide-y divide-border rounded-lg border border-border",
+              "rounded-lg border border-border",
               fillHeight
-                ? "min-h-0 flex-1 overflow-y-auto"
-                : "max-h-[min(40vh,20rem)] overflow-auto",
+                ? "min-h-0 flex-1"
+                : "max-h-[min(40vh,20rem)]",
             )}
           >
+          <ul className="divide-y divide-border">
             {patientsQ.isLoading && (
               <li className="px-3 py-2 text-sm text-muted-foreground">
                 Loading patients…
@@ -264,6 +266,7 @@ export function PatientPicker({
               </li>
             ))}
           </ul>
+          </ScrollContainer>
         </>
       )}
     </div>

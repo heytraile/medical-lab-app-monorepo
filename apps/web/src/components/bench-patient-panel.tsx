@@ -18,9 +18,15 @@ import {
   flagValueClass,
 } from "./result-status";
 import { useIsDesktop } from "../lib/use-media-query";
+import { ScrollContainer } from "./ui/scroll-container";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { PatientReportExportMenu } from "./patient-report-export-menu";
+import { SubmitForReleaseButton } from "./submit-for-release-button";
+import { RecallFromReleaseButton } from "./recall-from-release-button";
+import { summarizeGroup } from "./bench-group-row";
 import { cn } from "../lib/utils";
+import { usePatientNameOrder } from "../lib/patient-name-order";
 
 function Field({
   label,
@@ -58,6 +64,7 @@ export function BenchPatientPanel({
   embedded?: boolean;
 }) {
   const isDesktop = useIsDesktop();
+  const { formatName } = usePatientNameOrder();
   const detailQ = useQuery({
     queryKey: ["patient", patientId],
     queryFn: () => api.patient(patientId),
@@ -74,8 +81,14 @@ export function BenchPatientPanel({
   );
 
   const p = detailQ.data;
-  const displayName =
-    p?.displayName ?? summary?.displayName ?? "Patient";
+  const nameSource = p ?? summary;
+  const displayName = nameSource
+    ? formatName({
+        displayName: nameSource.displayName,
+        firstName: nameSource.firstName,
+        lastName: nameSource.lastName,
+      })
+    : "Patient";
   const mrn = p?.mrn ?? summary?.mrn ?? "—";
 
   useEffect(() => {
@@ -92,6 +105,8 @@ export function BenchPatientPanel({
       new Date(b.observedAt).getTime() - new Date(a.observedAt).getTime(),
   );
 
+  const submitSummary = summarizeGroup(patientId, results);
+
   return (
     <aside
       className={cn(
@@ -106,26 +121,35 @@ export function BenchPatientPanel({
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Patient focus
           </p>
-          <h3 className="truncate font-display text-lg font-semibold tracking-tight">
+          <h3 className="font-display text-lg font-semibold leading-snug tracking-tight whitespace-normal">
             {displayName}
           </h3>
           <p className="mt-0.5 font-mono text-xs tracking-tight text-muted-foreground">
             {mrn}
           </p>
         </div>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="shrink-0"
-          onClick={onClose}
-          aria-label="Close patient panel"
-        >
-          <X className="size-4" />
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          <PatientReportExportMenu
+            patientId={patientId}
+            patientLabel={displayName}
+            releaseEligible={submitSummary.releasedCount > 0}
+            variant="outline"
+            size="sm"
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="shrink-0"
+            onClick={onClose}
+            aria-label="Close patient panel"
+          >
+            <X className="size-4" />
+          </Button>
+        </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <ScrollContainer className="min-h-0 flex-1">
         <div className="border-b border-border px-4 py-3">
           {detailQ.isLoading && !summary && (
             <p className="text-sm text-muted-foreground">Loading identity…</p>
@@ -194,6 +218,11 @@ export function BenchPatientPanel({
               </ul>
             </div>
           )}
+
+          <div className="mt-3 space-y-2">
+            <SubmitForReleaseButton summary={submitSummary} fullWidth />
+            <RecallFromReleaseButton summary={submitSummary} fullWidth />
+          </div>
         </div>
 
         {orderedByAccession.length > 0 && (
@@ -346,7 +375,7 @@ export function BenchPatientPanel({
             Showing every loaded result for this patient (all tabs / filters).
           </p>
         </div>
-      </div>
+      </ScrollContainer>
     </aside>
   );
 }

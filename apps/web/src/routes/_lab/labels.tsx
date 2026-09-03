@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ScanLine } from "lucide-react";
+import { accessionInputField } from "@drax-lis/contracts";
 import { ApiError, api, type LabelPreviewFields } from "../../lib/api";
 import {
   buildLabelPreviewFromSpecimen,
@@ -13,6 +14,7 @@ import { useScanInput } from "../../lib/use-barcode-scanner";
 import { AccessioningShell } from "../../components/accessioning/accessioning-shell";
 import { LabelPreviewPanel } from "../../components/accessioning/label-preview-panel";
 import { Button } from "../../components/ui/button";
+import { ScrollContainer } from "../../components/ui/scroll-container";
 import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { Badge } from "../../components/ui/badge";
@@ -53,6 +55,9 @@ function LabelsPage() {
   const { accession: accessionFromUrl } = Route.useSearch();
   const navigate = useNavigate();
   const [accessionInput, setAccessionInput] = useState(accessionFromUrl ?? "");
+  const [accessionInputError, setAccessionInputError] = useState<string | null>(
+    null,
+  );
   const [activeAccession, setActiveAccession] = useState(
     accessionFromUrl?.trim() ?? "",
   );
@@ -163,15 +168,31 @@ function LabelsPage() {
 
   function selectAccession(acc: string) {
     const trimmed = acc.trim();
-    setAccessionInput(trimmed);
-    setActiveAccession(trimmed);
+    if (!trimmed) {
+      setAccessionInput("");
+      setActiveAccession("");
+      setAccessionInputError(null);
+      setTestPreview(null);
+      setPrintStatus(null);
+      void navigate({ to: "/labels", search: {} });
+      return;
+    }
+
+    const parsed = accessionInputField.safeParse(trimmed);
+    if (!parsed.success) {
+      setAccessionInput(trimmed);
+      setAccessionInputError(
+        parsed.error.issues[0]?.message ?? "Invalid accession",
+      );
+      return;
+    }
+
+    setAccessionInput(parsed.data);
+    setActiveAccession(parsed.data);
+    setAccessionInputError(null);
     setTestPreview(null);
     setPrintStatus(null);
-    if (trimmed) {
-      void navigate({ to: "/labels", search: { accession: trimmed } });
-    } else {
-      void navigate({ to: "/labels", search: {} });
-    }
+    void navigate({ to: "/labels", search: { accession: parsed.data } });
   }
 
   const reprintMutation = useMutation({
@@ -236,10 +257,15 @@ function LabelsPage() {
             </span>
             <Input
               value={accessionInput}
-              onChange={(e) => setAccessionInput(e.target.value)}
+              onChange={(e) => {
+                setAccessionInputError(null);
+                setAccessionInput(e.target.value);
+              }}
               placeholder="Scan barcode or type accession…"
               autoComplete="off"
               autoFocus
+              maxLength={64}
+              aria-invalid={Boolean(accessionInputError)}
               {...scanHandlers}
               onKeyDown={(e) => {
                 scanHandlers.onKeyDown(e);
@@ -248,6 +274,11 @@ function LabelsPage() {
                 }
               }}
             />
+            {accessionInputError ? (
+              <p className="text-xs text-lab-danger" role="alert">
+                {accessionInputError}
+              </p>
+            ) : null}
           </label>
 
           <div className="flex flex-wrap items-center gap-3 [&>button]:h-11 [&>button]:flex-1 sm:[&>button]:h-9 sm:[&>button]:flex-none">
@@ -285,7 +316,8 @@ function LabelsPage() {
             <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Recent registrations
             </p>
-            <ul className="max-h-64 overflow-auto rounded-md border border-border divide-y divide-border">
+            <ScrollContainer className="max-h-64 rounded-md border border-border">
+            <ul className="divide-y divide-border">
               {specimensQ.isLoading && (
                 <li className="px-3 py-2 text-sm text-muted-foreground">
                   Loading…
@@ -341,6 +373,7 @@ function LabelsPage() {
                 );
               })}
             </ul>
+            </ScrollContainer>
           </div>
         </div>
 

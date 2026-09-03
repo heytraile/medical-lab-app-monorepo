@@ -6,7 +6,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import type { QueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
+import { useRef } from "react";
 import appCss from "../styles.css?url";
 import { AuthProvider, useAuth } from "../lib/auth";
 import { setAuthTokenProvider } from "../lib/api";
@@ -37,10 +37,10 @@ function RootComponent() {
 }
 
 function AuthTokenBridge() {
-  const auth = useAuth();
-  useEffect(() => {
-    setAuthTokenProvider(() => auth.accessToken);
-  }, [auth.accessToken]);
+  const { accessToken } = useAuth();
+  const tokenRef = useRef<string | null>(accessToken);
+  tokenRef.current = accessToken;
+  setAuthTokenProvider(() => tokenRef.current);
   return null;
 }
 

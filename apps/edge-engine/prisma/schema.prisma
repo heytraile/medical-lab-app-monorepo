@@ -52,6 +52,8 @@ model Specimen {
   status                 String    @default("registered")
   collectedAt            DateTime?
   registeredAt           DateTime  @default(now())
+  registeredBy           String?
+  registeredBySnapshot   String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
   results                Result[]
@@ -67,14 +69,23 @@ model Result {
   barcode         String
   analyzerId      String
   testCode        String
+  /// Raw instrument code before remap to catalog testCode.
+  instrumentTestCode String?
   testName        String?
   value           String
   units           String?
   referenceLow    Float?
   referenceHigh   Float?
   flag            String   @default("unknown")
-  /// Clinical release workflow: pending_review → released (authorizer)
+  /// Clinical release workflow: pending_review → pending_authorization → released
   status          String   @default("pending_review")
+  submittedAt     DateTime?
+  submittedBy     String?
+  /// JSON ActorSnapshot at submit time
+  submittedBySnapshot String?
+  releasedAt      DateTime?
+  releasedBy      String?
+  releasedBySnapshot  String?
   observedAt      DateTime
   rawMessageId    String?
   createdAt       DateTime @default(now())
@@ -123,4 +134,21 @@ model SyncMeta {
   /// YYYYMMDD for sequential accession counter
   accessionDay String @default("")
   accessionSeq Int    @default(0)
+}
+
+/// Append-only clinical audit trail (WORM on edge).
+model AuditEvent {
+  id           String   @id @default(cuid())
+  occurredAt   DateTime @default(now())
+  eventType    String
+  entityType   String
+  entityId     String
+  actorUserId  String?
+  actorSnapshot String?
+  payload      String   @default("{}")
+  edgeNodeId   String?
+
+  @@index([entityType, entityId])
+  @@index([occurredAt])
+  @@index([eventType])
 }

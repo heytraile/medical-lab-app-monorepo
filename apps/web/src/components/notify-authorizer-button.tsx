@@ -1,12 +1,24 @@
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BellRing, Check, Loader2 } from "lucide-react";
+import {
+  NotifyAuthorizerFormSchema,
+  type NotifyAuthorizerFormValues,
+} from "@drax-lis/contracts";
 import { api, type ReviewRequest } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
 import type { BenchGroupSummary } from "./bench-group-row";
+import {
+  FormCharCount,
+  FormErrorSummary,
+  FormField,
+} from "./forms/form-field";
 
 /** True when an open request already covers every accession in this group. */
 function findOpenRequest(
@@ -33,9 +45,23 @@ export function NotifyAuthorizerButton({
   const auth = useAuth();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [note, setNote] = useState("");
 
   const signedIn = Boolean(auth.accessToken);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<NotifyAuthorizerFormValues>({
+    resolver: zodResolver(NotifyAuthorizerFormSchema),
+    defaultValues: { note: "" },
+    mode: "onBlur",
+    reValidateMode: "onChange",
+  });
+
+  const note = watch("note");
 
   // Shares the cache with the notification store's poll, so no extra traffic.
   const { data: requests } = useQuery({
@@ -48,8 +74,9 @@ export function NotifyAuthorizerButton({
   const existing = findOpenRequest(requests, summary.accessionNumbers);
 
   const create = useMutation({
-    mutationFn: () =>
-      api.createReviewRequest({
+    mutationFn: (values: NotifyAuthorizerFormValues) => {
+      const parsed = NotifyAuthorizerFormSchema.parse(values);
+      return api.createReviewRequest({
         accessionNumbers: summary.accessionNumbers,
         patientDisplayName:
           summary.patient?.displayName ?? summary.fallbackLabel,
@@ -57,11 +84,12 @@ export function NotifyAuthorizerButton({
         worstFlag: summary.worstFlag as never,
         testCodes: summary.testCodes,
         resultCount: summary.testCount,
-        note: note.trim() || undefined,
-      }),
+        note: parsed.note || undefined,
+      });
+    },
     onSuccess: () => {
       setOpen(false);
-      setNote("");
+      reset({ note: "" });
       void queryClient.invalidateQueries({ queryKey: ["review-requests"] });
     },
   });
@@ -101,7 +129,13 @@ export function NotifyAuthorizerButton({
   const patientLabel = summary.patient?.displayName ?? summary.fallbackLabel;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset({ note: "" });
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           type="button"
@@ -142,45 +176,55 @@ export function NotifyAuthorizerButton({
           </div>
         </dl>
 
-        <label className="mt-3 block text-xs font-medium" htmlFor="notify-note">
-          Note (optional)
-        </label>
-        <input
-          id="notify-note"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          maxLength={500}
-          placeholder="e.g. repeat confirms the critical potassium"
-          className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        />
-
-        {create.isError && (
-          <p className="mt-2 text-xs text-lab-danger">
-            Could not send. Is the cloud API running on :3102?
-          </p>
-        )}
-
-        <div className="mt-3 flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => setOpen(false)}
+        <form
+          className="mt-3 space-y-3"
+          noValidate
+          onSubmit={handleSubmit((values) => create.mutate(values))}
+        >
+          <FormField
+            label="Note (optional)"
+            htmlFor="notify-note"
+            error={errors.note}
           >
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            onClick={() => create.mutate()}
-            disabled={create.isPending}
-          >
-            {create.isPending && (
-              <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
-            )}
-            Send alert
-          </Button>
-        </div>
+            <Input
+              id="notify-note"
+              placeholder="e.g. repeat confirms the critical potassium"
+              maxLength={500}
+              aria-invalid={Boolean(errors.note)}
+              {...register("note")}
+            />
+            <FormCharCount value={note} max={500} />
+          </FormField>
+
+          <FormErrorSummary
+            message={
+              create.isError
+                ? "Could not send. Is the cloud API running on :3102?"
+                : null
+            }
+          />
+
+          <div className="flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={create.isPending || isSubmitting}
+            >
+              {create.isPending && (
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
+              )}
+              Send alert
+            </Button>
+          </div>
+        </form>
       </PopoverContent>
     </Popover>
   );

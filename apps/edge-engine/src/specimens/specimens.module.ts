@@ -4,9 +4,10 @@ import { SpecimensService } from "./specimens.service";
 import { PrinterModule } from "../printer/printer.module";
 import { SyncModule } from "../sync/sync.module";
 import { RealtimeModule } from "../realtime/realtime.module";
+import { AuthModule } from "../auth/auth.module";
 
 @Module({
-  imports: [PrinterModule, SyncModule, RealtimeModule],
+  imports: [PrinterModule, SyncModule, RealtimeModule, AuthModule],
   controllers: [SpecimensController],
   providers: [SpecimensService],
 })

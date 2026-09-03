@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import type { ActorSnapshot } from "@drax-lis/contracts";
 import { PrismaService } from "../prisma/prisma.service";
 import { PrinterService } from "../printer/printer.service";
 import { SyncService } from "../sync/sync.service";
@@ -33,7 +34,14 @@ export class SpecimensService {
     });
   }
 
-  async register(input: {
+  findByAccession(accessionNumber: string) {
+    return this.prisma.specimen.findUnique({
+      where: { accessionNumber },
+    });
+  }
+
+  async register(
+    input: {
     accessionNumber?: string;
     barcode?: string;
     patientId: string;
@@ -44,7 +52,9 @@ export class SpecimensService {
     copies?: number;
     specimenType?: string;
     collectedAt?: string;
-  }) {
+  },
+    actor: ActorSnapshot | null = null,
+  ) {
     const patientId = input.patientId?.trim();
     if (!patientId) {
       throw new BadRequestException(
@@ -148,6 +158,8 @@ export class SpecimensService {
           ? new Date(input.collectedAt)
           : null,
         status: "registered",
+        registeredBy: actor?.userId ?? null,
+        registeredBySnapshot: actor ? JSON.stringify(actor) : null,
       },
     });
 
@@ -165,6 +177,8 @@ export class SpecimensService {
         identityConfirmation: identityConfirmationJson
           ? JSON.parse(identityConfirmationJson)
           : null,
+        registeredBy: actor?.userId ?? null,
+        registeredBySnapshot: actor ?? null,
       },
     });
 

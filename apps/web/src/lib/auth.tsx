@@ -17,6 +17,10 @@ import {
   type ProfileRole,
   type Session,
 } from "./supabase";
+import {
+  setAuthInvalidatedHandler,
+  setAuthRefreshProvider,
+} from "./api";
 
 type AuthState = {
   ready: boolean;
@@ -39,6 +43,12 @@ type AuthState = {
 const AuthContext = createContext<AuthState | null>(null);
 
 const DEV_TOKEN_KEY = "lis-dev-role";
+
+async function validateSupabaseSession(session: Session): Promise<boolean> {
+  if (!supabase) return false;
+  const { data, error } = await supabase.auth.getUser(session.access_token);
+  return !error && Boolean(data.user);
+}
 
 export function authDisplayName(input: {
   profile: Profile | null;
@@ -96,22 +106,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const client = supabase;
     let cancelled = false;
-    void supabase.auth.getSession().then(async ({ data }) => {
+    void client.auth.getSession().then(async ({ data }) => {
       if (cancelled) return;
-      setSession(data.session);
-      if (data.session?.user) {
+      const nextSession = data.session;
+      if (nextSession) {
+        const valid = await validateSupabaseSession(nextSession);
+        if (!valid) {
+          await client.auth.signOut();
+          setSession(null);
+          setProfile(null);
+          setReady(true);
+          return;
+        }
+      }
+      setSession(nextSession);
+      if (nextSession?.user) {
         setDevRole(null);
         localStorage.removeItem(DEV_TOKEN_KEY);
         const loaded =
-          (await fetchProfile(data.session.user.id)) ??
-          profileFromAuthUser(data.session.user);
+          (await fetchProfile(nextSession.user.id)) ??
+          profileFromAuthUser(nextSession.user);
         setProfile(loaded);
       }
       setReady(true);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, next) => {
+    const { data: sub } = client.auth.onAuthStateChange(async (_event, next) => {
+      if (next?.access_token) {
+        const valid = await validateSupabaseSession(next);
+        if (!valid) {
+          await client.auth.signOut();
+          setSession(null);
+          setProfile(null);
+          return;
+        }
+      }
       setSession(next);
       if (next?.user) {
         setDevRole(null);
@@ -142,6 +173,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    setAuthRefreshProvider(async () => {
+      if (devRole) return `dev:${devRole}`;
+      if (!supabase) return null;
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error || !data.session) return null;
+      setSession(data.session);
+      return data.session.access_token;
+    });
+
+    setAuthInvalidatedHandler(() => {
+      void (async () => {
+        setDevRole(null);
+        localStorage.removeItem(DEV_TOKEN_KEY);
+        if (supabase) await supabase.auth.signOut();
+        setSession(null);
+        setProfile(null);
+      })();
+    });
+  }, [devRole]);
 
   const signIn = useCallback(async (email: string, password: string) => {
     if (!supabase) {

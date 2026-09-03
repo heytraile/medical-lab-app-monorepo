@@ -10,6 +10,7 @@ import {
   NotificationToastStack,
 } from "../components/notification-center";
 import { NotificationProvider } from "../lib/notification-store";
+import { PatientNameOrderProvider } from "../lib/patient-name-order";
 
 export const Route = createFileRoute("/_lab")({
   component: LabLayout,
@@ -24,6 +25,7 @@ function LabLayout() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <NotificationProvider>
+          <PatientNameOrderProvider>
           <div className="flex h-svh overflow-hidden bg-background text-foreground">
             <AppSidebar
               onOpenSearch={() => setSearchOpen(true)}
@@ -64,6 +66,7 @@ function LabLayout() {
             <CommandPalette open={searchOpen} onOpenChange={setSearchOpen} />
             <NotificationToastStack />
           </div>
+          </PatientNameOrderProvider>
         </NotificationProvider>
       </ThemeProvider>
     </QueryClientProvider>

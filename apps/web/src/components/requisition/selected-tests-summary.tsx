@@ -1,5 +1,6 @@
 import type { ExpandedOrderedTest } from "@drax-lis/catalog";
 import { Badge } from "../ui/badge";
+import { ScrollContainer } from "../ui/scroll-container";
 
 export function SelectedTestsSummary({
   expanded,
@@ -30,7 +31,8 @@ export function SelectedTestsSummary({
           Select panels or individual tests to build the order.
         </p>
       ) : (
-        <ul className="max-h-48 min-w-0 space-y-1 overflow-x-hidden overflow-y-auto rounded-md border border-border bg-muted/20 p-2 text-sm lg:max-h-64">
+        <ScrollContainer className="max-h-48 min-w-0 rounded-md border border-border bg-muted/20 lg:max-h-64">
+        <ul className="space-y-1 p-2 text-sm">
           {expanded.map((t) => (
             <li key={t.code} className="min-w-0 space-y-0.5">
               <p className="min-w-0 break-words leading-snug">
@@ -47,6 +49,7 @@ export function SelectedTestsSummary({
             </li>
           ))}
         </ul>
+        </ScrollContainer>
       )}
 
       {expanded.length > 0 && (serum > 0 || urine > 0) && (

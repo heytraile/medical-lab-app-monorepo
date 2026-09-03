@@ -1,16 +1,27 @@
-import { Body, Controller, Get, Post } from "@nestjs/common";
+import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
+import type { ActorSnapshot } from "@drax-lis/contracts";
 import { SpecimensService } from "./specimens.service";
+import {
+  OptionalSupabaseAuthGuard,
+  OptionalUser,
+  toActorSnapshot,
+  type AuthUser,
+} from "../auth/auth.guard";
 
 @Controller("specimens")
 export class SpecimensController {
   constructor(private readonly specimens: SpecimensService) {}
 
   @Get()
-  list() {
+  list(@Query("accession") accession?: string) {
+    if (accession?.trim()) {
+      return this.specimens.findByAccession(accession.trim());
+    }
     return this.specimens.list();
   }
 
   @Post()
+  @UseGuards(OptionalSupabaseAuthGuard)
   register(
     @Body()
     body: {
@@ -30,7 +41,9 @@ export class SpecimensController {
       specimenType?: string;
       collectedAt?: string;
     },
+    @OptionalUser() user?: AuthUser,
   ) {
-    return this.specimens.register(body);
+    const actor: ActorSnapshot | null = user ? toActorSnapshot(user) : null;
+    return this.specimens.register(body, actor);
   }
 }

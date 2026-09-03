@@ -28,7 +28,8 @@ Sync results to cloud **early**, on the **same** tables, with a clinical status:
 
 | Status | Meaning |
 | --- | --- |
-| `pending_review` | Instrument (or tech) produced data; not yet authorized for the doctor |
+| `pending_review` | Instrument (or tech) produced data; not yet submitted for authorization |
+| `pending_authorization` | Bench tech submitted; awaiting authorizer sign-off |
 | `released` | Authorizer signed off; eligible for doctor / report / EMR |
 | `amended` / `cancelled` (later) | Corrected or voided after release — full audit |
 
@@ -39,10 +40,39 @@ Machine → Edge SQLite (always)
             ↓ outbox push
          Cloud Nest API → Supabase (same rows, status=pending_review)
             ↓
-         Authorizer releases → status=released (+ releasedBy, releasedAt)
+         Bench tech submits for release → pending_authorization (+ audit)
             ↓
-         Doctor / PDF / EMR only consume released
+         Authorizer releases → status=released (+ releasedBy, releasedAt, audit)
+            ↓
+         Doctor / PDF / email only consume released
 ```
+
+### Submit vs notify
+
+| Action | Effect |
+| --- | --- |
+| **Submit for release** (Bench) | Moves results to `pending_authorization`, enqueues sync event, audit trail |
+| **Notify authorizer** (Bench) | Creates a review-request alert only — does **not** submit results |
+
+See [AUDIT.md](./AUDIT.md) for immutable audit log details.
+
+### Patient report export (PDF / JSON)
+
+After release, staff can export a **patient report** from:
+
+- **Bench** → patient focus panel → **Export report**
+- **Patients** → patient detail dialog → **Export report**
+
+The export reads **released results only** from cloud (`GET /cloud/patients/:edgePatientId/report`). Formats:
+
+| Format | Notes |
+| --- | --- |
+| PDF (Letter 8.5×11) | Branded header, logo placeholder, patient block, results by accession |
+| PDF (Legal 8.5×14) | Same layout, taller page |
+| JSON | Same payload as the API — for integrations / archival |
+| Email | JSON attachment via cloud API — choose **Email to doctor** or **Email to patient**; sender name, job title, and short reference included automatically. **Production uses [Resend](./EMAIL.md)**; local dev uses [Mailpit](http://127.0.0.1:54324) |
+
+Requires sign-in (cloud JWT). Lab branding (address, phone, logo URL) lives in `labs.settings.report` — seeded for Drax Hall in [`supabase/seed.sql`](../supabase/seed.sql).
 
 ### Why sync before sign-off
 
@@ -67,12 +97,28 @@ This is the “gallery of tests for the day” described with the lab team.
 
 ## Release / authorization flow
 
-1. Result arrives from analyzer → stored on edge as `pending_review` (or equivalent).
-2. Outbox syncs to cloud with the same status (when online).
-3. Authorizer sees it in a **Release queue** (cloud LIS), sorted with STAT/critical first.
-4. Authorizer reviews → **Release** (e-sign / password re-auth later).
-5. Persist audit: `releasedBy`, `releasedAt`, optional comment.
-6. Only then: doctor-facing report, printouts marked final, future EMR outbound.
+1. Result arrives from analyzer → stored on edge as `pending_review`.
+2. Bench tech reviews on **Bench** → **Submit for release** → `pending_authorization` (+ audit).
+3. Outbox syncs submit event to cloud; authorizer opens **Release queue** (`GET /cloud/release-queue`).
+4. **While awaiting authorization** (before release):
+   - **Tech recall** (Bench): returns accession to `pending_review` — removes from release queue; tech can fix and re-submit.
+   - **Authorizer return to bench** (Release queue): same state transition; optional reason recorded in audit.
+5. Queue is grouped by **patient + accession**. Each group shows:
+   - Patient name, MRN, DOB/sex
+   - Accession number
+   - **Submitted by** (bench tech) and submitted time
+   - **Accessioned by** (phleb/reception) when signed in at accession
+   - Expandable read-only test list (one row per analyte — normal LIS storage)
+   - **One Release button per accession** — authorizer signs off the whole requisition at once
+   - **Return to bench** — sends the accession back to the tech (confirmation required)
+6. Authorizer releases → all pending results on that accession move to `released`; audit: `result.accession_released` with result IDs.
+7. Only then: doctor-facing report, printouts marked final, future EMR outbound.
+
+**After release:** recall/return is not available — use amend/correct workflow (future). Bench mirrors cloud release on edge (`POST /results/mark-released` after authorizer release): the group shows a **Released** badge, submit/recall are hidden, and the **Released** tab lists completed accessions.
+
+**Storage vs authorization:** the cloud database stores **one row per analyte** (WBC, HGB, etc.) because analyzers emit per-test results. **Authorization is per accession** — one sign-off covers every test on that request form. **Recall and return are also per accession.**
+
+Groups sort with critical/STAT flags first, then newest submit time.
 
 **Critical ≠ auto-release.** Urgency escalates notification; it does **not** skip the authorizer.
 

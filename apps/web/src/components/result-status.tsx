@@ -53,6 +53,12 @@ function statusVisual(status: string | null | undefined): StatusVisual {
   switch (raw) {
     case "pending_review":
       return { variant: "warn", icon: Clock, label: "Pending review" };
+    case "pending_authorization":
+      return {
+        variant: "muted",
+        icon: Clock,
+        label: "Awaiting authorization",
+      };
     case "released":
       return { variant: "ok", icon: CheckCircle2, label: "Released" };
     case "quarantined":

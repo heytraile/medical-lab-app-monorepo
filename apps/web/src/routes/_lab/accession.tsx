@@ -37,6 +37,7 @@ import { selectionsToOrderedTests } from "../../components/requisition/test-orde
 import { useCatalog } from "../../lib/use-catalog";
 import { useAuth } from "../../lib/auth";
 import { Button } from "../../components/ui/button";
+import { ScrollContainer } from "../../components/ui/scroll-container";
 import { Select } from "../../components/ui/select";
 import { cn } from "../../lib/utils";
 import type { SpecimenInfo } from "@drax-lis/contracts";
@@ -354,7 +355,7 @@ function AccessionPage() {
         )}
 
         {/* Col 4 — Session */}
-        <div className="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-y-auto lg:col-span-2 xl:col-span-1">
+        <ScrollContainer className="flex h-full min-h-0 min-w-0 flex-col gap-3 lg:col-span-2 xl:col-span-1">
           {!registeredAccession && catalogQ.data && (
             <>
               <div className="min-w-0 shrink-0 rounded-xl border border-border bg-card p-4 shadow-sm">
@@ -499,7 +500,7 @@ function AccessionPage() {
               ) : undefined
             }
           />
-        </div>
+        </ScrollContainer>
       </form>
 
       {mutation.isError && !confirmPayload && (

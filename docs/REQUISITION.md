@@ -2,6 +2,18 @@
 
 DHMS-style ordering: panels from the [MedLab requisition form](https://draxhall.local) digitized into a cloud catalog, expanded at the counter, and linked to edge accession.
 
+## Instrument vs manual fulfillment
+
+Not every catalog test runs on the four bench analyzers. `@drax-lis/catalog` exposes `getFulfillment(code)`:
+
+| Value | Meaning |
+| --- | --- |
+| `instrument` | Expected from Sysmex, Mindray, ProLyte, or iFlash when ordered |
+| `manual` | Performed by tech (microscopy, ESR, blood bank, etc.) |
+| `send_out` | Referral / external lab |
+
+Machine output is **remapped** to request-form codes at ingestion (`packages/catalog/src/test-fulfillment.ts`). Plain-English reference: [MACHINE_TO_REQUEST_FORM.md](./MACHINE_TO_REQUEST_FORM.md).
+
 ## Flow (unified register)
 
 1. Reception selects **patient** + **panels/tests** on Accession (`/accession`).
