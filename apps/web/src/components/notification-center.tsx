@@ -20,7 +20,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "./ui/popover";
-import { ScrollArea } from "./ui/scroll-area";
+import { ScrollContainer } from "./ui/scroll-container";
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -58,10 +58,12 @@ function NotificationRow({
   item,
   onOpen,
   onAcknowledge,
+  onDismiss,
 }: {
   item: AppNotification;
   onOpen: (item: AppNotification) => void;
   onAcknowledge?: (item: AppNotification) => void;
+  onDismiss: (item: AppNotification) => void;
 }) {
   // A review request carries its own action, so the row cannot be a single
   // button — a nested button is invalid markup and unreachable by keyboard.
@@ -77,32 +79,46 @@ function NotificationRow({
         !item.read && "bg-muted/30",
       )}
     >
-      <button
-        type="button"
-        onClick={() => onOpen(item)}
-        className="w-full px-3 py-2.5 text-left"
-      >
-        <div className="flex items-start justify-between gap-2">
-          <p
-            className={cn(
-              "text-sm font-medium leading-snug",
-              item.severity === "critical" && "text-lab-alarm",
-              item.severity === "alarm" && "text-lab-danger",
-            )}
-          >
-            {!item.read && (
-              <span className="mr-1.5 inline-block size-1.5 rounded-full bg-accent align-middle" />
-            )}
-            {item.title}
+      <div className="flex items-stretch">
+        <button
+          type="button"
+          onClick={() => onOpen(item)}
+          className="min-w-0 flex-1 px-3 py-2.5 text-left"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <p
+              className={cn(
+                "text-sm font-medium leading-snug",
+                item.severity === "critical" && "text-lab-alarm",
+                item.severity === "alarm" && "text-lab-danger",
+              )}
+            >
+              {!item.read && (
+                <span className="mr-1.5 inline-block size-1.5 rounded-full bg-accent align-middle" />
+              )}
+              {item.title}
+            </p>
+            <span className="shrink-0 text-[10px] text-muted-foreground">
+              {relativeTime(item.at)}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
+            {item.body}
           </p>
-          <span className="shrink-0 text-[10px] text-muted-foreground">
-            {relativeTime(item.at)}
-          </span>
-        </div>
-        <p className="mt-0.5 text-xs text-muted-foreground line-clamp-2">
-          {item.body}
-        </p>
-      </button>
+        </button>
+
+        <button
+          type="button"
+          className="shrink-0 self-stretch px-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Remove notification"
+          onClick={(e) => {
+            e.stopPropagation();
+            onDismiss(item);
+          }}
+        >
+          <X className="size-4" aria-hidden />
+        </button>
+      </div>
 
       {showAck && (
         <div className="px-3 pb-2.5">
@@ -127,11 +143,13 @@ function Section({
   items,
   onOpen,
   onAcknowledge,
+  onDismiss,
 }: {
   title: string;
   items: AppNotification[];
   onOpen: (item: AppNotification) => void;
   onAcknowledge?: (item: AppNotification) => void;
+  onDismiss: (item: AppNotification) => void;
 }) {
   if (!items.length) return null;
   return (
@@ -145,6 +163,7 @@ function Section({
           item={item}
           onOpen={onOpen}
           onAcknowledge={onAcknowledge}
+          onDismiss={onDismiss}
         />
       ))}
     </div>
@@ -160,6 +179,7 @@ export function NotificationCenter() {
     markRead,
     markAllRead,
     clearAll,
+    dismissNotification,
   } = useNotifications();
 
   const escalated = criticalCount > 0;
@@ -238,8 +258,12 @@ export function NotificationCenter() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="p-0">
-        <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+      <PopoverContent
+        align="end"
+        className="flex w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden p-0"
+        onWheel={(e) => e.stopPropagation()}
+      >
+        <div className="shrink-0 flex items-center justify-between border-b border-border px-3 py-2.5">
           <div>
             <p className="text-sm font-semibold">Notifications</p>
             {unreadCount > 0 && (
@@ -271,7 +295,10 @@ export function NotificationCenter() {
             </Button>
           </div>
         </div>
-        <ScrollArea className="max-h-[min(24rem,60vh)]">
+        <ScrollContainer
+          className="h-[min(24rem,calc(70vh-3.5rem))] min-h-0"
+          onWheel={(e) => e.stopPropagation()}
+        >
           {notifications.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-muted-foreground">
               No notifications yet — results will appear here as analyzers
@@ -284,21 +311,29 @@ export function NotificationCenter() {
                 items={openReviews}
                 onOpen={openNotification}
                 onAcknowledge={(item) => markRead(item.id)}
+                onDismiss={(item) => dismissNotification(item.id)}
               />
               <Section
                 title="Critical"
                 items={unreadCritical}
                 onOpen={openNotification}
+                onDismiss={(item) => dismissNotification(item.id)}
               />
-              <Section title="Today" items={today} onOpen={openNotification} />
+              <Section
+                title="Today"
+                items={today}
+                onOpen={openNotification}
+                onDismiss={(item) => dismissNotification(item.id)}
+              />
               <Section
                 title="Earlier"
                 items={earlier}
                 onOpen={openNotification}
+                onDismiss={(item) => dismissNotification(item.id)}
               />
             </>
           )}
-        </ScrollArea>
+        </ScrollContainer>
       </PopoverContent>
     </Popover>
   );

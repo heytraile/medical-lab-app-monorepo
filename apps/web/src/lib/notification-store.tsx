@@ -50,6 +50,7 @@ export type AppNotification = {
 };
 
 const STORAGE_KEY = "lis-notifications";
+const DISMISSED_REVIEWS_KEY = "lis-notifications-dismissed-reviews";
 const MAX_ITEMS = 100;
 
 type NotificationState = {
@@ -60,6 +61,7 @@ type NotificationState = {
   markRead: (id: string) => void;
   markAllRead: () => void;
   clearAll: () => void;
+  dismissNotification: (id: string) => void;
   /** Critical toasts surfaced for auto-dismiss UI */
   pendingToasts: AppNotification[];
   dismissToast: (id: string) => void;
@@ -81,6 +83,22 @@ function loadStored(): AppNotification[] {
 
 function persist(items: AppNotification[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(items.slice(0, MAX_ITEMS)));
+}
+
+function loadDismissedReviewIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(DISMISSED_REVIEWS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as string[];
+    return new Set(Array.isArray(parsed) ? parsed : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function persistDismissedReviewIds(ids: Set<string>) {
+  localStorage.setItem(DISMISSED_REVIEWS_KEY, JSON.stringify([...ids]));
 }
 
 function severityFromFlag(flag: string): NotificationSeverity {
@@ -195,11 +213,18 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<AppNotification[]>(() =>
     loadStored(),
   );
+  const [dismissedReviewIds, setDismissedReviewIds] = useState<Set<string>>(
+    () => loadDismissedReviewIds(),
+  );
   const [pendingToasts, setPendingToasts] = useState<AppNotification[]>([]);
 
   useEffect(() => {
     persist(notifications);
   }, [notifications]);
+
+  useEffect(() => {
+    persistDismissedReviewIds(dismissedReviewIds);
+  }, [dismissedReviewIds]);
 
   const handleBenchEvent = useCallback(
     (payload: unknown) => {
@@ -254,10 +279,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const reviewNotifications = useMemo(
     () =>
-      (reviewRequests ?? []).map((row) =>
-        notificationFromReviewRequest(row, canAcknowledge),
-      ),
-    [reviewRequests, canAcknowledge],
+      (reviewRequests ?? [])
+        .filter((row) => !dismissedReviewIds.has(row.id))
+        .map((row) => notificationFromReviewRequest(row, canAcknowledge)),
+    [reviewRequests, canAcknowledge, dismissedReviewIds],
   );
 
   const merged = useMemo(
@@ -299,6 +324,22 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setPendingToasts([]);
   }, []);
 
+  const dismissNotification = useCallback(
+    (id: string) => {
+      const item = merged.find((n) => n.id === id);
+      if (!item) return;
+
+      if (item.source === "review") {
+        const reviewId = item.reviewRequestId ?? id.replace(/^review-/, "");
+        setDismissedReviewIds((prev) => new Set(prev).add(reviewId));
+      } else {
+        setNotifications((prev) => prev.filter((n) => n.id !== id));
+      }
+      setPendingToasts((prev) => prev.filter((t) => t.id !== id));
+    },
+    [merged],
+  );
+
   const dismissToast = useCallback((id: string) => {
     setPendingToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
@@ -334,6 +375,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     markRead,
     markAllRead,
     clearAll,
+    dismissNotification,
     pendingToasts,
     dismissToast,
   };
