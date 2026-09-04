@@ -88,7 +88,7 @@ export function RecallFromReleaseButton({
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         title="Recall from release queue?"
-        description="This removes the accession from the authorizer's queue and returns all tests to bench review. You can fix issues and submit again. Nothing is released to the doctor."
+        description="This removes the patient from the sign-off queue and returns all tests to the bench for another look. You can fix issues and submit again. Nothing is sent to the doctor."
         confirmLabel="Recall to bench"
         pending={recall.isPending}
         onConfirm={() => recall.mutate()}

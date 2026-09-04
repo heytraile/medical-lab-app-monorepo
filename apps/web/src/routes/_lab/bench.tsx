@@ -21,6 +21,7 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { resolveDisplayFlag } from "@drax-lis/contracts";
 import { api, type BenchResult } from "../../lib/api";
 import { analyzerLabel } from "../../lib/analyzers";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
@@ -44,6 +45,7 @@ import {
   flagValueClass,
 } from "../../components/result-status";
 import { Button } from "../../components/ui/button";
+import { ScrollContainer } from "../../components/ui/scroll-container";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { cn } from "../../lib/utils";
 
@@ -165,7 +167,13 @@ function BenchPage() {
       rows = rows.filter((r) => r.status === "released");
     } else if (tab === "flagged") {
       rows = rows.filter(
-        (r) => r.flag && r.flag !== "normal" && r.flag !== "unknown",
+        (r) =>
+          resolveDisplayFlag(
+            r.flag,
+            r.value,
+            r.referenceLow,
+            r.referenceHigh,
+          ) !== "normal",
       );
     }
     return rows;
@@ -310,16 +318,24 @@ function BenchPage() {
       }),
       columnHelper.accessor("value", {
         header: ({ column }) => <SortHeader label="Value" column={column} />,
-        cell: (info) => (
+        cell: (info) => {
+          const row = info.row.original;
+          const ctx = {
+            value: row.value,
+            referenceLow: row.referenceLow,
+            referenceHigh: row.referenceHigh,
+          };
+          return (
           <span
             className={cn(
               "text-base font-semibold tabular-nums",
-              flagValueClass(info.row.original.flag),
+              flagValueClass(row.flag, ctx),
             )}
           >
             {info.getValue()}
           </span>
-        ),
+          );
+        },
       }),
       columnHelper.accessor("units", {
         header: "Units",
@@ -334,12 +350,27 @@ function BenchPage() {
       }),
       columnHelper.accessor("flag", {
         header: ({ column }) => <SortHeader label="Flag" column={column} />,
-        cell: (info) => (
+        cell: (info) => {
+          const row = info.row.original;
+          return (
           <span className="inline-flex items-center gap-1.5">
-            <AlarmSign flag={info.getValue()} />
-            <FlagChip flag={info.getValue()} />
+            <AlarmSign
+              flag={info.getValue()}
+              ctx={{
+                value: row.value,
+                referenceLow: row.referenceLow,
+                referenceHigh: row.referenceHigh,
+              }}
+            />
+            <FlagChip
+              flag={info.getValue()}
+              value={row.value}
+              referenceLow={row.referenceLow}
+              referenceHigh={row.referenceHigh}
+            />
           </span>
-        ),
+          );
+        },
       }),
       columnHelper.accessor("status", {
         header: ({ column }) => <SortHeader label="Status" column={column} />,
@@ -375,6 +406,7 @@ function BenchPage() {
 
   const title = analyzer ? analyzerLabel(analyzer) : "All machines";
   const split = Boolean(selectedPatientId);
+  const splitDocked = split && isWide;
 
   // Each patient renders as a white block on a grey canvas, so rows need to
   // know where they sit inside their block. The row model is a flat list with
@@ -387,11 +419,150 @@ function BenchPage() {
   let leafIndex = 0;
   let groupIndex = 0;
 
+  const benchTableScroll = (
+    <div className="overflow-x-auto">
+      <table
+        className={cn(
+          "w-full text-left text-sm",
+          split ? "min-w-[52rem]" : "min-w-[960px]",
+        )}
+      >
+        <thead className="border-b border-border bg-muted text-xs uppercase tracking-wider text-muted-foreground">
+          {table.getHeaderGroups().map((hg) => (
+            <tr key={hg.id}>
+              {hg.headers.map((h) => (
+                <th
+                  key={h.id}
+                  className={cn(
+                    "px-3 py-2.5 font-medium",
+                    h.id === "patientGroup" && "min-w-[18rem]",
+                  )}
+                >
+                  {h.isPlaceholder
+                    ? null
+                    : flexRender(h.column.columnDef.header, h.getContext())}
+                </th>
+              ))}
+            </tr>
+          ))}
+        </thead>
+        <tbody>
+          {modelRows.length === 0 ? (
+            <tr className="bg-card">
+              <td
+                colSpan={visibleColumnCount}
+                className="px-3 py-12 text-center text-muted-foreground"
+              >
+                {tab === "released"
+                  ? "No released results yet. After sign-off, results appear here."
+                  : "No results for this view. Try clearing your filters."}
+              </td>
+            </tr>
+          ) : (
+            modelRows.map((row, i) => {
+              if (row.getIsGrouped()) {
+                const summary = groupSummaries.get(String(row.groupingValue));
+                if (!summary) return null;
+                leafIndex = 0;
+                const blockIndex = groupIndex++;
+                const isOpen = row.getIsExpanded();
+                return (
+                  <Fragment key={row.id}>
+                    {blockIndex > 0 && (
+                      <tr aria-hidden>
+                        <td colSpan={visibleColumnCount} className="h-4 p-0" />
+                      </tr>
+                    )}
+                    <BenchGroupRow
+                      summary={summary}
+                      expanded={isOpen}
+                      alternate={blockIndex % 2 === 1}
+                      selected={
+                        summary.patient?.id != null &&
+                        summary.patient.id === selectedPatientId
+                      }
+                      onToggle={row.getToggleExpandedHandler()}
+                      onSelectPatient={setSelectedPatientId}
+                      onJumpToFlag={() => {
+                        row.toggleExpanded(true);
+                        const target = row.subRows.find(
+                          (sr) => sr.original.flag === summary.worstFlag,
+                        );
+                        setFocusedResultId(target?.original.id ?? null);
+                      }}
+                    />
+                  </Fragment>
+                );
+              }
+              const striped = leafIndex++ % 2 === 1;
+              const isFocused = row.original.id === focusedResultId;
+              const cells = row.getVisibleCells();
+              const cellBg = cn(
+                striped
+                  ? "bg-sky-100 dark:bg-sky-900/40"
+                  : "bg-sky-50 dark:bg-sky-950/60",
+                flagRowTint(row.original.flag),
+                q &&
+                  row.original.accessionNumber
+                    .toLowerCase()
+                    .includes((q ?? "").toLowerCase()) &&
+                  "bg-accent/15",
+              );
+              return (
+                <tr
+                  key={row.id}
+                  ref={
+                    isFocused
+                      ? (focusedRowRef as React.Ref<HTMLTableRowElement>)
+                      : undefined
+                  }
+                  className="[&:hover>td]:bg-sky-200 dark:[&:hover>td]:bg-sky-900/85"
+                >
+                  {cells.map((cell, ci) => {
+                    const isLastCell = ci === cells.length - 1;
+                    return (
+                      <td
+                        key={cell.id}
+                        className={cn(
+                          "px-3 py-3 align-middle transition-[background-color,box-shadow] duration-300",
+                          cellBg,
+                          isLastInBlock[i]
+                            ? "border-b border-border"
+                            : "border-b border-border/40",
+                          ci === 0 && "border-l-[1.75rem] border-l-muted",
+                          isLastCell && "border-r-4 border-r-muted",
+                        )}
+                        style={cellShadow({
+                          barColor: flagBarColor(row.original.flag),
+                          focused: isFocused,
+                          first: ci === 0,
+                          last: isLastCell,
+                        })}
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+
   return (
     <div
       className={cn(
-        "space-y-5",
-        split ? "mx-auto w-full max-w-none" : "mx-auto w-full max-w-6xl",
+        "mx-auto w-full",
+        splitDocked
+          ? "flex min-h-0 flex-col gap-5 lg:h-[calc(100svh-7rem)]"
+          : "space-y-5",
+        split ? "max-w-none" : "max-w-[min(100%,90rem)]",
       )}
     >
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -403,7 +574,7 @@ function BenchPage() {
             {title}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Live results from edge ingest
+            Live results from instruments
             {q ? ` · filter “${q}”` : ""}.
             {split ? " Click a patient row to focus; Esc closes." : ""}
             {" "}
@@ -464,8 +635,8 @@ function BenchPage() {
       {isLoading && <p className="text-muted-foreground">Loading results…</p>}
       {error && (
         <p className="text-sm text-lab-danger">
-          Could not reach edge API. Is <code>edge-engine</code> running on
-          :3101?
+          Could not load results. Check that the lab system is running and try
+          again.
         </p>
       )}
 
@@ -473,15 +644,16 @@ function BenchPage() {
         className={cn(
           "gap-4",
           split &&
-            "grid grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.9fr)]",
+            "grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.9fr)] xl:items-stretch",
+          splitDocked && "min-h-0 flex-1",
         )}
       >
         {!isDesktop ? (
           modelRows.length === 0 ? (
             <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
               {tab === "released"
-                ? "No released results yet. Authorizer release moves accessions here."
-                : "No results for this view. Run a simulator or clear filters."}
+                ? "No released results yet. After sign-off, results appear here."
+                : "No results for this view. Try clearing your filters."}
             </p>
           ) : (
             <BenchMobileList
@@ -503,154 +675,19 @@ function BenchPage() {
           )
         ) : (
         /* Grey canvas: the gaps between patient blocks are this showing through. */
-        <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-muted shadow-sm">
-          <div className="overflow-x-auto">
-            <table
-              className={cn(
-                "w-full text-left text-sm",
-                split ? "min-w-[52rem]" : "min-w-[880px]",
-              )}
-            >
-              <thead className="border-b border-border bg-muted text-xs uppercase tracking-wider text-muted-foreground">
-                {table.getHeaderGroups().map((hg) => (
-                  <tr key={hg.id}>
-                    {hg.headers.map((h) => (
-                      <th key={h.id} className="px-3 py-2.5 font-medium">
-                        {h.isPlaceholder
-                          ? null
-                          : flexRender(
-                              h.column.columnDef.header,
-                              h.getContext(),
-                            )}
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody>
-                {modelRows.length === 0 ? (
-                  <tr className="bg-card">
-                    <td
-                      colSpan={visibleColumnCount}
-                      className="px-3 py-12 text-center text-muted-foreground"
-                    >
-                      {tab === "released"
-                        ? "No released results yet. Authorizer release moves accessions here."
-                        : "No results for this view. Run a simulator or clear filters."}
-                    </td>
-                  </tr>
-                ) : (
-                  modelRows.map((row, i) => {
-                    if (row.getIsGrouped()) {
-                      const summary = groupSummaries.get(String(row.groupingValue));
-                      if (!summary) return null;
-                      // Stripes restart per patient so the first test under
-                      // every name reads the same way.
-                      leafIndex = 0;
-                      const blockIndex = groupIndex++;
-                      const isOpen = row.getIsExpanded();
-                      return (
-                        <Fragment key={row.id}>
-                          {/* The real gap between patient blocks. */}
-                          {blockIndex > 0 && (
-                            <tr aria-hidden>
-                              <td colSpan={visibleColumnCount} className="h-4 p-0" />
-                            </tr>
-                          )}
-                          <BenchGroupRow
-                            summary={summary}
-                            expanded={isOpen}
-                            alternate={blockIndex % 2 === 1}
-                            selected={
-                              summary.patient?.id != null &&
-                              summary.patient.id === selectedPatientId
-                            }
-                            onToggle={row.getToggleExpandedHandler()}
-                            onSelectPatient={setSelectedPatientId}
-                            onJumpToFlag={() => {
-                              row.toggleExpanded(true);
-                              // subRows are already in the table's sort order,
-                              // so "first" is the first one the tech will see.
-                              const target = row.subRows.find(
-                                (sr) => sr.original.flag === summary.worstFlag,
-                              );
-                              setFocusedResultId(target?.original.id ?? null);
-                            }}
-                          />
-                        </Fragment>
-                      );
-                    }
-                    const striped = leafIndex++ % 2 === 1;
-                    const isFocused = row.original.id === focusedResultId;
-                    const cells = row.getVisibleCells();
-                    // Leaf rows only exist for expanded groups, so every one of
-                    // them belongs to an open block and is tinted blue. Order
-                    // matters: cn() is twMerge, so a later bg-* wins and the
-                    // alarm tint stays on top of the blue.
-                    const cellBg = cn(
-                      striped
-                        ? "bg-sky-100 dark:bg-sky-900/40"
-                        : "bg-sky-50 dark:bg-sky-950/60",
-                      flagRowTint(row.original.flag),
-                      q &&
-                        row.original.accessionNumber
-                          .toLowerCase()
-                          .includes((q ?? "").toLowerCase()) &&
-                        "bg-accent/15",
-                    );
-                    return (
-                      // The background lives on the cells, not here: a <tr>
-                      // always paints the full table width, which would defeat
-                      // the inset. Hover therefore has to reach the cells too.
-                      <tr
-                        key={row.id}
-                        ref={
-                          isFocused
-                            ? (focusedRowRef as React.Ref<HTMLTableRowElement>)
-                            : undefined
-                        }
-                        className="[&:hover>td]:bg-sky-200 dark:[&:hover>td]:bg-sky-900/85"
-                      >
-                        {cells.map((cell, ci) => {
-                          const isLastCell = ci === cells.length - 1;
-                          return (
-                            <td
-                              key={cell.id}
-                              className={cn(
-                                "px-3 py-3 align-middle transition-[background-color,box-shadow] duration-300",
-                                cellBg,
-                                // Hairline between tests; a full rule closes
-                                // the block.
-                                isLastInBlock[i]
-                                  ? "border-b border-border"
-                                  : "border-b border-border/40",
-                                // The inset gutters. Opaque canvas-coloured
-                                // borders that the cell background cannot
-                                // paint over.
-                                ci === 0 && "border-l-[1.75rem] border-l-muted",
-                                isLastCell && "border-r-4 border-r-muted",
-                              )}
-                              style={cellShadow({
-                                barColor: flagBarColor(row.original.flag),
-                                focused: isFocused,
-                                first: ci === 0,
-                                last: isLastCell,
-                              })}
-                            >
-                              {flexRender(
-                                cell.column.columnDef.cell,
-                                cell.getContext(),
-                              )}
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div
+          className={cn(
+            "min-w-0 overflow-hidden rounded-xl border border-border bg-muted shadow-sm",
+            splitDocked && "flex min-h-0 flex-col",
+          )}
+        >
+          {splitDocked ? (
+            <ScrollContainer className="min-h-0 flex-1">
+              {benchTableScroll}
+            </ScrollContainer>
+          ) : (
+            benchTableScroll
+          )}
         </div>
         )}
 
@@ -662,6 +699,7 @@ function BenchPage() {
             summary={selectedSummary}
             results={selectedResults}
             onClose={() => setSelectedPatientId(null)}
+            className="min-h-0"
           />
         )}
       </div>

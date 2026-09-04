@@ -7,13 +7,13 @@ import { Button } from "./ui/button";
 
 type Props = {
   className?: string;
+  variant?: "authorization" | "ready";
 };
 
-/**
- * When the release queue is empty, explain the two-step workflow and show
- * where results might be stuck (edge bench vs sync outbox vs cloud pending_review).
- */
-export function ReleaseQueueEmptyState({ className }: Props) {
+export function ReleaseQueueEmptyState({
+  className,
+  variant = "authorization",
+}: Props) {
   const auth = useAuth();
   const qc = useQueryClient();
 
@@ -32,7 +32,7 @@ export function ReleaseQueueEmptyState({ className }: Props) {
       count < 2 && !(err instanceof ApiError && err.status === 401),
   });
 
-  const drainM = useMutation({
+  const refreshM = useMutation({
     mutationFn: () => api.drainSync(),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["syncStatus"] });
@@ -41,9 +41,10 @@ export function ReleaseQueueEmptyState({ className }: Props) {
     },
   });
 
-  const syncPending = syncQ.data?.pending ?? 0;
-  const syncFailed = syncQ.data?.failed ?? 0;
-  const cloudPendingReview = pendingReviewQ.data?.length ?? 0;
+  const waitingToSend = syncQ.data?.pending ?? 0;
+  const sendFailed = syncQ.data?.failed ?? 0;
+  const notYetSubmitted = pendingReviewQ.data?.length ?? 0;
+  const isReadyTab = variant === "ready";
 
   return (
     <div
@@ -53,77 +54,98 @@ export function ReleaseQueueEmptyState({ className }: Props) {
       }
     >
       <p className="text-sm font-medium text-foreground">
-        No results awaiting authorization
+        {isReadyTab
+          ? "No reports waiting to be sent"
+          : "Nothing waiting for your sign-off"}
       </p>
       <p className="mx-auto mt-2 max-w-lg text-sm text-muted-foreground">
-        Bench techs must click{" "}
-        <strong className="font-medium text-foreground">Submit for release</strong>{" "}
-        on the Bench after reviewing results. That moves them from{" "}
-        <code className="text-xs">pending_review</code> to{" "}
-        <code className="text-xs">pending_authorization</code> here.
+        {isReadyTab ? (
+          <>
+            After you release results on the Authorization tab, they appear here
+            so you can print, download, or email reports. Remove them from this
+            list when you are done sending.
+          </>
+        ) : (
+          <>
+            When a tech finishes reviewing results on the Bench and submits them
+            for release, they will show up here for you to sign off.
+          </>
+        )}
       </p>
 
-      <ul className="mx-auto mt-4 max-w-md space-y-2 text-left text-sm text-muted-foreground">
-        <li>
-          <span className="font-medium text-foreground">Edge outbox pending:</span>{" "}
-          {syncQ.isLoading ? "…" : syncPending}
-          {syncPending > 0 && (
-            <span className="block text-xs">
-              Events waiting to reach cloud — open{" "}
+      {!isReadyTab && (waitingToSend > 0 || notYetSubmitted > 0 || sendFailed > 0) && (
+        <ul className="mx-auto mt-4 max-w-md space-y-2 text-left text-sm text-muted-foreground">
+          {waitingToSend > 0 && (
+            <li>
+              <span className="font-medium text-foreground">
+                Still sending to the lab:
+              </span>{" "}
+              {waitingToSend} item{waitingToSend === 1 ? "" : "s"} — try{" "}
+              <strong className="font-medium text-foreground">Refresh now</strong>{" "}
+              below or open{" "}
               <Link to="/sync" className="text-accent underline-offset-2 hover:underline">
-                Sync
-              </Link>{" "}
-              and drain.
-            </span>
+                Connection
+              </Link>
+              .
+            </li>
           )}
-        </li>
-        <li>
-          <span className="font-medium text-foreground">
-            Cloud pending_review (not submitted):
-          </span>{" "}
-          {pendingReviewQ.isLoading ? "…" : cloudPendingReview}
-          {cloudPendingReview > 0 && (
-            <span className="block text-xs">
-              Synced to cloud but not submitted from Bench yet.
-            </span>
+          {notYetSubmitted > 0 && (
+            <li>
+              <span className="font-medium text-foreground">
+                On the Bench but not submitted yet:
+              </span>{" "}
+              {notYetSubmitted} result{notYetSubmitted === 1 ? "" : "s"}
+            </li>
           )}
-        </li>
-        {syncFailed > 0 && (
-          <li className="text-lab-danger">
-            <span className="font-medium">Sync failed:</span> {syncFailed} — check
-            edge logs and cloud API.
-          </li>
-        )}
-      </ul>
+          {sendFailed > 0 && (
+            <li className="text-lab-danger">
+              <span className="font-medium">Could not send:</span> {sendFailed}{" "}
+              — ask your administrator if this keeps happening.
+            </li>
+          )}
+        </ul>
+      )}
+
+      {isReadyTab && (
+        <p className="mx-auto mt-4 max-w-lg text-xs text-muted-foreground">
+          Removing someone from this list does not undo the release — it only
+          clears your send list. They still appear as Released on the Bench.
+        </p>
+      )}
 
       <div className="mt-5 flex flex-wrap items-center justify-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={drainM.isPending}
-          onClick={() => drainM.mutate()}
-        >
-          {drainM.isPending ? (
-            <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
-          ) : (
-            <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
-          )}
-          Drain sync now
-        </Button>
-        <Button type="button" variant="ghost" size="sm" asChild>
-          <Link to="/bench">Go to Bench</Link>
-        </Button>
-        <Button type="button" variant="ghost" size="sm" asChild>
-          <Link to="/sync">Sync status</Link>
-        </Button>
+        {!isReadyTab ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={refreshM.isPending}
+              onClick={() => refreshM.mutate()}
+            >
+              {refreshM.isPending ? (
+                <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
+              )}
+              Refresh now
+            </Button>
+            <Button type="button" variant="ghost" size="sm" asChild>
+              <Link to="/bench">Go to Bench</Link>
+            </Button>
+          </>
+        ) : (
+          <Button type="button" variant="ghost" size="sm" asChild>
+            <Link to="/release">Authorization queue</Link>
+          </Button>
+        )}
       </div>
 
-      {drainM.isError && (
+      {refreshM.isError && (
         <p className="mt-3 text-xs text-lab-danger">
-          {drainM.error instanceof ApiError
-            ? drainM.error.message
-            : "Drain failed"}
+          {refreshM.error instanceof ApiError
+            ? refreshM.error.message
+            : "Refresh failed — try again in a moment."}
         </p>
       )}
     </div>

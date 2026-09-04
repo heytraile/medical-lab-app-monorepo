@@ -44,7 +44,7 @@ export class PatientReportExportError extends Error {
 export function assertReportHasResults(payload: PatientReportPayload): void {
   if (payload.summary.resultCount === 0) {
     throw new PatientReportExportError(
-      "No released results for this patient yet. Release results on the Release screen first.",
+      "No released results for this patient yet. Sign off on results first, then try again.",
     );
   }
 }

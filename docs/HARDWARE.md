@@ -7,10 +7,24 @@ Peripheral setup for accessioning at Drax Hall Clinical Laboratory. The edge eng
 | Setting | Value |
 | --- | --- |
 | Model | Zebra **ZD411** (203 DPI direct thermal) |
-| Media | 2" × 1" lab labels (recommended) |
+| Media | 2" × 1" lab labels (recommended default) |
 | Language | **ZPL** (disable EPL if prompted) |
 | Network | Static IP on lab LAN (Wi‑Fi or Ethernet module) |
 | Print path | Raw TCP **port 9100** from edge-engine |
+
+### Supported label sizes (203 DPI)
+
+Configure with `LABEL_SIZE_ID` on edge-engine, or override with `LABEL_WIDTH_DOTS` / `LABEL_HEIGHT_DOTS`.
+
+| `LABEL_SIZE_ID` | Physical size | Dots (W×H) | Typical use |
+| --- | --- | --- | --- |
+| **`tube_2x1`** (default) | 2" × 1" | 406 × 203 | Standard blood/urine tube |
+| `tube_2x0_5` | 2" × 0.5" | 406 × 102 | Small cap labels |
+| `tube_4x2` | 4" × 2" | 812 × 406 | Large container / bench jar |
+
+Most labs standardize on **one stock size** per draw station. Drax Hall default: **`tube_2x1`**.
+
+Text that does not fit is truncated/wrapped in ZPL and the UI preview shows the same lines (with `+N` when tests overflow).
 
 ### Network setup
 
@@ -20,8 +34,9 @@ Peripheral setup for accessioning at Drax Hall Clinical Laboratory. The edge eng
 4. Set Doppler / edge env:
    - `ZEBRA_PRINTER_HOST` — printer IP or hostname
    - `ZEBRA_PRINTER_PORT` — `9100` (default)
-   - `LABEL_WIDTH_DOTS=406` — 2" at 203 DPI
-   - `LABEL_HEIGHT_DOTS=203` — 1" at 203 DPI
+   - `LABEL_SIZE_ID=tube_2x1` — preset (`tube_2x1`, `tube_2x0_5`, `tube_4x2`)
+   - `LABEL_WIDTH_DOTS=406` — 2" at 203 DPI (optional override)
+   - `LABEL_HEIGHT_DOTS=203` — 1" at 203 DPI (optional override)
    - `LABEL_COPIES=1` — default copies per job
 
 ### Label content

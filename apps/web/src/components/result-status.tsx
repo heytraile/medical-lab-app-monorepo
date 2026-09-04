@@ -11,10 +11,17 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
+import { resolveDisplayFlag } from "@drax-lis/contracts";
 import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 
 type BadgeVariant = "default" | "ok" | "warn" | "danger" | "muted";
+
+export type ResultFlagContext = {
+  value?: string | null;
+  referenceLow?: number | null;
+  referenceHigh?: number | null;
+};
 
 type FlagVisual = {
   variant: BadgeVariant;
@@ -22,8 +29,20 @@ type FlagVisual = {
   label: string;
 };
 
+function effectiveFlag(
+  flag: string | null | undefined,
+  ctx?: ResultFlagContext,
+): string {
+  return resolveDisplayFlag(
+    flag,
+    ctx?.value ?? undefined,
+    ctx?.referenceLow,
+    ctx?.referenceHigh,
+  );
+}
+
 function flagVisual(flag: string | null | undefined): FlagVisual {
-  const raw = (flag ?? "unknown").trim() || "unknown";
+  const raw = effectiveFlag(flag).trim() || "normal";
   switch (raw) {
     case "critical_high":
       return { variant: "danger", icon: AlertTriangle, label: "Critical high" };
@@ -38,7 +57,7 @@ function flagVisual(flag: string | null | undefined): FlagVisual {
     case "normal":
       return { variant: "ok", icon: Check, label: "Normal" };
     default:
-      return { variant: "muted", icon: AlertCircle, label: raw };
+      return { variant: "muted", icon: AlertCircle, label: "Normal" };
   }
 }
 
@@ -52,12 +71,12 @@ function statusVisual(status: string | null | undefined): StatusVisual {
   const raw = (status ?? "pending_review").trim() || "pending_review";
   switch (raw) {
     case "pending_review":
-      return { variant: "warn", icon: Clock, label: "Pending review" };
+      return { variant: "warn", icon: Clock, label: "Needs review" };
     case "pending_authorization":
       return {
         variant: "muted",
         icon: Clock,
-        label: "Awaiting authorization",
+        label: "Awaiting sign-off",
       };
     case "released":
       return { variant: "ok", icon: CheckCircle2, label: "Released" };
@@ -74,28 +93,42 @@ function statusVisual(status: string | null | undefined): StatusVisual {
 }
 
 /** Human-readable flag name, for labels and announcements. */
-export function flagLabel(flag: string | null | undefined): string {
-  return flagVisual(flag).label;
+export function flagLabel(
+  flag: string | null | undefined,
+  ctx?: ResultFlagContext,
+): string {
+  return flagVisual(effectiveFlag(flag, ctx)).label;
 }
 
-export function isAlarmFlag(flag: string | null | undefined): boolean {
+export function isAlarmFlag(
+  flag: string | null | undefined,
+  ctx?: ResultFlagContext,
+): boolean {
+  const resolved = effectiveFlag(flag, ctx);
   return (
-    flag === "critical_high" ||
-    flag === "critical_low" ||
-    flag === "high"
+    resolved === "critical_high" ||
+    resolved === "critical_low" ||
+    resolved === "high"
   );
 }
 
-function isCriticalFlag(flag: string | null | undefined): boolean {
-  return flag === "critical_high" || flag === "critical_low";
+function isCriticalFlag(
+  flag: string | null | undefined,
+  ctx?: ResultFlagContext,
+): boolean {
+  const resolved = effectiveFlag(flag, ctx);
+  return resolved === "critical_high" || resolved === "critical_low";
 }
 
 /**
  * Orders flags worst-first so a collapsed group can advertise the most severe
  * result it is hiding. Higher wins. Keep flag knowledge in this module only.
  */
-export function flagSeverity(flag: string | null | undefined): number {
-  switch (flag) {
+export function flagSeverity(
+  flag: string | null | undefined,
+  ctx?: ResultFlagContext,
+): number {
+  switch (effectiveFlag(flag, ctx)) {
     case "critical_high":
     case "critical_low":
       return 4;
@@ -113,20 +146,32 @@ export function flagSeverity(flag: string | null | undefined): number {
 
 /** Worst flag across a set of results — what a collapsed group must surface. */
 export function worstFlag(
-  flags: Array<string | null | undefined>,
+  flags: Array<
+    | string
+    | null
+    | undefined
+    | ({ flag?: string | null | undefined } & ResultFlagContext)
+  >,
 ): string | undefined {
   let worst: string | undefined;
-  for (const flag of flags) {
+  for (const entry of flags) {
+    const flag =
+      entry != null && typeof entry === "object"
+        ? effectiveFlag(entry.flag, entry)
+        : effectiveFlag(entry);
     if (worst === undefined || flagSeverity(flag) > flagSeverity(worst)) {
-      worst = flag ?? undefined;
+      worst = flag;
     }
   }
   return worst;
 }
 
 /** Value color — the number itself carries the alarm, not the row. */
-export function flagValueClass(flag: string | null | undefined): string {
-  switch (flag) {
+export function flagValueClass(
+  flag: string | null | undefined,
+  ctx?: ResultFlagContext,
+): string {
+  switch (effectiveFlag(flag, ctx)) {
     case "critical_high":
     case "critical_low":
     case "high":
@@ -145,8 +190,11 @@ export function flagValueClass(flag: string | null | undefined): string {
  * A red edge bar and a faint wash, never a solid red row — a filled AlarmSign
  * plus the red value carry the urgency without drowning the table.
  */
-export function flagRowClass(flag: string | null | undefined): string {
-  switch (flag) {
+export function flagRowClass(
+  flag: string | null | undefined,
+  ctx?: ResultFlagContext,
+): string {
+  switch (effectiveFlag(flag, ctx)) {
     case "critical_high":
     case "critical_low":
       return "border-l-[3px] border-l-lab-alarm bg-lab-alarm/[0.07]";
@@ -172,13 +220,16 @@ export function flagRowClass(flag: string | null | undefined): string {
  */
 export function AlarmSign({
   flag,
+  ctx,
   className,
 }: {
   flag: string | null | undefined;
+  ctx?: ResultFlagContext;
   className?: string;
 }) {
-  if (!isAlarmFlag(flag)) return null;
-  const critical = isCriticalFlag(flag);
+  const resolved = effectiveFlag(flag, ctx);
+  if (!isAlarmFlag(resolved)) return null;
+  const critical = isCriticalFlag(resolved);
   const Icon = critical ? CircleAlert : TriangleAlert;
   const label = critical ? "Critical result" : "High result";
   return (
@@ -195,8 +246,11 @@ export function AlarmSign({
  * Background tint only — for callers that paint cells rather than the row and
  * therefore draw the leading bar themselves (see flagBarColor).
  */
-export function flagRowTint(flag: string | null | undefined): string {
-  switch (flag) {
+export function flagRowTint(
+  flag: string | null | undefined,
+  ctx?: ResultFlagContext,
+): string {
+  switch (effectiveFlag(flag, ctx)) {
     case "critical_high":
     case "critical_low":
       return "bg-lab-alarm/[0.07]";
@@ -215,9 +269,13 @@ export function flagRowTint(flag: string | null | undefined): string {
  * Tailwind v4 only emits the palette variables its utilities reference, and
  * nothing in the app uses sky-300 or amber-400 as a utility.
  */
-export function flagBarColor(flag: string | null | undefined): string {
-  if (isAlarmFlag(flag)) return "var(--color-lab-alarm, #e10600)";
-  if (flag === "low" || flag === "abnormal") {
+export function flagBarColor(
+  flag: string | null | undefined,
+  ctx?: ResultFlagContext,
+): string {
+  const resolved = effectiveFlag(flag, ctx);
+  if (isAlarmFlag(resolved)) return "var(--color-lab-alarm, #e10600)";
+  if (resolved === "low" || resolved === "abnormal") {
     return "var(--color-lab-warn, #d97706)";
   }
   return "var(--color-sky-300, #7dd3fc)";
@@ -225,14 +283,22 @@ export function flagBarColor(flag: string | null | undefined): string {
 
 export function FlagChip({
   flag,
+  value,
+  referenceLow,
+  referenceHigh,
   className,
 }: {
   flag: string | null | undefined;
+  value?: string | null;
+  referenceLow?: number | null;
+  referenceHigh?: number | null;
   className?: string;
 }) {
-  const { variant, icon: Icon, label } = flagVisual(flag);
-  const alarm = isAlarmFlag(flag);
-  const critical = isCriticalFlag(flag);
+  const ctx = { value, referenceLow, referenceHigh };
+  const resolved = effectiveFlag(flag, ctx);
+  const { variant, icon: Icon, label } = flagVisual(resolved);
+  const alarm = isAlarmFlag(resolved);
+  const critical = isCriticalFlag(resolved);
   return (
     <Badge
       variant={variant}

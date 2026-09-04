@@ -103,7 +103,7 @@ This is the “gallery of tests for the day” described with the lab team.
 4. **While awaiting authorization** (before release):
    - **Tech recall** (Bench): returns accession to `pending_review` — removes from release queue; tech can fix and re-submit.
    - **Authorizer return to bench** (Release queue): same state transition; optional reason recorded in audit.
-5. Queue is grouped by **patient + accession**. Each group shows:
+5. **Authorization queue** tab — grouped by **patient + accession**. Each group shows:
    - Patient name, MRN, DOB/sex
    - Accession number
    - **Submitted by** (bench tech) and submitted time
@@ -111,10 +111,16 @@ This is the “gallery of tests for the day” described with the lab team.
    - Expandable read-only test list (one row per analyte — normal LIS storage)
    - **One Release button per accession** — authorizer signs off the whole requisition at once
    - **Return to bench** — sends the accession back to the tech (confirmation required)
-6. Authorizer releases → all pending results on that accession move to `released`; audit: `result.accession_released` with result IDs.
-7. Only then: doctor-facing report, printouts marked final, future EMR outbound.
+6. Authorizer releases → all pending results on that accession move to `released`; audit: `result.accession_released` with result IDs. The accession **stays in the release queue** on the **Ready to send** tab (clinical release ≠ leaving the queue).
+7. **Ready to send** tab — released accessions remain until dismissed:
+   - **Send report** menu — same PDF (Letter/Legal), JSON download, and email to doctor/patient as Bench patient panel (`PatientReportExportMenu`)
+   - **Remove from queue** — hides the accession from Ready to send; results stay `released`
+   - **Clear queue** — dismiss all released rows at once (confirmation required)
+8. Dismissal is tracked on cloud `specimens.release_queue_dismissed_at` — it does not undo release. Recall/return to bench resets dismiss so a re-submitted accession can re-enter the queue normally.
 
-**After release:** recall/return is not available — use amend/correct workflow (future). Bench mirrors cloud release on edge (`POST /results/mark-released` after authorizer release): the group shows a **Released** badge, submit/recall are hidden, and the **Released** tab lists completed accessions.
+**After release:** recall/return is not available — use amend/correct workflow (future). Bench mirrors cloud release on edge (`POST /results/mark-released` after authorizer release): the group shows a **Released** badge, submit/recall are hidden, and the **Released** tab lists completed accessions. Authorizers can send reports from **Ready to send** without opening Bench.
+
+**Report scope:** export/email is **patient-scoped** (all released results for that patient), same as Bench — not limited to a single accession row.
 
 **Storage vs authorization:** the cloud database stores **one row per analyte** (WBC, HGB, etc.) because analyzers emit per-test results. **Authorization is per accession** — one sign-off covers every test on that request form. **Recall and return are also per accession.**
 

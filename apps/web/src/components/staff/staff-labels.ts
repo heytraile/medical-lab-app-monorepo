@@ -11,7 +11,7 @@ export const JOB_TITLE_LABELS: Record<StaffJobTitle, string> = {
 
 export const ROLE_LABELS: Record<StaffRole, string> = {
   tech: "Tech",
-  authorizer: "Authorizer",
+  authorizer: "Sign-off",
   admin: "Admin",
 };
 

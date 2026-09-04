@@ -625,6 +625,12 @@ export class SyncService {
         .eq("status", "pending_authorization");
       if (error) throw error;
 
+      const { error: specErr } = await client
+        .from("specimens")
+        .update({ release_queue_dismissed_at: null })
+        .in("accession_number", accessionNumbers);
+      if (specErr) throw specErr;
+
       const actor = payload.recalledBySnapshot as ActorSnapshot | null;
       const isAuthorizerReject =
         actor?.role === "authorizer" || actor?.role === "admin";
@@ -685,102 +691,71 @@ export class SyncService {
     return Array.from(this.memorySpecimens.values());
   }
 
-  async listReleaseQueue(): Promise<ReleaseQueueGroup[]> {
+  async getSpecimenByAccession(accession: string): Promise<{
+    accessionNumber: string;
+    orderedTests: Array<{ code: string; name?: string }>;
+  } | null> {
+    const trimmed = accession.trim();
+    if (!trimmed) return null;
+
     if (this.supabase.enabled && this.supabase.client) {
-      const client = this.supabase.client;
-      const { data: results, error: resErr } = await client
-        .from("results")
-        .select(
-          "id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, flag, observed_at, submitted_at, submitted_by_snapshot",
-        )
-        .eq("status", "pending_authorization")
-        .order("submitted_at", { ascending: false })
-        .limit(500);
-      if (resErr) throw resErr;
-      if (!results?.length) return [];
-
-      const accessions = [
-        ...new Set(results.map((r) => String(r.accession_number))),
-      ];
-
-      const { data: specimens, error: specErr } = await client
+      const { data, error } = await this.supabase.client
         .from("specimens")
-        .select(
-          `
-          accession_number,
-          barcode,
-          registered_at,
-          registered_by_snapshot,
-          patient_json,
-          patients (
-            edge_patient_id,
-            mrn,
-            first_name,
-            middle_name,
-            last_name,
-            date_of_birth,
-            sex
-          )
-        `,
-        )
-        .in("accession_number", accessions);
-      if (specErr) throw specErr;
-
-      const specimenByAccession = new Map(
-        (specimens ?? []).map((s) => {
-          const rawPatients = s.patients as
-            | SpecimenContext["patients"]
-            | SpecimenContext["patients"][]
-            | null;
-          const patients = Array.isArray(rawPatients)
-            ? rawPatients[0] ?? null
-            : rawPatients ?? null;
-          return [
-            String(s.accession_number),
-            {
-              accession_number: String(s.accession_number),
-              barcode: String(s.barcode),
-              registered_at: s.registered_at as string | null,
-              registered_by_snapshot: s.registered_by_snapshot,
-              patient_json: s.patient_json,
-              patients,
-            },
-          ];
-        }),
-      );
-
-      return assembleReleaseQueueGroups(results, specimenByAccession);
+        .select("accession_number, ordered_tests")
+        .eq("accession_number", trimmed)
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) return null;
+      return {
+        accessionNumber: String(data.accession_number),
+        orderedTests: normalizeOrderedTests(data.ordered_tests),
+      };
     }
 
-    const results = Array.from(this.memoryResults.values())
-      .filter((r) => String(r.status) === "pending_authorization")
-      .map((r) => ({
-        id: String(r.id),
-        accession_number: String(r.accession_number ?? ""),
-        barcode: r.barcode as string | undefined,
-        analyzer_id: String(r.analyzer_id ?? r.analyzerId ?? "unknown"),
-        test_code: String(r.test_code ?? r.testCode ?? ""),
-        test_name: (r.test_name ?? r.testName) as string | null | undefined,
-        value: String(r.value ?? ""),
-        units: (r.units as string | null | undefined) ?? null,
-        flag: String(r.flag ?? "unknown"),
-        observed_at: String(r.observed_at ?? r.observedAt ?? ""),
-        submitted_at: (r.submitted_at ?? r.submittedAt) as
-          | string
-          | null
-          | undefined,
-        submitted_by_snapshot: r.submitted_by_snapshot ?? r.submittedBySnapshot,
-      }));
+    const hit =
+      this.memorySpecimens.get(trimmed) ??
+      [...this.memorySpecimens.values()].find(
+        (s) =>
+          String(s.accessionNumber ?? s.id ?? "").toLowerCase() ===
+          trimmed.toLowerCase(),
+      );
+    if (!hit) return null;
+    const acc = String(hit.accessionNumber ?? hit.id ?? trimmed);
+    return {
+      accessionNumber: acc,
+      orderedTests: normalizeOrderedTests(hit.orderedTests ?? hit.ordered_tests),
+    };
+  }
 
-    const specimenByAccession = new Map<
-      string,
-      Parameters<typeof assembleReleaseQueueGroups>[1] extends Map<
-        string,
-        infer V
-      >
-        ? V
-        : never
-    >();
+  private mapSpecimensToContext(
+    specimens: Array<Record<string, unknown>>,
+  ): Map<string, SpecimenContext> {
+    return new Map(
+      specimens.map((s) => {
+        const rawPatients = s.patients as
+          | SpecimenContext["patients"]
+          | SpecimenContext["patients"][]
+          | null;
+        const patients = Array.isArray(rawPatients)
+          ? rawPatients[0] ?? null
+          : rawPatients ?? null;
+        return [
+          String(s.accession_number),
+          {
+            accession_number: String(s.accession_number),
+            barcode: String(s.barcode),
+            registered_at: s.registered_at as string | null,
+            registered_by_snapshot: s.registered_by_snapshot,
+            patient_json: s.patient_json,
+            patients,
+          },
+        ];
+      }),
+    );
+  }
+
+  private memorySpecimenByAccession(): Map<string, SpecimenContext> {
+    const specimenByAccession = new Map<string, SpecimenContext>();
 
     for (const spec of this.memorySpecimens.values()) {
       const accession = String(spec.accessionNumber ?? spec.id ?? "");
@@ -834,7 +809,470 @@ export class SyncService {
       });
     }
 
-    return assembleReleaseQueueGroups(results, specimenByAccession);
+    return specimenByAccession;
+  }
+
+  private edgeApiUrl(): string | null {
+    const configured = process.env.EDGE_API_URL?.trim();
+    if (configured) return configured.replace(/\/$/, "");
+    if (process.env.NODE_ENV !== "production") {
+      return `http://127.0.0.1:${process.env.EDGE_ENGINE_PORT ?? "3101"}`;
+    }
+    return null;
+  }
+
+  /**
+   * When cloud Postgres was reset or drifted from edge SQLite, bench still shows
+   * released rows while Ready to send reads empty cloud. Mirror edge released
+   * results into cloud before listing the ready-to-send queue.
+   */
+  private async reconcileEdgeReleasedToCloud(): Promise<void> {
+    if (!this.supabase.enabled || !this.supabase.client) return;
+
+    const edgeUrl = this.edgeApiUrl();
+    if (!edgeUrl) return;
+
+    try {
+      const response = await fetch(`${edgeUrl}/results`, {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!response.ok) {
+        this.logger.warn(
+          `Edge release reconcile skipped: GET /results returned ${response.status}`,
+        );
+        return;
+      }
+
+      const edgeResults = (await response.json()) as Array<
+        Record<string, unknown>
+      >;
+      const released = edgeResults.filter(
+        (row) => String(row.status ?? "") === "released",
+      );
+      if (released.length === 0) return;
+
+      const client = this.supabase.client;
+      const byAccession = new Map<string, Array<Record<string, unknown>>>();
+      for (const row of released) {
+        const accession = String(row.accessionNumber ?? "").trim();
+        if (!accession) continue;
+        const bucket = byAccession.get(accession) ?? [];
+        bucket.push(row);
+        byAccession.set(accession, bucket);
+      }
+
+      for (const [accession, rows] of byAccession.entries()) {
+        const first = rows[0]!;
+        const patient = first.patient as Record<string, unknown> | null;
+        const edgePatientId = patient?.id ? String(patient.id) : null;
+
+        const { data: existingSpecimen } = await client
+          .from("specimens")
+          .select("accession_number")
+          .eq("accession_number", accession)
+          .maybeSingle();
+
+        if (!existingSpecimen) {
+          await this.upsertSpecimenRegistration(client, {
+            accessionNumber: accession,
+            barcode: String(first.barcode ?? accession),
+            edgePatientId,
+            patient: patient
+              ? {
+                  mrn: patient.mrn,
+                  firstName: patient.firstName ?? patient.displayName,
+                  middleName: patient.middleName ?? null,
+                  lastName: patient.lastName ?? "",
+                  dateOfBirth: patient.dateOfBirth ?? null,
+                  sex: patient.sex ?? null,
+                  identityOrigin: patient.identityOrigin ?? "upstream",
+                  syncStatus: "n_a",
+                }
+              : null,
+            patientName: patient?.displayName,
+          });
+        }
+
+        for (const row of rows) {
+          const edgeResultId = String(row.id ?? "");
+          if (!edgeResultId) continue;
+
+          let releasedBySnapshot: unknown = row.releasedBySnapshot ?? null;
+          if (typeof releasedBySnapshot === "string") {
+            try {
+              releasedBySnapshot = JSON.parse(releasedBySnapshot);
+            } catch {
+              releasedBySnapshot = null;
+            }
+          }
+
+          const releasedAt = row.releasedAt
+            ? new Date(String(row.releasedAt)).toISOString()
+            : new Date().toISOString();
+
+          const { error } = await client.from("results").upsert(
+            {
+              edge_result_id: edgeResultId,
+              accession_number: accession,
+              barcode: String(row.barcode ?? accession),
+              analyzer_id: String(row.analyzerId ?? "unknown"),
+              test_code: String(row.testCode ?? ""),
+              test_name: (row.testName as string | null) ?? null,
+              value: String(row.value ?? ""),
+              units: (row.units as string | null) ?? null,
+              reference_low:
+                typeof row.referenceLow === "number" ? row.referenceLow : null,
+              reference_high:
+                typeof row.referenceHigh === "number" ? row.referenceHigh : null,
+              flag: String(row.flag ?? "unknown"),
+              status: "released",
+              released_at: releasedAt,
+              released_by: row.releasedBy ? String(row.releasedBy) : null,
+              released_by_snapshot: releasedBySnapshot,
+              observed_at: row.observedAt
+                ? new Date(String(row.observedAt)).toISOString()
+                : new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "edge_result_id" },
+          );
+          if (error) throw error;
+        }
+      }
+
+      this.logger.log(
+        `Reconciled ${released.length} edge released result(s) into cloud`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Edge release reconcile skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  async listReleaseQueue(): Promise<ReleaseQueueGroup[]> {
+    const pending = await this.listPendingAuthorizationQueueGroups();
+    const released = await this.listReleasedReadyToSendQueueGroups();
+    const pendingAccessions = new Set(
+      pending.map((group) => group.accessionNumber),
+    );
+    return [
+      ...pending,
+      ...released.filter(
+        (group) => !pendingAccessions.has(group.accessionNumber),
+      ),
+    ];
+  }
+
+  private async listPendingAuthorizationQueueGroups(): Promise<ReleaseQueueGroup[]> {
+    if (this.supabase.enabled && this.supabase.client) {
+      const client = this.supabase.client;
+      const { data: results, error: resErr } = await client
+        .from("results")
+        .select(
+          "id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot",
+        )
+        .eq("status", "pending_authorization")
+        .order("submitted_at", { ascending: false })
+        .limit(500);
+      if (resErr) throw resErr;
+      if (!results?.length) return [];
+
+      const accessions = [
+        ...new Set(results.map((r) => String(r.accession_number))),
+      ];
+
+      const { data: specimens, error: specErr } = await client
+        .from("specimens")
+        .select(
+          `
+          accession_number,
+          barcode,
+          registered_at,
+          registered_by_snapshot,
+          patient_json,
+          patients (
+            edge_patient_id,
+            mrn,
+            first_name,
+            middle_name,
+            last_name,
+            date_of_birth,
+            sex
+          )
+        `,
+        )
+        .in("accession_number", accessions);
+      if (specErr) throw specErr;
+
+      return assembleReleaseQueueGroups(
+        results,
+        this.mapSpecimensToContext(specimens ?? []),
+        "pending_authorization",
+      );
+    }
+
+    const results = Array.from(this.memoryResults.values())
+      .filter((r) => String(r.status) === "pending_authorization")
+      .map((r) => ({
+        id: String(r.id),
+        accession_number: String(r.accession_number ?? ""),
+        barcode: r.barcode as string | undefined,
+        analyzer_id: String(r.analyzer_id ?? r.analyzerId ?? "unknown"),
+        test_code: String(r.test_code ?? r.testCode ?? ""),
+        test_name: (r.test_name ?? r.testName) as string | null | undefined,
+        value: String(r.value ?? ""),
+        units: (r.units as string | null | undefined) ?? null,
+        reference_low: (r.reference_low ?? r.referenceLow ?? null) as
+          | number
+          | null
+          | undefined,
+        reference_high: (r.reference_high ?? r.referenceHigh ?? null) as
+          | number
+          | null
+          | undefined,
+        flag: String(r.flag ?? "unknown"),
+        observed_at: String(r.observed_at ?? r.observedAt ?? ""),
+        submitted_at: (r.submitted_at ?? r.submittedAt) as
+          | string
+          | null
+          | undefined,
+        submitted_by_snapshot: r.submitted_by_snapshot ?? r.submittedBySnapshot,
+      }));
+
+    return assembleReleaseQueueGroups(
+      results,
+      this.memorySpecimenByAccession(),
+      "pending_authorization",
+    );
+  }
+
+  private async listReleasedReadyToSendQueueGroups(): Promise<ReleaseQueueGroup[]> {
+    await this.reconcileEdgeReleasedToCloud();
+
+    if (this.supabase.enabled && this.supabase.client) {
+      const client = this.supabase.client;
+      const { data: results, error: resErr } = await client
+        .from("results")
+        .select(
+          "id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, released_at, released_by_snapshot",
+        )
+        .eq("status", "released")
+        .order("released_at", { ascending: false })
+        .limit(500);
+      if (resErr) throw resErr;
+      if (!results?.length) return [];
+
+      const accessions = [
+        ...new Set(results.map((r) => String(r.accession_number))),
+      ];
+
+      const { data: specimens, error: specErr } = await client
+        .from("specimens")
+        .select(
+          `
+          accession_number,
+          barcode,
+          registered_at,
+          registered_by_snapshot,
+          patient_json,
+          release_queue_dismissed_at,
+          patients (
+            edge_patient_id,
+            mrn,
+            first_name,
+            middle_name,
+            last_name,
+            date_of_birth,
+            sex
+          )
+        `,
+        )
+        .in("accession_number", accessions);
+      if (specErr) throw specErr;
+
+      const dismissedAccessions = new Set(
+        (specimens ?? [])
+          .filter((s) => s.release_queue_dismissed_at != null)
+          .map((s) => String(s.accession_number)),
+      );
+      const activeResults = results.filter(
+        (r) => !dismissedAccessions.has(String(r.accession_number)),
+      );
+      if (!activeResults.length) return [];
+
+      const activeSpecimens = (specimens ?? []).filter(
+        (s) => s.release_queue_dismissed_at == null,
+      );
+
+      return assembleReleaseQueueGroups(
+        activeResults,
+        this.mapSpecimensToContext(activeSpecimens),
+        "released",
+      );
+    }
+
+    const dismissedAccessions = new Set(
+      Array.from(this.memorySpecimens.values())
+        .filter((spec) => spec.release_queue_dismissed_at)
+        .map((spec) => String(spec.accessionNumber ?? spec.id ?? "")),
+    );
+
+    const results = Array.from(this.memoryResults.values())
+      .filter(
+        (r) =>
+          String(r.status) === "released" &&
+          !dismissedAccessions.has(String(r.accession_number ?? "")),
+      )
+      .map((r) => ({
+        id: String(r.id),
+        accession_number: String(r.accession_number ?? ""),
+        barcode: r.barcode as string | undefined,
+        analyzer_id: String(r.analyzer_id ?? r.analyzerId ?? "unknown"),
+        test_code: String(r.test_code ?? r.testCode ?? ""),
+        test_name: (r.test_name ?? r.testName) as string | null | undefined,
+        value: String(r.value ?? ""),
+        units: (r.units as string | null | undefined) ?? null,
+        reference_low: (r.reference_low ?? r.referenceLow ?? null) as
+          | number
+          | null
+          | undefined,
+        reference_high: (r.reference_high ?? r.referenceHigh ?? null) as
+          | number
+          | null
+          | undefined,
+        flag: String(r.flag ?? "unknown"),
+        observed_at: String(r.observed_at ?? r.observedAt ?? ""),
+        submitted_at: (r.submitted_at ?? r.submittedAt) as
+          | string
+          | null
+          | undefined,
+        submitted_by_snapshot: r.submitted_by_snapshot ?? r.submittedBySnapshot,
+        released_at: (r.released_at ?? r.releasedAt) as string | null | undefined,
+        released_by_snapshot: r.released_by_snapshot ?? r.releasedBySnapshot,
+      }));
+
+    return assembleReleaseQueueGroups(
+      results,
+      this.memorySpecimenByAccession(),
+      "released",
+    );
+  }
+
+  async dismissAccessionFromReleaseQueue(
+    accessionNumber: string,
+  ): Promise<{ accessionNumber: string }> {
+    const accession = accessionNumber.trim();
+    if (!accession) {
+      throw new NotFoundException("Accession number required");
+    }
+    const now = new Date().toISOString();
+
+    if (this.supabase.enabled && this.supabase.client) {
+      const { data: released, error: releasedErr } = await this.supabase.client
+        .from("results")
+        .select("id")
+        .eq("accession_number", accession)
+        .eq("status", "released")
+        .limit(1);
+      if (releasedErr) throw releasedErr;
+      if (!released?.length) {
+        throw new NotFoundException(
+          "Accession is not released or not in the ready-to-send queue",
+        );
+      }
+
+      const { data, error } = await this.supabase.client
+        .from("specimens")
+        .update({ release_queue_dismissed_at: now })
+        .eq("accession_number", accession)
+        .is("release_queue_dismissed_at", null)
+        .select("accession_number")
+        .maybeSingle();
+      if (error) throw error;
+      if (!data) {
+        throw new NotFoundException(
+          "Accession not found in the ready-to-send queue",
+        );
+      }
+      return { accessionNumber: accession };
+    }
+
+    let found = false;
+    for (const [key, spec] of this.memorySpecimens.entries()) {
+      if (String(spec.accessionNumber ?? spec.id ?? "") !== accession) continue;
+      const hasReleased = Array.from(this.memoryResults.values()).some(
+        (r) =>
+          String(r.accession_number ?? "") === accession &&
+          String(r.status) === "released",
+      );
+      if (!hasReleased) {
+        throw new NotFoundException(
+          "Accession is not released or not in the ready-to-send queue",
+        );
+      }
+      this.memorySpecimens.set(key, {
+        ...spec,
+        release_queue_dismissed_at: now,
+      });
+      found = true;
+      break;
+    }
+    if (!found) {
+      throw new NotFoundException(
+        "Accession not found in the ready-to-send queue",
+      );
+    }
+    return { accessionNumber: accession };
+  }
+
+  async dismissAllReleasedFromReleaseQueue(): Promise<{ dismissedCount: number }> {
+    const now = new Date().toISOString();
+
+    if (this.supabase.enabled && this.supabase.client) {
+      const client = this.supabase.client;
+      const { data: releasedRows, error: releasedErr } = await client
+        .from("results")
+        .select("accession_number")
+        .eq("status", "released");
+      if (releasedErr) throw releasedErr;
+
+      const accessions = [
+        ...new Set(
+          (releasedRows ?? []).map((row) => String(row.accession_number)),
+        ),
+      ];
+      if (!accessions.length) return { dismissedCount: 0 };
+
+      const { data, error } = await client
+        .from("specimens")
+        .update({ release_queue_dismissed_at: now })
+        .is("release_queue_dismissed_at", null)
+        .in("accession_number", accessions)
+        .select("accession_number");
+      if (error) throw error;
+      return { dismissedCount: data?.length ?? 0 };
+    }
+
+    let dismissedCount = 0;
+    const releasedAccessions = new Set(
+      Array.from(this.memoryResults.values())
+        .filter((r) => String(r.status) === "released")
+        .map((r) => String(r.accession_number ?? "")),
+    );
+
+    for (const [key, spec] of this.memorySpecimens.entries()) {
+      const accession = String(spec.accessionNumber ?? spec.id ?? "");
+      if (!accession || !releasedAccessions.has(accession)) continue;
+      if (spec.release_queue_dismissed_at) continue;
+      this.memorySpecimens.set(key, {
+        ...spec,
+        release_queue_dismissed_at: now,
+      });
+      dismissedCount += 1;
+    }
+
+    return { dismissedCount };
   }
 
   async releaseResult(opts: {
@@ -1063,6 +1501,16 @@ export class SyncService {
       results,
     };
   }
+}
+
+function normalizeOrderedTests(
+  raw: unknown,
+): Array<{ code: string; name?: string }> {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((t): t is { code?: string; name?: string } => t != null && typeof t === "object")
+    .filter((t) => t.code)
+    .map((t) => ({ code: String(t.code), name: t.name }));
 }
 
 /** Guard helper — validate EDGE_SYNC_TOKEN when configured. */

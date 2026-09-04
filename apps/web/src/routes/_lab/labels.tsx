@@ -6,16 +6,20 @@ import { accessionInputField } from "@drax-lis/contracts";
 import { ApiError, api, type LabelPreviewFields } from "../../lib/api";
 import {
   buildLabelPreviewFromSpecimen,
+  fetchEdgeLabelPreviewForSpecimen,
   findSpecimenByAccession,
   PRINT_API_UNAVAILABLE_MSG,
   TEST_LABEL_PREVIEW,
 } from "../../lib/label-preview-from-specimen";
 import { useScanInput } from "../../lib/use-barcode-scanner";
 import { AccessioningShell } from "../../components/accessioning/accessioning-shell";
-import { LabelPreviewPanel } from "../../components/accessioning/label-preview-panel";
+import {
+  MultiLabelPreviewPanel,
+  type LabelPreviewItem,
+} from "../../components/accessioning/multi-label-preview-panel";
 import { Button } from "../../components/ui/button";
 import { ScrollContainer } from "../../components/ui/scroll-container";
-import { Input } from "../../components/ui/input";
+import { ClearableInput } from "../../components/ui/clearable-input";
 import { Select } from "../../components/ui/select";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../lib/utils";
@@ -102,46 +106,26 @@ function LabelsPage() {
 
   const edgePreviewQ = useQuery({
     queryKey: [
-      "label-edge-preview",
+      "print-preview",
+      "specimen",
       activeAccession,
       specimenRow?.id,
+      specimenRow?.orderedTestsJson,
       specimensQ.dataUpdatedAt,
     ],
     queryFn: async () => {
       if (!specimenRow) return null;
-      const client = buildLabelPreviewFromSpecimen(specimenRow);
-      let orderedTests: string[] = [];
-      try {
-        const parsed = JSON.parse(specimenRow.orderedTestsJson ?? "[]") as Array<{
-          code?: string;
-        }>;
-        orderedTests = parsed.map((t) => t.code).filter(Boolean) as string[];
-      } catch {
-        /* ignore */
-      }
-      try {
-        const res = await api.printPreview({
-          accessionNumber: specimenRow.accessionNumber,
-          patientName: client.patientName,
-          barcode: specimenRow.barcode,
-          orderedTests,
-          specimenType: specimenRow.specimenType ?? "blood",
-          mrn: client.mrn,
-        });
-        return { fields: res.fields, edgeFailed: false as const };
-      } catch {
-        return { fields: client, edgeFailed: true as const };
-      }
+      return fetchEdgeLabelPreviewForSpecimen(specimenRow);
     },
     enabled: Boolean(specimenRow),
-    staleTime: 30_000,
+    staleTime: 400,
   });
 
   const lookupError = useMemo(() => {
     if (!activeAccession.trim()) return null;
     if (specimensQ.isLoading) return null;
     if (specimensQ.isError) {
-      return "Could not load specimens — is edge-engine running?";
+      return "Could not load specimens. Please try again.";
     }
     if (specimensQ.isSuccess && !specimenRow) {
       return "Accession not found";
@@ -161,9 +145,24 @@ function LabelsPage() {
     clientPreview ??
     null;
 
+  const previewLabels = useMemo((): LabelPreviewItem[] => {
+    if (!preview) return [];
+    return [
+      {
+        id: preview.accessionNumber,
+        specimenType: preview.specimenType,
+        fields: preview,
+        accessionNumber: preview.accessionNumber,
+        printStatus,
+      },
+    ];
+  }, [preview, printStatus]);
+
+  const previewPhase = preview ? "registered" : "idle";
+
   const previewWarning =
     edgePreviewQ.data?.edgeFailed && preview
-      ? "Could not reach edge for ZPL preview — showing cached preview."
+      ? "Could not load the label preview — showing the last saved preview."
       : undefined;
 
   function selectAccession(acc: string) {
@@ -199,7 +198,7 @@ function LabelsPage() {
     mutationFn: (acc: string) =>
       api.reprintLabel({ accessionNumber: acc, copies }),
     onSuccess: (data) => {
-      setTestPreview(null);
+      setTestPreview(data.fields);
       setPrintStatus({ ok: data.ok, error: data.error });
     },
     onError: (err) => {
@@ -255,7 +254,7 @@ function LabelsPage() {
               <ScanLine className="size-4" />
               Scan or enter accession
             </span>
-            <Input
+            <ClearableInput
               value={accessionInput}
               onChange={(e) => {
                 setAccessionInputError(null);
@@ -266,6 +265,7 @@ function LabelsPage() {
               autoFocus
               maxLength={64}
               aria-invalid={Boolean(accessionInputError)}
+              leftSlot={<ScanLine className="size-4 text-muted-foreground" />}
               {...scanHandlers}
               onKeyDown={(e) => {
                 scanHandlers.onKeyDown(e);
@@ -378,18 +378,17 @@ function LabelsPage() {
         </div>
 
         <div className="order-1 lg:order-2">
-          <LabelPreviewPanel
-            phase={preview ? "lookup" : "idle"}
-            fields={preview}
+          <MultiLabelPreviewPanel
+            phase={previewPhase}
+            labels={previewLabels}
             emptyContext="labels"
             loading={
               Boolean(specimenRow) &&
               edgePreviewQ.isFetching &&
-              !edgePreviewQ.data
+              !edgePreviewQ.data &&
+              !testPreview
             }
             previewWarning={previewWarning}
-            printStatus={printStatus}
-            accessionNumber={preview?.accessionNumber}
             actions={
               preview && !lookupError ? (
                 <Button

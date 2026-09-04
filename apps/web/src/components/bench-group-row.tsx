@@ -41,7 +41,14 @@ export function summarizeGroup(
   key: string,
   results: BenchResult[],
 ): BenchGroupSummary {
-  const worst = worstFlag(results.map((r) => r.flag));
+  const worst = worstFlag(
+    results.map((r) => ({
+      flag: r.flag,
+      value: r.value,
+      referenceLow: r.referenceLow,
+      referenceHigh: r.referenceHigh,
+    })),
+  );
   const accessions = new Set(results.map((r) => r.accessionNumber));
   let latest: string | undefined;
   for (const r of results) {
@@ -127,6 +134,10 @@ export function BenchGroupRow({
 
   const cellClass = "px-3 py-3.5 align-middle";
 
+  const collapsedNamePillBg = alternate
+    ? "bg-white shadow-sm ring-1 ring-black/5 dark:bg-card dark:shadow-none dark:ring-border/50"
+    : "bg-muted";
+
   return (
     <tr
       data-row-kind="summary"
@@ -153,7 +164,7 @@ export function BenchGroupRow({
         expanded
           ? "border-b-2 bg-sky-200 hover:bg-sky-300 dark:bg-sky-900/50 dark:hover:bg-sky-900/65"
           : cn(
-              "hover:bg-muted/70 dark:hover:bg-muted",
+              "hover:bg-lab-ok/10 dark:hover:bg-lab-ok/20",
               alternate ? "bg-background" : "bg-card",
             ),
         alarm && "border-l-[3px] border-l-lab-alarm",
@@ -162,7 +173,7 @@ export function BenchGroupRow({
       )}
     >
       {/* Patient */}
-      <td className={cn(cellClass, "min-w-[14rem] w-auto align-top")}>
+      <td className={cn(cellClass, "min-w-[18rem] w-[22%] align-top")}>
         <div className="flex items-start gap-x-1.5">
           <button
             type="button"
@@ -194,10 +205,10 @@ export function BenchGroupRow({
               {patient ? (
                 <span
                   className={cn(
-                    "rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight whitespace-normal",
+                    "rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight whitespace-nowrap",
                     expanded
                       ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
-                      : "bg-muted",
+                      : collapsedNamePillBg,
                     selected && "text-accent",
                   )}
                 >
@@ -206,10 +217,10 @@ export function BenchGroupRow({
               ) : (
                 <span
                   className={cn(
-                    "rounded-md px-2 py-1 font-mono text-sm font-bold leading-snug tracking-tight whitespace-normal",
+                    "rounded-md px-2 py-1 font-mono text-sm font-bold leading-snug tracking-tight whitespace-nowrap",
                     expanded
                       ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
-                      : "bg-muted",
+                      : collapsedNamePillBg,
                   )}
                   title={summary.fallbackLabel}
                 >

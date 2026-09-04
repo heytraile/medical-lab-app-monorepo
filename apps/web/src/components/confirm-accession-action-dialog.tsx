@@ -29,6 +29,8 @@ type Props = {
   reasonLabel?: string;
   reasonPlaceholder?: string;
   pending?: boolean;
+  /** When true, overlay click and Escape do not close — user must Cancel or Confirm. */
+  preventOutsideDismiss?: boolean;
   onConfirm: (reason?: string) => void;
 };
 
@@ -42,6 +44,7 @@ export function ConfirmAccessionActionDialog({
   reasonLabel = "Reason (optional)",
   reasonPlaceholder = "Why is this being sent back?",
   pending = false,
+  preventOutsideDismiss = false,
   onConfirm,
 }: Props) {
   const {
@@ -70,7 +73,14 @@ export function ConfirmAccessionActionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent
+        onPointerDownOutside={
+          preventOutsideDismiss ? (event) => event.preventDefault() : undefined
+        }
+        onEscapeKeyDown={
+          preventOutsideDismiss ? (event) => event.preventDefault() : undefined
+        }
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>

@@ -138,8 +138,8 @@ function ProfilePage() {
           {isAdmin(auth.role) ? (
             <>
               <p className="text-sm text-muted-foreground">
-                You can release results, acknowledge review requests, and manage
-                staff — including who has authorizer permission.
+                You can sign off on results, respond to review requests, and manage
+                staff — including who else can sign off.
               </p>
               <Button asChild variant="secondary" size="sm">
                 <Link to="/staff">Manage staff</Link>
@@ -147,13 +147,14 @@ function ProfilePage() {
             </>
           ) : canAuthorize(auth.role) ? (
             <p className="text-sm text-muted-foreground">
-              You can release results and acknowledge review requests on the
+              You can sign off on results and respond to review requests on the
               Release queue.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
               You can accession specimens, review bench results, and register
-              patients. Ask an admin or authorizer to release results.
+              patients. Ask a supervisor if you need someone to sign off on
+              results.
             </p>
           )}
         </div>
@@ -192,8 +193,8 @@ function ProfilePage() {
       ) : (
         <p className="rounded-xl border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
           {auth.isDevSession
-            ? "Dev role sessions use a synthetic identity. Sign in with Supabase to edit your display name."
-            : "Name editing requires a Supabase session."}
+            ? "This is a temporary demo sign-in. Sign in with your email and password to edit your name."
+            : "Sign in to edit your display name."}
         </p>
       )}
     </div>

@@ -1,5 +1,8 @@
 import { Body, Controller, Get, Post, Query, UseGuards } from "@nestjs/common";
-import type { ActorSnapshot } from "@drax-lis/contracts";
+import type {
+  ActorSnapshot,
+  RegisterSpecimensBatchRequest,
+} from "@drax-lis/contracts";
 import { SpecimensService } from "./specimens.service";
 import {
   OptionalSupabaseAuthGuard,
@@ -45,5 +48,15 @@ export class SpecimensController {
   ) {
     const actor: ActorSnapshot | null = user ? toActorSnapshot(user) : null;
     return this.specimens.register(body, actor);
+  }
+
+  @Post("batch")
+  @UseGuards(OptionalSupabaseAuthGuard)
+  registerBatch(
+    @Body() body: RegisterSpecimensBatchRequest,
+    @OptionalUser() user?: AuthUser,
+  ) {
+    const actor: ActorSnapshot | null = user ? toActorSnapshot(user) : null;
+    return this.specimens.registerBatch(body, actor);
   }
 }

@@ -22,14 +22,23 @@ export const ReleaseQueueResultSchema = z.object({
 });
 export type ReleaseQueueResult = z.infer<typeof ReleaseQueueResultSchema>;
 
+export const ReleaseQueuePhaseSchema = z.enum([
+  "pending_authorization",
+  "released",
+]);
+export type ReleaseQueuePhase = z.infer<typeof ReleaseQueuePhaseSchema>;
+
 export const ReleaseQueueGroupSchema = z.object({
   accessionNumber: z.string(),
   barcode: z.string(),
   patient: ReleaseQueuePatientSchema,
+  queuePhase: ReleaseQueuePhaseSchema,
   submittedBy: ActorSnapshotSchema.nullable(),
   submittedAt: z.string().nullable(),
   accessionedBy: ActorSnapshotSchema.nullable(),
   accessionedAt: z.string().nullable(),
+  releasedBy: ActorSnapshotSchema.nullable().optional(),
+  releasedAt: z.string().nullable().optional(),
   results: z.array(ReleaseQueueResultSchema),
   testCount: z.number().int().nonnegative(),
   worstFlag: z.string(),

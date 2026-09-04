@@ -1,13 +1,14 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   useMutation,
-  useQuery,
+  useQueries,
   useQueryClient,
 } from "@tanstack/react-query";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { OrderSelection } from "@drax-lis/catalog";
 import {
   buildPanelsWithMembers,
+  groupTestsBySpecimenBucket,
   selectionsNeedFasting,
 } from "@drax-lis/catalog";
 import {
@@ -21,7 +22,10 @@ import {
 } from "../../lib/api";
 import { buildDraftLabelPreview } from "../../lib/label-preview-draft";
 import { AccessioningShell } from "../../components/accessioning/accessioning-shell";
-import { LabelPreviewPanel } from "../../components/accessioning/label-preview-panel";
+import {
+  MultiLabelPreviewPanel,
+  type LabelPreviewItem,
+} from "../../components/accessioning/multi-label-preview-panel";
 import { PatientPicker } from "../../components/accessioning/patient-picker";
 import { PatientRequiredHint } from "../../components/accessioning/patient-required-hint";
 import { PanelOrderSection } from "../../components/requisition/panel-order-section";
@@ -30,12 +34,13 @@ import { SelectedTestsSummary } from "../../components/requisition/selected-test
 import { FastingCallout } from "../../components/requisition/fasting-callout";
 import {
   EMPTY_SPECIMEN_INFO,
-  primarySpecimenType,
   SpecimenInformationSection,
 } from "../../components/requisition/specimen-information-section";
 import { selectionsToOrderedTests } from "../../components/requisition/test-order-form";
+import { ConfirmAccessionActionDialog } from "../../components/confirm-accession-action-dialog";
 import { useCatalog } from "../../lib/use-catalog";
 import { useAuth } from "../../lib/auth";
+import { useUnsavedWorkGuard } from "../../lib/use-unsaved-work-guard";
 import { Button } from "../../components/ui/button";
 import { ScrollContainer } from "../../components/ui/scroll-container";
 import { Select } from "../../components/ui/select";
@@ -46,9 +51,14 @@ export const Route = createFileRoute("/_lab/accession")({
   component: AccessionPage,
 });
 
-const DEFAULT_SELECTIONS: OrderSelection[] = [
-  { kind: "test", code: "CBC" },
-];
+const EMPTY_SELECTIONS: OrderSelection[] = [];
+
+type RegisteredSpecimenLabel = {
+  accessionNumber: string;
+  specimenType: string;
+  labelPreview: LabelPreviewFields;
+  printStatus?: { ok: boolean; error?: string };
+};
 
 function AccessionPage() {
   const qc = useQueryClient();
@@ -57,26 +67,24 @@ function AccessionPage() {
   const catalogQ = useCatalog();
   const [selected, setSelected] = useState<PatientListItem | null>(null);
   const [selections, setSelections] =
-    useState<OrderSelection[]>(DEFAULT_SELECTIONS);
+    useState<OrderSelection[]>(EMPTY_SELECTIONS);
   const deferredSelections = useDeferredValue(selections);
   const [printLabel, setPrintLabel] = useState(true);
   const [copies, setCopies] = useState(1);
-  const [registeredPreview, setRegisteredPreview] =
-    useState<LabelPreviewFields | null>(null);
-  const [registeredAccession, setRegisteredAccession] = useState<string | null>(
-    null,
-  );
-  const [registeredPrintStatus, setRegisteredPrintStatus] = useState<{
-    ok: boolean;
-    error?: string;
-  } | null>(null);
+  const [registeredSpecimens, setRegisteredSpecimens] = useState<
+    RegisteredSpecimenLabel[]
+  >([]);
   const [confirmPayload, setConfirmPayload] =
     useState<IdentityConfirmationRequired | null>(null);
   const [pendingConfirmation, setPendingConfirmation] =
     useState<IdentityConfirmation | null>(null);
-  const [copied, setCopied] = useState<"barcode" | "cmd" | null>(null);
+  const [copied, setCopied] = useState<"barcode" | null>(null);
   const [specimenInfo, setSpecimenInfo] =
     useState<SpecimenInfo>(EMPTY_SPECIMEN_INFO);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [discardIntent, setDiscardIntent] = useState<"nav" | "start-over">(
+    "nav",
+  );
 
   const panels = useMemo(() => {
     if (!catalogQ.data) return [];
@@ -112,42 +120,57 @@ function AccessionPage() {
   const panelCount = selections.filter((s) => s.kind === "panel").length;
   const individualCount = selections.filter((s) => s.kind === "test").length;
 
-  const testCodes = useMemo(
-    () => expandedTests.map((t) => t.code),
+  const specimenGroups = useMemo(
+    () => groupTestsBySpecimenBucket(expandedTests),
     [expandedTests],
   );
 
-  const orderedTestsPayload = useMemo(
-    () => expandedTests.map((t) => ({ code: t.code, name: t.name })),
-    [expandedTests],
-  );
+  const isRegistered = registeredSpecimens.length > 0;
+  const primaryAccession = registeredSpecimens[0]?.accessionNumber ?? null;
 
-  const draftPreview = useMemo(
-    () => (selected ? buildDraftLabelPreview(selected, testCodes) : null),
-    [selected, testCodes],
-  );
-
-  const previewQ = useQuery({
-    queryKey: ["print-preview", selected?.id, testCodes.join(","), selected?.mrn],
-    queryFn: () =>
-      api.printPreview({
-        accessionNumber: "Assigns on accession",
-        patientName: selected!.displayName,
-        barcode: selected!.mrn,
-        dateOfBirth: selected!.dateOfBirth,
-        orderedTests: testCodes,
-        mrn: selected!.mrn,
-      }),
-    enabled: Boolean(selected) && !registeredAccession,
-    staleTime: 400,
+  const previewQueries = useQueries({
+    queries: specimenGroups.map((group) => ({
+      queryKey: [
+        "print-preview",
+        selected?.id,
+        group.specimenType,
+        group.tests.map((t) => t.code).join(","),
+        selected?.mrn,
+      ],
+      queryFn: () =>
+        api.printPreview({
+          accessionNumber: "Assigns on accession",
+          patientName: selected!.displayName,
+          barcode: selected!.mrn,
+          dateOfBirth: selected!.dateOfBirth,
+          orderedTests: group.tests.map((t) => t.code),
+          specimenType: group.specimenType,
+          mrn: selected!.mrn,
+        }),
+      enabled:
+        Boolean(selected) && !isRegistered && group.tests.length > 0,
+      staleTime: 400,
+    })),
   });
 
   const reprintMutation = useMutation({
-    mutationFn: (accession: string) =>
-      api.reprintLabel({ accessionNumber: accession, copies }),
-    onSuccess: (data) => {
-      setRegisteredPreview(data.fields);
-      setRegisteredPrintStatus({ ok: data.ok, error: data.error });
+    mutationFn: (accessions: string[]) =>
+      Promise.all(
+        accessions.map((accession) =>
+          api.reprintLabel({ accessionNumber: accession, copies }),
+        ),
+      ),
+    onSuccess: (results) => {
+      setRegisteredSpecimens((prev) =>
+        prev.map((item, i) => ({
+          ...item,
+          labelPreview: results[i]?.fields ?? item.labelPreview,
+          printStatus: {
+            ok: results[i]?.ok ?? false,
+            error: results[i]?.error,
+          },
+        })),
+      );
     },
   });
 
@@ -174,52 +197,75 @@ function AccessionPage() {
         requisitionId = req.id;
       }
 
-      const data = await api.registerSpecimen({
+      const batchSpecimens = specimenGroups.map((group) => ({
+        specimenType: group.specimenType,
+        orderedTests: group.tests.map((t) => ({ code: t.code, name: t.name })),
+      }));
+
+      const data = await api.registerSpecimensBatch({
         patientId: selected.id,
         identityConfirmation:
           identityConfirmation ?? pendingConfirmation ?? undefined,
-        orderedTests: orderedTestsPayload,
         requisitionId,
         printLabel,
         copies,
-        specimenType: primarySpecimenType(specimenInfo.specimenTypes),
         collectedAt: specimenInfo.collectedAt,
+        specimens: batchSpecimens,
       });
 
-      if (requisitionId) {
+      // Cloud requisition stores one primary accession; all edge specimens share requisitionId.
+      if (requisitionId && data.specimens[0]?.accessionNumber) {
         await api.linkRequisition(requisitionId, {
-          accessionNumber: data.specimen.accessionNumber,
-          edgeSpecimenId: data.specimen.id,
+          accessionNumber: data.specimens[0].accessionNumber,
+          edgeSpecimenId: data.specimens[0].id ?? "",
         });
       }
 
-      return data;
+      return { data, batchSpecimens };
     },
-    onSuccess: (data) => {
-      const acc = data.specimen.accessionNumber;
-      setRegisteredAccession(acc);
-      setRegisteredPreview(
-        data.labelPreview ??
-          data.printResult?.fields ??
-          previewQ.data?.fields ??
-          (selected
-            ? {
-                ...buildDraftLabelPreview(selected, testCodes),
-                accessionNumber: acc,
-                barcode: acc,
-              }
-            : null),
+    onSuccess: ({ data, batchSpecimens }) => {
+      setRegisteredSpecimens(
+        data.specimens.map((specimen, i) => {
+          const group = batchSpecimens[i];
+          const codes = group?.orderedTests.map((t) => t.code) ?? [];
+          const acc = specimen.accessionNumber;
+          const printResult = data.printResults?.[i];
+          return {
+            accessionNumber: acc,
+            specimenType:
+              specimen.specimenType ?? group?.specimenType ?? "blood",
+            labelPreview:
+              data.labelPreviews[i] ??
+              printResult?.fields ??
+              previewQueries[i]?.data?.fields ??
+              (selected
+                ? {
+                    ...buildDraftLabelPreview(
+                      selected,
+                      codes,
+                      group?.specimenType ?? "blood",
+                    ),
+                    accessionNumber: acc,
+                    barcode: acc,
+                  }
+                : {
+                    accessionNumber: acc,
+                    patientName: "",
+                    barcode: acc,
+                    dateOfBirth: "",
+                    orderedTests: codes.join(", "),
+                    specimenType: group?.specimenType ?? "blood",
+                    printedAt: new Date().toISOString(),
+                  }),
+            printStatus: printResult
+              ? { ok: printResult.ok, error: printResult.error }
+              : printLabel
+                ? { ok: false, error: "No print result" }
+                : undefined,
+          };
+        }),
       );
-      setRegisteredPrintStatus(
-        data.printResult
-          ? { ok: data.printResult.ok, error: data.printResult.error }
-          : printLabel
-            ? { ok: false, error: "No print result" }
-            : null,
-      );
-      setSelected(null);
-      setConfirmPayload(null);
-      setPendingConfirmation(null);
+      resetAccessionDraft();
       void qc.invalidateQueries({ queryKey: ["specimens"] });
       void qc.invalidateQueries({ queryKey: ["syncStatus"] });
     },
@@ -250,25 +296,102 @@ function AccessionPage() {
     mutation.mutate(conf);
   }
 
-  function startNewAccession() {
-    setRegisteredAccession(null);
-    setRegisteredPreview(null);
-    setRegisteredPrintStatus(null);
+  function resetAccessionDraft() {
     setSelected(null);
-    setSelections(DEFAULT_SELECTIONS);
+    setSelections(EMPTY_SELECTIONS);
     setSpecimenInfo(EMPTY_SPECIMEN_INFO);
+    setConfirmPayload(null);
+    setPendingConfirmation(null);
+    mutation.reset();
   }
 
-  const previewFields =
-    registeredPreview ?? previewQ.data?.fields ?? draftPreview;
-  const previewPhase = registeredAccession
+  function startNewAccession() {
+    setRegisteredSpecimens([]);
+    resetAccessionDraft();
+  }
+
+  const draftDirty =
+    !isRegistered && (selected != null || selections.length > 0);
+
+  const navigationBlocker = useUnsavedWorkGuard(draftDirty);
+
+  useEffect(() => {
+    if (navigationBlocker.status === "blocked") {
+      setDiscardIntent("nav");
+      setDiscardOpen(true);
+    }
+  }, [navigationBlocker.status]);
+
+  function closeDiscardPrompt() {
+    if (discardIntent === "nav" && navigationBlocker.status === "blocked") {
+      navigationBlocker.reset?.();
+    }
+    setDiscardOpen(false);
+  }
+
+  function confirmDiscard() {
+    if (discardIntent === "nav") {
+      navigationBlocker.proceed?.();
+    } else {
+      resetAccessionDraft();
+    }
+    setDiscardOpen(false);
+  }
+
+  function requestStartOver() {
+    if (!draftDirty) return;
+    setDiscardIntent("start-over");
+    setDiscardOpen(true);
+  }
+
+  const previewLabels = useMemo((): LabelPreviewItem[] => {
+    if (registeredSpecimens.length > 0) {
+      return registeredSpecimens.map((item, i) => ({
+        id: `${item.specimenType}-${i}`,
+        specimenType: item.specimenType,
+        fields: item.labelPreview,
+        accessionNumber: item.accessionNumber,
+        printStatus: item.printStatus ?? null,
+      }));
+    }
+    if (!selected || specimenGroups.length === 0) return [];
+    return specimenGroups.map((group, i) => {
+      const codes = group.tests.map((t) => t.code);
+      return {
+        id: `${group.specimenType}-${i}`,
+        specimenType: group.specimenType,
+        fields:
+          previewQueries[i]?.data?.fields ??
+          buildDraftLabelPreview(selected, codes, group.specimenType),
+        accessionNumber: null,
+        printStatus: null,
+        testCount: group.tests.length,
+      };
+    });
+  }, [registeredSpecimens, selected, specimenGroups, previewQueries]);
+
+  const previewPhase = isRegistered
     ? "registered"
     : selected
       ? "draft"
       : "idle";
 
+  const previewLoading =
+    Boolean(selected) &&
+    !isRegistered &&
+    previewQueries.some((q) => q.isFetching);
+
+  const previewWarning =
+    previewQueries.some((q) => q.isError) && selected && !isRegistered
+      ? "Could not load the label preview — showing a draft."
+      : undefined;
+
+  const allAccessionNumbers = registeredSpecimens
+    .map((s) => s.accessionNumber)
+    .join("\n");
+
   const showPatientReminder =
-    !selected && !registeredAccession && expandedTests.length > 0;
+    !selected && !isRegistered && expandedTests.length > 0;
 
   return (
     <AccessioningShell
@@ -277,10 +400,10 @@ function AccessionPage() {
       description="Select an existing patient, build the test order, preview the tube label, then accession and print."
     >
       <form
-        className="grid min-w-0 grid-cols-1 gap-5 overflow-x-hidden lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_auto] lg:min-h-0 lg:flex-1 lg:overflow-hidden xl:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)_minmax(0,1fr)_minmax(17rem,22rem)] xl:grid-rows-1"
+        className="grid min-w-0 grid-cols-1 gap-5 overflow-x-hidden lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_auto] lg:min-h-0 lg:flex-1 lg:overflow-hidden xl:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)_minmax(0,1fr)_minmax(22rem,28rem)] xl:grid-rows-1"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!selected || registeredAccession) return;
+          if (!selected || isRegistered) return;
           mutation.mutate(pendingConfirmation ?? undefined);
         }}
       >
@@ -303,10 +426,10 @@ function AccessionPage() {
             </span>
           </div>
 
-          {!auth.accessToken && !registeredAccession && (
+          {!auth.accessToken && !isRegistered && (
             <div className="shrink-0 rounded-lg border border-border bg-muted/40 px-3 py-2.5 text-xs">
               <p>
-                Sign in to save a cloud requisition linked to this accession.
+                Sign in to save the order with this accession.
               </p>
               <Link
                 to="/login"
@@ -323,14 +446,14 @@ function AccessionPage() {
             onAccessionScan={(accession) => {
               void navigate({ to: "/labels", search: { accession } });
             }}
-            scanEnabled={!registeredAccession}
+            scanEnabled={!isRegistered}
             fillHeight
             className="min-h-0"
           />
         </div>
 
         {/* Col 2 & 3 — Panels + individual tests (side by side from lg up) */}
-        {!registeredAccession && catalogQ.data && (
+        {!isRegistered && catalogQ.data && (
           <div className="grid min-h-0 grid-cols-1 gap-3 lg:col-span-1 lg:h-full lg:min-h-0 xl:col-span-2 xl:col-start-2 xl:flex xl:flex-col">
             {showPatientReminder && <PatientRequiredHint className="shrink-0" />}
             <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-4">
@@ -354,11 +477,12 @@ function AccessionPage() {
           </div>
         )}
 
-        {/* Col 4 — Session */}
-        <ScrollContainer className="flex h-full min-h-0 min-w-0 flex-col gap-3 lg:col-span-2 xl:col-span-1">
-          {!registeredAccession && catalogQ.data && (
+        {/* Col 4 — Session: column scrolls; sections scroll internally when they overflow */}
+        <ScrollContainer className="h-full min-h-0 min-w-0 xl:min-w-[22rem] lg:col-span-2 xl:col-span-1">
+          <div className="flex min-w-0 flex-col gap-3">
+          {!isRegistered && catalogQ.data && (
             <>
-              <div className="min-w-0 shrink-0 rounded-xl border border-border bg-card p-4 shadow-sm">
+              <div className="min-w-0 rounded-xl border border-border bg-card p-4 shadow-sm">
                 <SelectedTestsSummary
                   expanded={expandedTests}
                   panelCount={panelCount}
@@ -372,11 +496,11 @@ function AccessionPage() {
               <SpecimenInformationSection
                 value={specimenInfo}
                 onChange={setSpecimenInfo}
+                expandedTests={expandedTests}
                 currentUserId={auth.session?.user?.id ?? auth.profile?.id}
-                className="shrink-0"
               />
 
-              <div className="min-w-0 shrink-0 overflow-hidden rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
+              <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
                 <div className="flex flex-wrap items-center gap-4">
                   <label className="flex items-center gap-2 text-sm">
                     <input
@@ -406,7 +530,7 @@ function AccessionPage() {
 
               <Button
                 type="submit"
-                className="h-11 w-full shrink-0"
+                className="h-11 w-full"
                 disabled={
                   mutation.isPending ||
                   !selected ||
@@ -416,74 +540,79 @@ function AccessionPage() {
                 {mutation.isPending
                   ? "Accessioning…"
                   : printLabel
-                    ? "Accession & Print Label"
-                    : "Accession specimen"}
+                    ? specimenGroups.length > 1
+                      ? "Accession & Print Labels"
+                      : "Accession & Print Label"
+                    : specimenGroups.length > 1
+                      ? "Accession specimens"
+                      : "Accession specimen"}
               </Button>
+
+              {draftDirty && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-9 w-full text-muted-foreground"
+                  onClick={requestStartOver}
+                >
+                  Start over
+                </Button>
+              )}
             </>
           )}
 
-          <LabelPreviewPanel
-            className="shrink-0"
+          <MultiLabelPreviewPanel
             phase={previewPhase}
-            fields={previewFields}
+            labels={previewLabels}
             emptyContext="register"
-            loading={Boolean(
-              selected && previewQ.isFetching && !registeredAccession,
-            )}
-            previewWarning={
-              previewQ.isError && selected && !registeredAccession
-                ? "Could not reach edge for ZPL preview — showing draft."
-                : undefined
-            }
-            printStatus={registeredPrintStatus}
-            accessionNumber={registeredAccession}
+            loading={previewLoading}
+            previewWarning={previewWarning}
             actions={
-              registeredAccession ? (
+              isRegistered && primaryAccession ? (
                 <div className="grid grid-cols-2 gap-2 [&>*]:h-11 [&>*]:w-full [&>*]:justify-center sm:flex sm:flex-wrap sm:[&>*]:h-8 sm:[&>*]:w-auto">
                   <Button
                     type="button"
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      void navigator.clipboard.writeText(registeredAccession);
+                      void navigator.clipboard.writeText(allAccessionNumbers);
                       setCopied("barcode");
                       setTimeout(() => setCopied(null), 1500);
                     }}
                   >
-                    {copied === "barcode" ? "Copied" : "Copy barcode"}
+                    {copied === "barcode"
+                      ? "Copied"
+                      : registeredSpecimens.length > 1
+                        ? "Copy barcodes"
+                        : "Copy barcode"}
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="secondary"
                     disabled={reprintMutation.isPending}
-                    onClick={() => reprintMutation.mutate(registeredAccession)}
+                    onClick={() =>
+                      reprintMutation.mutate(
+                        registeredSpecimens.map((s) => s.accessionNumber),
+                      )
+                    }
                   >
-                    {reprintMutation.isPending ? "Printing…" : "Reprint"}
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={() => {
-                      const cmd = `pnpm --filter @drax-lis/simulators send:sysmex -- --barcode ${registeredAccession}`;
-                      void navigator.clipboard.writeText(cmd);
-                      setCopied("cmd");
-                      setTimeout(() => setCopied(null), 1500);
-                    }}
-                  >
-                    {copied === "cmd" ? "Copied" : "Copy sim command"}
+                    {reprintMutation.isPending
+                      ? "Printing…"
+                      : registeredSpecimens.length > 1
+                        ? "Reprint all"
+                        : "Reprint"}
                   </Button>
                   <Link
                     to="/labels"
-                    search={{ accession: registeredAccession }}
+                    search={{ accession: primaryAccession }}
                     className="inline-flex h-8 items-center rounded-md bg-secondary px-3 text-xs font-medium text-secondary-foreground hover:bg-secondary/80"
                   >
                     Open in Labels
                   </Link>
                   <Link
                     to="/bench"
-                    search={{ q: registeredAccession }}
+                    search={{ q: primaryAccession }}
                     className="inline-flex h-8 items-center rounded-md bg-secondary px-3 text-xs font-medium text-secondary-foreground hover:bg-secondary/80"
                   >
                     Open in Bench
@@ -500,6 +629,7 @@ function AccessionPage() {
               ) : undefined
             }
           />
+          </div>
         </ScrollContainer>
       </form>
 
@@ -507,7 +637,7 @@ function AccessionPage() {
         <p className="text-sm text-lab-danger">
           {mutation.error instanceof ApiError
             ? mutation.error.message
-            : "Accession failed — is edge-engine running?"}
+            : "Accession failed — please try again."}
         </p>
       )}
 
@@ -522,6 +652,17 @@ function AccessionPage() {
           onConfirm={confirmIdentity}
         />
       )}
+
+      <ConfirmAccessionActionDialog
+        open={discardOpen}
+        onOpenChange={(open) => {
+          if (!open) closeDiscardPrompt();
+        }}
+        title="Discard accession draft?"
+        description="You'll lose the current patient and test selections."
+        confirmLabel="Discard"
+        onConfirm={() => confirmDiscard()}
+      />
     </AccessioningShell>
   );
 }

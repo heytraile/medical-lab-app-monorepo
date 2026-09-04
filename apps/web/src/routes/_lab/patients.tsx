@@ -7,7 +7,7 @@ import { PatientDetailDialog } from "../../components/patient-detail-dialog";
 import { RegisterPatientDialog } from "../../components/patients/register-patient-dialog";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
+import { ClearableInput } from "../../components/ui/clearable-input";
 import { cn } from "../../lib/utils";
 import { useIsDesktop } from "../../lib/use-media-query";
 
@@ -58,7 +58,7 @@ function PatientsPage() {
             Patients
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Register new patients and browse the local MRN registry used for
+            Register new patients and look up who is in the lab system for
             accessioning and bench review.
           </p>
         </div>
@@ -74,7 +74,7 @@ function PatientsPage() {
         </div>
       </div>
 
-      <Input
+      <ClearableInput
         value={query}
         onChange={(e) => {
           setQueryError(null);
@@ -90,7 +90,7 @@ function PatientsPage() {
           setQueryError(null);
         }}
         placeholder="Search name or MRN…"
-        className="max-w-md"
+        wrapperClassName="max-w-md"
         maxLength={200}
         aria-invalid={Boolean(queryError)}
       />
@@ -102,7 +102,7 @@ function PatientsPage() {
 
       {patientsQ.isError && (
         <p className="text-sm text-lab-danger">
-          Could not load patients. Is edge-engine running?
+          Could not load patients. Please try again.
         </p>
       )}
 
@@ -115,8 +115,7 @@ function PatientsPage() {
           )}
           {!patientsQ.isLoading && rows.length === 0 && (
             <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
-              No patients found. Use Register patient above or seed with{" "}
-              <code className="text-xs">POST /patients/seed</code>.
+              No patients found. Register a patient using the button above.
             </p>
           )}
           {rows.map((p) => (
@@ -181,8 +180,7 @@ function PatientsPage() {
                       colSpan={5}
                       className="px-3 py-12 text-center text-muted-foreground"
                     >
-                      No patients found. Use Register patient or seed with{" "}
-                      <code className="text-xs">POST /patients/seed</code>.
+                      No patients found. Register a patient using the button above.
                     </td>
                   </tr>
                 )}

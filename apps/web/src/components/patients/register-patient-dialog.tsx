@@ -33,7 +33,7 @@ export function RegisterPatientDialog({
         <DialogHeader>
           <DialogTitle>Register patient</DialogTitle>
           <DialogDescription>
-            Add a new patient to the local MRN registry before accessioning.
+            Add a new patient before accessioning a specimen.
           </DialogDescription>
         </DialogHeader>
         <RegisterPatientForm

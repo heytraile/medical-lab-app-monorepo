@@ -10,6 +10,12 @@ export {
 } from "./expand-selection";
 
 export {
+  groupTestsBySpecimenBucket,
+  type SpecimenBucket,
+  type SpecimenBucketGroup,
+} from "./group-tests-by-specimen-bucket";
+
+export {
   CATALOG_CATEGORIES,
   CATALOG_VERSION,
   DRAX_HALL_LAB,

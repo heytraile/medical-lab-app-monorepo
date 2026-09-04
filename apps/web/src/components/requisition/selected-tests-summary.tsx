@@ -2,6 +2,10 @@ import type { ExpandedOrderedTest } from "@drax-lis/catalog";
 import { Badge } from "../ui/badge";
 import { ScrollContainer } from "../ui/scroll-container";
 
+function specimenTypeLabel(type: string): string {
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
 export function SelectedTestsSummary({
   expanded,
   panelCount,
@@ -11,6 +15,7 @@ export function SelectedTestsSummary({
   panelCount: number;
   individualCount: number;
 }) {
+  const blood = expanded.filter((t) => t.specimenHint === "blood").length;
   const serum = expanded.filter((t) => t.specimenHint === "serum").length;
   const urine = expanded.filter((t) => t.specimenHint === "urine").length;
 
@@ -31,7 +36,7 @@ export function SelectedTestsSummary({
           Select panels or individual tests to build the order.
         </p>
       ) : (
-        <ScrollContainer className="max-h-48 min-w-0 rounded-md border border-border bg-muted/20 lg:max-h-64">
+        <ScrollContainer className="h-44 min-h-0 max-h-44 min-w-0 rounded-md border border-border bg-muted/20 lg:h-52 lg:max-h-52">
         <ul className="space-y-1 p-2 text-sm">
           {expanded.map((t) => (
             <li key={t.code} className="min-w-0 space-y-0.5">
@@ -52,8 +57,13 @@ export function SelectedTestsSummary({
         </ScrollContainer>
       )}
 
-      {expanded.length > 0 && (serum > 0 || urine > 0) && (
+      {expanded.length > 0 && (blood > 0 || serum > 0 || urine > 0) && (
         <div className="flex flex-wrap gap-1.5">
+          {blood > 0 && (
+            <Badge variant="muted" className="text-[10px]">
+              Blood ({blood})
+            </Badge>
+          )}
           {serum > 0 && (
             <Badge variant="muted" className="text-[10px]">
               Serum ({serum})

@@ -1,14 +1,18 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { Cron } from "@nestjs/schedule";
 import { PrismaService } from "../prisma/prisma.service";
 import { randomUUID } from "crypto";
 
 @Injectable()
-export class SyncService {
+export class SyncService implements OnModuleInit {
   private readonly logger = new Logger(SyncService.name);
   private draining = false;
 
   constructor(private readonly prisma: PrismaService) {}
+
+  onModuleInit() {
+    void this.pruneAckedOutbox();
+  }
 
   async enqueue(input: {
     type: string;
@@ -111,6 +115,7 @@ export class SyncService {
         }
 
         this.logger.log(`Synced ${acked.size}/${pending.length} outbox events`);
+        await this.pruneAckedOutbox();
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         this.logger.warn(`Sync deferred (offline?): ${msg}`);
@@ -134,5 +139,42 @@ export class SyncService {
       this.prisma.outboxEvent.count({ where: { status: "failed" } }),
     ]);
     return { pending, syncing, acked, failed };
+  }
+
+  /** Drop old successfully-sent outbox rows (transport log only, not clinical data). */
+  async pruneAckedOutbox(): Promise<{ deleted: number }> {
+    const days = this.ackedRetentionDays();
+    if (days <= 0) return { deleted: 0 };
+
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const result = await this.prisma.outboxEvent.deleteMany({
+      where: { status: "acked", updatedAt: { lt: cutoff } },
+    });
+    if (result.count > 0) {
+      this.logger.log(
+        `Pruned ${result.count} acked outbox event(s) older than ${days} day(s)`,
+      );
+    }
+    return { deleted: result.count };
+  }
+
+  /** Dev/maintenance: remove all acked outbox rows. */
+  async pruneAllAckedOutbox(): Promise<{ deleted: number }> {
+    const result = await this.prisma.outboxEvent.deleteMany({
+      where: { status: "acked" },
+    });
+    if (result.count > 0) {
+      this.logger.log(`Pruned all ${result.count} acked outbox event(s)`);
+    }
+    return { deleted: result.count };
+  }
+
+  private ackedRetentionDays(): number {
+    const raw = process.env.OUTBOX_ACKED_RETENTION_DAYS;
+    if (raw != null && raw !== "") {
+      const n = Number(raw);
+      if (Number.isFinite(n) && n >= 0) return n;
+    }
+    return process.env.NODE_ENV === "production" ? 7 : 1;
   }
 }

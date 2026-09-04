@@ -3,7 +3,9 @@ import {
   type ActorSnapshot,
   type ReleaseQueueGroup,
   type ReleaseQueuePatient,
+  type ReleaseQueuePhase,
 } from "@drax-lis/contracts";
+import { resolveDisplayFlag } from "@drax-lis/contracts";
 
 export function parseActorSnapshot(raw: unknown): ActorSnapshot | null {
   const parsed = ActorSnapshotSchema.safeParse(raw);
@@ -20,7 +22,7 @@ function flagSeverity(flag: string | null | undefined): number {
     case "abnormal":
       return 3;
     case "unknown":
-      return 2;
+      return 0;
     case "normal":
       return 1;
     default:
@@ -29,8 +31,9 @@ function flagSeverity(flag: string | null | undefined): number {
 }
 
 export function worstFlag(flags: string[]): string {
-  let worst = "unknown";
-  for (const flag of flags) {
+  if (flags.length === 0) return "normal";
+  let worst = flags[0]!;
+  for (const flag of flags.slice(1)) {
     if (flagSeverity(flag) > flagSeverity(worst)) worst = flag;
   }
   return worst;
@@ -46,9 +49,13 @@ type ResultRow = {
   value: string;
   units?: string | null;
   flag: string;
+  reference_low?: number | null;
+  reference_high?: number | null;
   observed_at: string;
   submitted_at?: string | null;
   submitted_by_snapshot?: unknown;
+  released_at?: string | null;
+  released_by_snapshot?: unknown;
 };
 
 export type SpecimenContext = {
@@ -131,6 +138,7 @@ export function patientFromSpecimen(
 export function assembleReleaseQueueGroups(
   results: ResultRow[],
   specimenByAccession: Map<string, SpecimenContext>,
+  queuePhase: ReleaseQueuePhase,
 ): ReleaseQueueGroup[] {
   const byAccession = new Map<string, ResultRow[]>();
   for (const row of results) {
@@ -148,7 +156,17 @@ export function assembleReleaseQueueGroups(
       String(b.observed_at).localeCompare(String(a.observed_at)),
     );
     const first = sorted[0]!;
-    const flags = sorted.map((r) => String(r.flag ?? "unknown"));
+    const resolvedResults = sorted.map((r) => {
+      const displayFlag = resolveDisplayFlag(
+        String(r.flag ?? "unknown"),
+        String(r.value ?? ""),
+        r.reference_low ?? null,
+        r.reference_high ?? null,
+      );
+      return { row: r, displayFlag };
+    });
+    const flags = resolvedResults.map((entry) => entry.displayFlag);
+    const releasedRow = sorted.find((r) => r.released_at) ?? first;
 
     groups.push({
       accessionNumber,
@@ -156,6 +174,7 @@ export function assembleReleaseQueueGroups(
         first.barcode ?? specimen?.barcode ?? accessionNumber,
       ),
       patient: patientFromSpecimen(accessionNumber, specimen),
+      queuePhase,
       submittedBy: parseActorSnapshot(first.submitted_by_snapshot),
       submittedAt: first.submitted_at
         ? String(first.submitted_at)
@@ -166,13 +185,21 @@ export function assembleReleaseQueueGroups(
       accessionedAt: specimen?.registered_at
         ? String(specimen.registered_at)
         : null,
-      results: sorted.map((r) => ({
+      releasedBy:
+        queuePhase === "released"
+          ? parseActorSnapshot(releasedRow.released_by_snapshot)
+          : null,
+      releasedAt:
+        queuePhase === "released" && releasedRow.released_at
+          ? String(releasedRow.released_at)
+          : null,
+      results: resolvedResults.map(({ row: r, displayFlag }) => ({
         id: String(r.id),
         testCode: String(r.test_code),
         testName: (r.test_name as string | null) ?? null,
         value: String(r.value),
         units: (r.units as string | null) ?? null,
-        flag: String(r.flag ?? "unknown"),
+        flag: displayFlag,
         observedAt: String(r.observed_at),
         analyzerId: String(r.analyzer_id ?? "unknown"),
       })),
@@ -185,9 +212,11 @@ export function assembleReleaseQueueGroups(
     const crit =
       flagSeverity(b.worstFlag) - flagSeverity(a.worstFlag);
     if (crit !== 0) return crit;
-    const bt = b.submittedAt ?? "";
-    const at = a.submittedAt ?? "";
-    return bt.localeCompare(at);
+    const sortTime =
+      queuePhase === "released"
+        ? (g: ReleaseQueueGroup) => g.releasedAt ?? g.submittedAt ?? ""
+        : (g: ReleaseQueueGroup) => g.submittedAt ?? "";
+    return sortTime(b).localeCompare(sortTime(a));
   });
 
   return groups;

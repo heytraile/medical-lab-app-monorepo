@@ -1,3 +1,9 @@
+import {
+  DEFAULT_LABEL_HEIGHT_DOTS,
+  DEFAULT_LABEL_WIDTH_DOTS,
+  labelPreviewHeightPx,
+  labelPreviewWidthPx,
+} from "@drax-lis/contracts";
 import { cn } from "../lib/utils";
 
 export type LabelPreviewFields = {
@@ -11,9 +17,20 @@ export type LabelPreviewFields = {
   printedAt: string;
   widthDots?: number;
   heightDots?: number;
+  sizeId?: string;
+  sizeName?: string;
+  testLines?: string[];
+  testsOverflowCount?: number;
 };
 
 export type LabelPreviewMode = "draft" | "final";
+
+export {
+  DEFAULT_LABEL_WIDTH_DOTS,
+  DEFAULT_LABEL_HEIGHT_DOTS,
+  labelPreviewWidthPx,
+  labelPreviewHeightPx,
+};
 
 /** Lightweight Code 128-ish bar pattern for visual preview (not for scanning). */
 function pseudoBarcodeBars(data: string, width: number, height: number): string {
@@ -58,53 +75,69 @@ export function LabelPreview({
   emptyContext = "register",
   printStatus,
 }: Props) {
+  const emptyWidth = labelPreviewWidthPx();
+  const emptyHeight = labelPreviewHeightPx();
+
   if (!fields) {
     return (
       <div
-        className={cn(
-          "flex aspect-[2/1] items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground",
-          className,
-        )}
+        className={cn("mx-auto w-full space-y-2", className)}
+        style={{ maxWidth: emptyWidth }}
       >
-        {EMPTY_COPY[emptyContext]}
+        <div
+          className="flex w-full items-center justify-center rounded-lg border border-dashed border-border bg-muted/30 px-4 text-center text-sm text-muted-foreground"
+          style={{ height: emptyHeight }}
+        >
+          {EMPTY_COPY[emptyContext]}
+        </div>
       </div>
     );
   }
 
+  const widthDots = fields.widthDots ?? DEFAULT_LABEL_WIDTH_DOTS;
+  const heightDots = fields.heightDots ?? DEFAULT_LABEL_HEIGHT_DOTS;
+  const previewWidthPx = labelPreviewWidthPx(widthDots);
+  const testLines =
+    fields.testLines && fields.testLines.length > 0
+      ? fields.testLines
+      : fields.orderedTests.split(/\s+/).filter(Boolean);
   const barW = 300;
   const barH = 56;
   const isDraft = mode === "draft";
+  const sizeLabel = fields.sizeName ?? '2" × 1"';
 
   return (
-    <div className={cn("min-w-0 max-w-full space-y-2", className)}>
+    <div
+      className={cn("mx-auto w-full min-w-0 space-y-2", className)}
+      style={{ maxWidth: previewWidthPx }}
+    >
       <div
         className={cn(
-          "relative w-full max-w-full overflow-hidden rounded-lg border-2 bg-white p-3 text-black shadow-sm dark:bg-zinc-100",
+          "relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg border-2 bg-white p-2.5 text-black shadow-sm dark:bg-zinc-100 sm:p-3",
           isDraft ? "border-dashed border-zinc-400" : "border-foreground/80",
         )}
-        style={{ aspectRatio: "2 / 1" }}
+        style={{ aspectRatio: `${widthDots} / ${heightDots}` }}
       >
-        <div className="flex h-full min-w-0 flex-col justify-between text-[10px] leading-tight sm:text-xs">
-          <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="flex min-h-0 flex-1 flex-col gap-0.5 text-[10px] leading-tight sm:text-xs">
+          <div className="flex min-w-0 shrink-0 items-start justify-between gap-1.5">
             <div className="min-w-0 flex-1 overflow-hidden">
               <p
                 className={cn(
-                  "truncate font-bold text-sm sm:text-base",
+                  "truncate font-bold text-sm leading-tight sm:text-base",
                   isDraft && "text-zinc-500 italic",
                 )}
               >
                 {fields.accessionNumber}
               </p>
-              <p className="truncate font-medium">{fields.patientName}</p>
-              <p className="truncate text-[10px] text-zinc-600">
-                {fields.dateOfBirth} · {fields.specimenType}
+              <p className="truncate font-medium leading-tight">
+                {fields.patientName}
               </p>
-              <p className="line-clamp-2 text-[10px] leading-tight text-zinc-600">
-                {fields.orderedTests}
+              <p className="truncate text-[10px] leading-tight text-zinc-600">
+                {fields.dateOfBirth} · {fields.specimenType}
               </p>
             </div>
             <div
-              className="grid size-11 shrink-0 grid-cols-3 grid-rows-3 gap-px bg-black p-0.5"
+              className="grid size-9 shrink-0 grid-cols-3 grid-rows-3 gap-px bg-black p-0.5 sm:size-11"
               title="Data Matrix (2D)"
             >
               {Array.from({ length: 9 }).map((_, i) => (
@@ -118,10 +151,20 @@ export function LabelPreview({
               ))}
             </div>
           </div>
-          <div className="min-w-0 px-1">
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {testLines.map((line, i) => (
+              <p
+                key={i}
+                className="truncate text-[9px] leading-tight text-zinc-600 sm:text-[10px]"
+              >
+                {line}
+              </p>
+            ))}
+          </div>
+          <div className="mt-auto shrink-0 px-0.5 pt-0.5">
             <svg
               viewBox={`0 0 ${barW} ${barH}`}
-              className="h-12 w-full max-w-full text-black sm:h-14"
+              className="block h-8 w-full text-black sm:h-10"
               preserveAspectRatio="xMidYMid meet"
               aria-hidden
             >
@@ -131,10 +174,10 @@ export function LabelPreview({
                 }}
               />
             </svg>
+            <p className="truncate text-center font-mono text-[8px] tracking-wide sm:text-[9px]">
+              {fields.barcode}
+            </p>
           </div>
-          <p className="text-center font-mono text-[9px] tracking-wider">
-            {fields.barcode}
-          </p>
         </div>
       </div>
       {printStatus && (
@@ -150,7 +193,10 @@ export function LabelPreview({
         </p>
       )}
       <p className="break-words text-[10px] text-muted-foreground">
-        ZD411 · 2&quot;×1&quot; · Code 128 + Data Matrix
+        ZD411 · {sizeLabel} fixed label
+        {fields.testsOverflowCount
+          ? ` · ${fields.testsOverflowCount} more test(s) not on label`
+          : ""}
         {isDraft ? " · draft" : ` · ${fields.barcode}`}
       </p>
     </div>

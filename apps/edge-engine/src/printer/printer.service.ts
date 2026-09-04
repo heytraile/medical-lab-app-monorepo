@@ -1,5 +1,14 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  Injectable,
+  Logger,
+} from "@nestjs/common";
 import * as net from "net";
+import {
+  buildSpecimenLabelDocument,
+  formattedToPreviewFields,
+  resolveLabelSize,
+  type LabelPreviewFields,
+} from "@drax-lis/contracts";
 
 export type LabelPayload = {
   accessionNumber: string;
@@ -11,18 +20,7 @@ export type LabelPayload = {
   mrn?: string;
 };
 
-export type LabelPreviewFields = {
-  accessionNumber: string;
-  patientName: string;
-  barcode: string;
-  dateOfBirth: string;
-  orderedTests: string;
-  specimenType: string;
-  mrn?: string;
-  printedAt: string;
-  widthDots: number;
-  heightDots: number;
-};
+export type { LabelPreviewFields };
 
 @Injectable()
 export class PrinterService {
@@ -36,12 +34,20 @@ export class PrinterService {
     return Number(process.env.ZEBRA_PRINTER_PORT ?? 9100);
   }
 
+  private get labelSize() {
+    return resolveLabelSize({
+      sizeId: process.env.LABEL_SIZE_ID,
+      widthDots: Number(process.env.LABEL_WIDTH_DOTS ?? 0) || undefined,
+      heightDots: Number(process.env.LABEL_HEIGHT_DOTS ?? 0) || undefined,
+    });
+  }
+
   private get labelWidthDots() {
-    return Number(process.env.LABEL_WIDTH_DOTS ?? 406);
+    return this.labelSize.widthDots;
   }
 
   private get labelHeightDots() {
-    return Number(process.env.LABEL_HEIGHT_DOTS ?? 203);
+    return this.labelSize.heightDots;
   }
 
   private get defaultCopies() {
@@ -107,44 +113,19 @@ export class PrinterService {
     zpl: string;
     fields: LabelPreviewFields;
   } {
-    const pw = this.labelWidthDots;
-    const ll = this.labelHeightDots;
-    const dob = opts.dateOfBirth?.trim() || "DOB —";
-    const tests =
-      (opts.orderedTests ?? []).filter(Boolean).join(", ") || "—";
-    const tube = opts.specimenType?.trim() || "blood";
-    const printedAt = new Date().toISOString();
-    const esc = (s: string) =>
-      s.replace(/\^/g, " ").replace(/\\/g, " ").slice(0, 48);
-
-    const fields: LabelPreviewFields = {
-      accessionNumber: opts.accessionNumber,
-      patientName: opts.patientName,
-      barcode: opts.barcode,
-      dateOfBirth: dob,
-      orderedTests: tests,
-      specimenType: tube,
-      mrn: opts.mrn,
-      printedAt,
-      widthDots: pw,
-      heightDots: ll,
-    };
-
-    const zpl = `^XA
-^PW${pw}
-^LL${ll}
-^LH0,0
-^FO8,8^A0N,28,28^FD${esc(opts.accessionNumber)}^FS
-^FO8,38^A0N,20,20^FD${esc(opts.patientName)}^FS
-^FO8,60^A0N,16,16^FD${esc(dob)}  ${esc(tube)}^FS
-^FO8,78^A0N,16,16^FD${esc(tests)}^FS
-^FO${pw - 72},8^BXN,4,200,,,,_,1^FD${esc(opts.barcode)}^FS
-^FO8,100^BY2,2,60^BCN,60,Y,N,N^FD${esc(opts.barcode)}^FS
-^FO8,${ll - 18}^A0N,14,14^FD${esc(printedAt.slice(0, 19).replace("T", " "))}^FS
-^XZ
-`;
-
-    return { zpl, fields };
+    const { formatted, zpl } = buildSpecimenLabelDocument(
+      {
+        accessionNumber: opts.accessionNumber,
+        patientName: opts.patientName,
+        barcode: opts.barcode ?? opts.accessionNumber,
+        dateOfBirth: opts.dateOfBirth,
+        orderedTests: opts.orderedTests,
+        specimenType: opts.specimenType,
+        mrn: opts.mrn,
+      },
+      this.labelSize,
+    );
+    return { zpl, fields: formattedToPreviewFields(formatted) };
   }
 
   buildTestLabel(): { zpl: string; fields: LabelPreviewFields } {

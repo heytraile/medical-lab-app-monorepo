@@ -8,13 +8,17 @@ import {
   Query,
   UseGuards,
 } from "@nestjs/common";
-import { EmailPatientReportRequestSchema } from "@drax-lis/contracts";
+import {
+  DismissReleaseQueueAccessionRequestSchema,
+  EmailPatientReportRequestSchema,
+} from "@drax-lis/contracts";
 import { SyncService } from "./sync.service";
 import { ReportsService } from "../reports/reports.service";
 import { MailService } from "../reports/mail.service";
 import { AuditService } from "../audit/audit.service";
 import {
   CurrentUser,
+  Roles,
   SupabaseAuthGuard,
   toActorSnapshot,
   type AuthUser,
@@ -44,8 +48,47 @@ export class CloudReadController {
     return this.sync.listReleaseQueue();
   }
 
+  @Post("release-queue/dismiss-accession")
+  @Roles("authorizer", "admin")
+  async dismissReleaseQueueAccession(
+    @Body() body: unknown,
+    @CurrentUser() user: AuthUser,
+  ) {
+    const parsed = DismissReleaseQueueAccessionRequestSchema.parse(body);
+    const actor = toActorSnapshot(user);
+    const result = await this.sync.dismissAccessionFromReleaseQueue(
+      parsed.accessionNumber,
+    );
+    await this.audit.log({
+      eventType: "release_queue.accession_dismissed",
+      entityType: "accession",
+      entityId: parsed.accessionNumber,
+      actor,
+      payload: { accessionNumber: parsed.accessionNumber },
+    });
+    return result;
+  }
+
+  @Post("release-queue/dismiss-all-released")
+  @Roles("authorizer", "admin")
+  async dismissAllReleasedFromReleaseQueue(@CurrentUser() user: AuthUser) {
+    const actor = toActorSnapshot(user);
+    const result = await this.sync.dismissAllReleasedFromReleaseQueue();
+    await this.audit.log({
+      eventType: "release_queue.cleared_released",
+      entityType: "release_queue",
+      entityId: "ready_to_send",
+      actor,
+      payload: { dismissedCount: result.dismissedCount },
+    });
+    return result;
+  }
+
   @Get("specimens")
-  specimens() {
+  specimens(@Query("accession") accession?: string) {
+    if (accession?.trim()) {
+      return this.sync.getSpecimenByAccession(accession.trim());
+    }
     return this.sync.listSpecimens();
   }
 

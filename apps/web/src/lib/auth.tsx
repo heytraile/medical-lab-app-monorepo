@@ -197,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = useCallback(async (email: string, password: string) => {
     if (!supabase) {
-      throw new Error("Supabase is not configured");
+      throw new Error("Sign-in is not available right now.");
     }
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -239,7 +239,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (fullName: string) => {
       const uid = session?.user?.id;
       if (!uid) {
-        throw new Error("Sign in with Supabase to update your name");
+        throw new Error("Sign in to update your name.");
       }
       const next = await updateProfile(uid, { full_name: fullName });
       setProfile(next);

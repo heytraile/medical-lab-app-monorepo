@@ -92,8 +92,8 @@ function StaffPage() {
           <p className="mt-1 text-sm text-muted-foreground">
             Register lab staff with job titles. Use the{" "}
             <strong className="font-medium text-foreground">Permission role</strong>{" "}
-            column to assign who can release results: set{" "}
-            <strong className="font-medium text-foreground">Authorizer</strong> for
+            column to assign who can sign off on results: choose{" "}
+            <strong className="font-medium text-foreground">Sign-off</strong> for
             sign-off staff, or{" "}
             <strong className="font-medium text-foreground">Admin</strong> for lab
             managers who can release and manage this registry. Phlebotomists and
@@ -107,9 +107,8 @@ function StaffPage() {
 
       {usingPlaceholder && (
         <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
-          Showing demo staff roster — cloud API unavailable. Restart{" "}
-          <code className="text-xs">pnpm dev:local</code> and run{" "}
-          <code className="text-xs">pnpm supabase:reset</code> to load live data.
+          Showing sample staff — we could not load the live roster. Try
+          refreshing the page or signing in again.
         </p>
       )}
 

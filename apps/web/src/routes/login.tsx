@@ -169,26 +169,25 @@ function LoginPage() {
                 className="flex w-full items-center justify-between px-3 py-2 text-left text-xs font-medium text-muted-foreground"
                 onClick={() => setShowDevAccounts((v) => !v)}
               >
-                Local dev accounts
+                Local demo accounts
                 <span>{showDevAccounts ? "−" : "+"}</span>
               </button>
               {showDevAccounts && (
                 <ul className="space-y-2 border-t border-border px-3 py-2 text-xs text-muted-foreground">
                   <li>
                     <code className="text-foreground">admin@draxhall.local</code>{" "}
-                    — Staff registry, release results, assign authorizers
+                    — Staff registry, sign-off on results, manage permissions
                   </li>
                   <li>
                     <code className="text-foreground">authorizer@draxhall.local</code>{" "}
-                    — Release queue only
+                    — Release queue and sign-off
                   </li>
                   <li>
                     <code className="text-foreground">tech@draxhall.local</code>{" "}
                     — Accession and bench
                   </li>
                   <li className="pt-1 text-[11px]">
-                    Password for all: <code>password123</code>. Run{" "}
-                    <code>pnpm supabase:reset</code> if accounts are missing.
+                    Password for all: <code>password123</code>
                   </li>
                 </ul>
               )}
@@ -197,8 +196,8 @@ function LoginPage() {
         ) : (
           <div className="space-y-3 rounded-xl border border-border bg-card p-4">
             <p className="text-sm text-muted-foreground">
-              Supabase keys unset — use a local dev role token against the cloud
-              API.
+              Sign-in is not fully configured. You can continue with a demo
+              account for now.
             </p>
             <div className="flex flex-col gap-2">
               <Button
@@ -208,7 +207,7 @@ function LoginPage() {
                   void goAfterAuth();
                 }}
               >
-                Continue as authorizer (dev)
+                Continue as sign-off staff (demo)
               </Button>
               <Button
                 type="button"
@@ -218,7 +217,7 @@ function LoginPage() {
                   void goAfterAuth();
                 }}
               >
-                Continue as tech (dev)
+                Continue as tech (demo)
               </Button>
               <Button
                 type="button"
@@ -228,7 +227,7 @@ function LoginPage() {
                   void goAfterAuth();
                 }}
               >
-                Continue as admin (dev)
+                Continue as admin (demo)
               </Button>
             </div>
           </div>

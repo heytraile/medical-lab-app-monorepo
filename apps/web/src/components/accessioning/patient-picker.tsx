@@ -8,7 +8,7 @@ import { useDebouncedValue } from "../../lib/use-debounced-value";
 import { useBarcodeScanner, useScanInput } from "../../lib/use-barcode-scanner";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { ClearableInput } from "../ui/clearable-input";
 import { ScrollContainer } from "../ui/scroll-container";
 import { cn } from "../../lib/utils";
 
@@ -129,12 +129,13 @@ export function PatientPicker({
           <ScanLine className="size-4" />
           Patient
         </span>
-        <Input
+        <ClearableInput
           value={filter}
           onChange={(e) => {
             setFilter(e.target.value);
             setHint(null);
           }}
+          onClear={() => setHint(null)}
           placeholder="Type to filter, or scan patient MRN…"
           autoComplete="off"
           autoFocus
@@ -216,7 +217,7 @@ export function PatientPicker({
             )}
             {patientsQ.isError && (
               <li className="px-3 py-2 text-sm text-lab-danger">
-                Could not load patients. Is edge-engine running?
+                Could not load patients. Please try again.
               </li>
             )}
             {!patientsQ.isLoading &&

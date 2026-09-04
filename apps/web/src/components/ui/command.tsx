@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { Command as CommandPrimitive } from "cmdk";
-import { Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { ScrollContainer } from "./scroll-container";
 
@@ -62,19 +62,37 @@ Command.displayName = CommandPrimitive.displayName;
 export const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
->(({ className, ...props }, ref) => (
-  <div className="flex items-center gap-2 border-b border-border px-3">
-    <Search className="size-4 shrink-0 text-muted-foreground" />
-    <CommandPrimitive.Input
-      ref={ref}
-      className={cn(
-        "flex h-12 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
-        className,
-      )}
-      {...props}
-    />
-  </div>
-));
+>(({ className, value, onValueChange, ...props }, ref) => {
+  const hasValue = String(value ?? "").length > 0;
+
+  return (
+    <div className="flex items-center gap-2 border-b border-border px-3">
+      <Search className="size-4 shrink-0 text-muted-foreground" />
+      <CommandPrimitive.Input
+        ref={ref}
+        value={value}
+        onValueChange={onValueChange}
+        className={cn(
+          "flex h-12 min-w-0 flex-1 rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+          hasValue && "pr-1",
+          className,
+        )}
+        {...props}
+      />
+      {hasValue ? (
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Clear search"
+          className="shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          onClick={() => onValueChange?.("")}
+        >
+          <X className="size-4" />
+        </button>
+      ) : null}
+    </div>
+  );
+});
 CommandInput.displayName = CommandPrimitive.Input.displayName;
 
 export const CommandList = React.forwardRef<

@@ -1,23 +1,21 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type {
-  SpecimenInfo,
-  SpecimenType,
-  StaffCollector,
-} from "@drax-lis/contracts";
+import {
+  groupTestsBySpecimenBucket,
+  type ExpandedOrderedTest,
+} from "@drax-lis/catalog";
+import type { SpecimenInfo, StaffCollector } from "@drax-lis/contracts";
 import { api, ApiError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { PLACEHOLDER_COLLECTORS } from "../../lib/placeholder-staff";
 import { cn } from "../../lib/utils";
+import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Select } from "../ui/select";
 
-const SPECIMEN_TYPES: { id: SpecimenType; label: string }[] = [
-  { id: "blood", label: "Blood" },
-  { id: "urine", label: "Urine" },
-  { id: "stool", label: "Stool" },
-  { id: "other", label: "Other" },
-];
+function specimenTypeLabel(type: string): string {
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
 
 function toDatetimeLocalValue(iso: string): string {
   const d = new Date(iso);
@@ -39,6 +37,7 @@ function jobTitleLabel(title: StaffCollector["jobTitle"]): string {
 type Props = {
   value: SpecimenInfo;
   onChange: (next: SpecimenInfo) => void;
+  expandedTests?: ExpandedOrderedTest[];
   currentUserId?: string | null;
   className?: string;
 };
@@ -46,6 +45,7 @@ type Props = {
 export function SpecimenInformationSection({
   value,
   onChange,
+  expandedTests = [],
   currentUserId,
   className,
 }: Props) {
@@ -92,15 +92,10 @@ export function SpecimenInformationSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId, collectors, value.collectedByStaffId]);
 
-  function toggleType(type: SpecimenType) {
-    const has = value.specimenTypes.includes(type);
-    onChange({
-      ...value,
-      specimenTypes: has
-        ? value.specimenTypes.filter((t) => t !== type)
-        : [...value.specimenTypes, type],
-    });
-  }
+  const requiredTubes = useMemo(
+    () => groupTestsBySpecimenBucket(expandedTests),
+    [expandedTests],
+  );
 
   function onCollectorChange(staffId: string) {
     if (!staffId) {
@@ -122,39 +117,45 @@ export function SpecimenInformationSection({
   return (
     <div
       className={cn(
-        "overflow-visible space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm",
+        "min-w-0 space-y-3 rounded-xl border border-border bg-card p-4 shadow-sm",
         className,
       )}
     >
       <p className="text-sm font-semibold">Specimen information</p>
 
-      <fieldset className="space-y-2">
-        <legend className="text-xs font-medium text-muted-foreground">
-          Specimen type
-        </legend>
-        <div className="flex flex-wrap gap-3">
-          {SPECIMEN_TYPES.map(({ id, label }) => (
-            <label
-              key={id}
-              className="flex items-center gap-2 text-sm capitalize"
-            >
-              <input
-                type="checkbox"
-                checked={value.specimenTypes.includes(id)}
-                onChange={() => toggleType(id)}
-                className="size-4 rounded border-border"
-              />
-              {label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground">
+          Required tubes
+        </p>
+        {requiredTubes.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Select tests to see required collection tubes.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {requiredTubes.map((group) => (
+              <li
+                key={group.specimenType}
+                className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2"
+              >
+                <Badge variant="muted" className="text-[10px] capitalize">
+                  {specimenTypeLabel(group.specimenType)}
+                </Badge>
+                <span className="text-xs text-muted-foreground">
+                  {group.tests.length} test
+                  {group.tests.length === 1 ? "" : "s"} · separate accession
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="space-y-1.5">
         <span className="text-xs font-medium text-muted-foreground">
           Date &amp; time collected
         </span>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <input
             type="datetime-local"
             value={collectedLocal}
@@ -213,28 +214,21 @@ export function SpecimenInformationSection({
         />
       </label>
 
-      {!signedIn && (
+        {!signedIn && (
         <p className="break-words rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-          Sign in to load the live staff roster from the lab API (local
-          Supabase). Showing demo collectors until you sign in.
+          Sign in to load your staff roster. Showing sample names until you sign
+          in.
         </p>
       )}
 
       {signedIn && apiFailed && (
         <p className="break-words rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
-          Could not reach the lab staff API ({loadErrorMessage}). Showing demo
-          collectors — ensure the cloud API is running on port 3102 and you are
-          signed in.
+          Could not load staff ({loadErrorMessage}). Showing sample names for
+          now — try signing in again.
         </p>
       )}
     </div>
   );
-}
-
-export function primarySpecimenType(
-  types: SpecimenType[] | undefined,
-): string {
-  return types?.[0] ?? "blood";
 }
 
 export const EMPTY_SPECIMEN_INFO: SpecimenInfo = {

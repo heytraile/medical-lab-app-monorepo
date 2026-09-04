@@ -4,6 +4,8 @@ import type {
   PatientReportPayload,
   ReleaseQueueGroup,
   RegisterSpecimenRequest,
+  RegisterSpecimensBatchRequest,
+  RegisterSpecimensBatchResponse,
   RequisitionCreate,
   ReviewRequest,
   ReviewRequestCreate,
@@ -218,6 +220,10 @@ export type LabelPreviewFields = {
   printedAt: string;
   widthDots?: number;
   heightDots?: number;
+  sizeId?: string;
+  sizeName?: string;
+  testLines?: string[];
+  testsOverflowCount?: number;
 };
 
 export type PrintResult = {
@@ -291,6 +297,11 @@ export const api = {
     request<{ ok: boolean; service: string }>("/health", { auth: false }),
   results: () => request<BenchResult[]>("/results", { auth: false }),
   specimens: () => request<SpecimenRow[]>("/specimens", { auth: false }),
+  specimenByAccession: (accession: string) =>
+    request<SpecimenRow | null>(
+      `/specimens?accession=${encodeURIComponent(accession.trim())}`,
+      { auth: false },
+    ),
   syncStatus: () => request<SyncStatus>("/sync/status", { auth: false }),
   analyzerStatus: () =>
     request<AnalyzerStatus[]>("/analyzers/status", { auth: false }),
@@ -319,6 +330,11 @@ export const api = {
       printResult?: PrintResult;
       labelPreview?: LabelPreviewFields;
     }>("/specimens", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  registerSpecimensBatch: (body: RegisterSpecimensBatchRequest) =>
+    request<RegisterSpecimensBatchResponse>("/specimens/batch", {
       method: "POST",
       body: JSON.stringify(body),
     }),
@@ -391,6 +407,14 @@ export const api = {
       baseUrl: CLOUD_API_URL,
       auth: true,
     }),
+  cloudSpecimenByAccession: (accession: string) =>
+    request<{
+      accessionNumber: string;
+      orderedTests: Array<{ code: string; name?: string }>;
+    } | null>(
+      `/cloud/specimens?accession=${encodeURIComponent(accession.trim())}`,
+      { baseUrl: CLOUD_API_URL, auth: true },
+    ),
   releaseResult: (id: string) =>
     request<CloudResult>(`/results/${id}/release`, {
       method: "POST",
@@ -405,6 +429,25 @@ export const api = {
         baseUrl: CLOUD_API_URL,
         auth: true,
         body: JSON.stringify({ accessionNumber }),
+      },
+    ),
+  dismissReleaseQueueAccession: (accessionNumber: string) =>
+    request<{ accessionNumber: string }>(
+      "/cloud/release-queue/dismiss-accession",
+      {
+        method: "POST",
+        baseUrl: CLOUD_API_URL,
+        auth: true,
+        body: JSON.stringify({ accessionNumber }),
+      },
+    ),
+  dismissAllReleasedFromReleaseQueue: () =>
+    request<{ dismissedCount: number }>(
+      "/cloud/release-queue/dismiss-all-released",
+      {
+        method: "POST",
+        baseUrl: CLOUD_API_URL,
+        auth: true,
       },
     ),
   patientReport: (edgePatientId: string) =>
@@ -443,7 +486,7 @@ export const api = {
       },
     ),
   drainSync: () =>
-    request<{ ok: boolean }>("/sync/drain", {
+    request<SyncStatus>("/sync/drain", {
       method: "POST",
       auth: false,
     }),

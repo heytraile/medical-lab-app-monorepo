@@ -27,6 +27,8 @@ export const ClinicalAuditEventTypeSchema = z.enum([
   "report.emailed",
   "review_request.created",
   "review_request.acknowledged",
+  "release_queue.accession_dismissed",
+  "release_queue.cleared_released",
 ]);
 export type ClinicalAuditEventType = z.infer<
   typeof ClinicalAuditEventTypeSchema

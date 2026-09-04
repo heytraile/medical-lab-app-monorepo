@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { CatalogResponse } from "@drax-lis/contracts";
 import type { OrderSelection } from "@drax-lis/catalog";
-import { Input } from "../ui/input";
+import { ClearableInput } from "../ui/clearable-input";
 import { ScrollContainer } from "../ui/scroll-container";
 import { PanelCard } from "./panel-card";
 import { cn } from "../../lib/utils";
@@ -35,11 +35,12 @@ export function PanelOrderSection({
   return (
     <section className={cn("flex h-full min-h-0 flex-col", className)}>
       <p className="mb-2 text-base font-semibold">Test profiles & panels</p>
-      <Input
+      <ClearableInput
         value={panelSearch}
         onChange={(e) => setPanelSearch(e.target.value)}
         placeholder="Search panels…"
-        className="mb-3 h-10"
+        wrapperClassName="mb-3"
+        className="h-10"
       />
       <ScrollContainer className="min-h-0 flex-1">
         <div className="space-y-2 pr-1">

@@ -62,7 +62,7 @@ export function SubmitForReleaseButton({
         size="sm"
         disabled
         className={cn(fullWidth && "h-11 w-full", className)}
-        title="Sign in to submit results for authorization"
+        title="Sign in to submit results for sign-off"
       >
         <Send className="mr-1.5 size-3.5" aria-hidden />
         Submit for release
@@ -96,7 +96,7 @@ export function SubmitForReleaseButton({
           )}
         >
           <Check className="size-3.5" aria-hidden />
-          Submitted on bench — sync to release queue
+          Submitted on bench — waiting for sign-off queue
         </span>
         <Button
           type="button"
@@ -111,7 +111,7 @@ export function SubmitForReleaseButton({
           ) : (
             <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
           )}
-          Push to release queue
+          Send to sign-off queue
         </Button>
         {error ? (
           <p className="text-xs text-lab-danger">{error}</p>

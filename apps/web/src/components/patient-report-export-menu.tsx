@@ -105,7 +105,7 @@ export function PatientReportExportMenu({
         setError(err.message);
       } else if (err instanceof ApiError && err.status === 404) {
         setError(
-          "Patient not found in cloud yet. Accession a specimen and wait for sync, or sign in with the local Supabase stack running.",
+          "We could not find this patient yet. Make sure you are signed in and the specimen has been registered.",
         );
       } else if (err instanceof Error) {
         setError(err.message);
@@ -137,7 +137,7 @@ export function PatientReportExportMenu({
         setError(err.message);
       } else if (err instanceof ApiError && err.status === 404) {
         setError(
-          "Patient not found in cloud yet. Accession a specimen and wait for sync.",
+          "We could not find this patient yet. Make sure the specimen has been registered.",
         );
       } else if (err instanceof Error) {
         setError(err.message);
@@ -235,7 +235,7 @@ export function PatientReportExportMenu({
         />
         <ExportOption
           icon={FileJson}
-          label="JSON data"
+          label="Download data file"
           busy={loading === "json"}
           disabled={loading !== null}
           onClick={() => void runExport("json")}

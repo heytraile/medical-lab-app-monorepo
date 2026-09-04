@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { CatalogResponse } from "@drax-lis/contracts";
 import type { OrderSelection } from "@drax-lis/catalog";
-import { Input } from "../ui/input";
+import { ClearableInput } from "../ui/clearable-input";
 import { ScrollContainer } from "../ui/scroll-container";
 import { CategoryPill } from "./category-pill";
 import { cn } from "../../lib/utils";
@@ -95,11 +95,12 @@ export function IndividualTestsSection({
         </div>
       </ScrollContainer>
 
-      <Input
+      <ClearableInput
         value={testSearch}
         onChange={(e) => setTestSearch(e.target.value)}
         placeholder={`Search ${activeCategoryLabel}…`}
-        className="mb-3 h-10"
+        wrapperClassName="mb-3"
+        className="h-10"
       />
 
       <ScrollContainer className="min-h-0 flex-1 rounded-lg border border-border">

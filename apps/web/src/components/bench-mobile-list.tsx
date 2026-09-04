@@ -79,7 +79,9 @@ export function BenchMobileList({
             key={row.id}
             className={cn(
               "overflow-hidden rounded-xl border border-border shadow-sm transition-colors",
-              open ? "bg-sky-200 dark:bg-sky-900/50" : "bg-card",
+              open
+                ? "bg-sky-200 dark:bg-sky-900/50"
+                : "bg-card hover:bg-lab-ok/10 dark:hover:bg-lab-ok/20",
               summary.hasAlarm && "border-l-[3px] border-l-lab-alarm",
               selected && "ring-1 ring-inset ring-accent/40",
             )}
@@ -129,7 +131,7 @@ export function BenchMobileList({
                   {summary.patient ? (
                     <span
                       className={cn(
-                        "rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight whitespace-normal",
+                        "rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight whitespace-nowrap",
                         open
                           ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
                           : "bg-muted",
@@ -139,7 +141,7 @@ export function BenchMobileList({
                       {name}
                     </span>
                   ) : (
-                    <span className="rounded-md bg-muted px-2 py-1 font-mono text-sm font-bold leading-snug whitespace-normal">
+                    <span className="rounded-md bg-muted px-2 py-1 font-mono text-sm font-bold leading-snug whitespace-nowrap">
                       {name}
                     </span>
                   )}
@@ -227,6 +229,12 @@ function ResultCard({
   focused: boolean;
   focusedRef: React.RefObject<HTMLElement | null>;
 }) {
+  const ctx = {
+    value: result.value,
+    referenceLow: result.referenceLow,
+    referenceHigh: result.referenceHigh,
+  };
+
   return (
     <article
       ref={
@@ -240,7 +248,7 @@ function ResultCard({
       )}
       // Matches the desktop rows: the flag bar is an inset shadow so it sits
       // at the card's own edge rather than adding a border that shifts layout.
-      style={{ boxShadow: `inset 3px 0 0 0 ${flagBarColor(result.flag)}` }}
+      style={{ boxShadow: `inset 3px 0 0 0 ${flagBarColor(result.flag, ctx)}` }}
     >
       <div className="flex items-baseline justify-between gap-2">
         <span className="pl-1 font-medium">
@@ -249,7 +257,7 @@ function ResultCard({
         <span
           className={cn(
             "shrink-0 text-lg font-semibold tabular-nums",
-            flagValueClass(result.flag),
+            flagValueClass(result.flag, ctx),
           )}
         >
           {result.value}
@@ -267,8 +275,13 @@ function ResultCard({
             Not ordered
           </span>
         ) : null}
-        <AlarmSign flag={result.flag} />
-        <FlagChip flag={result.flag} />
+        <AlarmSign flag={result.flag} ctx={ctx} />
+        <FlagChip
+          flag={result.flag}
+          value={result.value}
+          referenceLow={result.referenceLow}
+          referenceHigh={result.referenceHigh}
+        />
         <WorkflowStatusChip status={result.status} />
       </div>
 

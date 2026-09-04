@@ -44,8 +44,8 @@ function Field({
 }
 
 function originLabel(origin: string | undefined) {
-  if (origin === "local_provisional") return "Provisional (local)";
-  if (origin === "upstream") return "Upstream registry";
+  if (origin === "local_provisional") return "Registered here";
+  if (origin === "upstream") return "Main registry";
   return origin ?? "—";
 }
 
@@ -55,6 +55,7 @@ export function BenchPatientPanel({
   results,
   onClose,
   embedded = false,
+  className,
 }: {
   patientId: string;
   summary: BenchPatientSummary | null;
@@ -62,6 +63,7 @@ export function BenchPatientPanel({
   onClose: () => void;
   /** Inside a sheet, which supplies its own frame, height and Escape handling. */
   embedded?: boolean;
+  className?: string;
 }) {
   const isDesktop = useIsDesktop();
   const { formatName } = usePatientNameOrder();
@@ -112,11 +114,12 @@ export function BenchPatientPanel({
       className={cn(
         "flex min-h-0 flex-col overflow-hidden bg-card",
         embedded
-          ? "flex-1"
-          : "max-h-[calc(100svh-8rem)] rounded-xl border border-border shadow-sm",
+          ? "h-full flex-1"
+          : "h-full max-h-[calc(100svh-7rem)] rounded-xl border border-border shadow-sm",
+        className,
       )}
     >
-      <div className="flex items-start justify-between gap-2 border-b border-border px-4 py-3">
+      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-3">
         <div className="min-w-0">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
             Patient focus
@@ -149,15 +152,14 @@ export function BenchPatientPanel({
         </div>
       </div>
 
-      <ScrollContainer className="min-h-0 flex-1">
-        <div className="border-b border-border px-4 py-3">
-          {detailQ.isLoading && !summary && (
-            <p className="text-sm text-muted-foreground">Loading identity…</p>
-          )}
-          {detailQ.isError && !summary && (
-            <p className="text-sm text-lab-danger">Could not load patient.</p>
-          )}
-          <dl className="divide-y divide-border/60">
+      <div className="shrink-0 border-b border-border px-4 py-3">
+        {detailQ.isLoading && !summary && (
+          <p className="text-sm text-muted-foreground">Loading identity…</p>
+        )}
+        {detailQ.isError && !summary && (
+          <p className="text-sm text-lab-danger">Could not load patient.</p>
+        )}
+        <dl className="divide-y divide-border/60">
             <Field
               label="Date of birth"
               value={p?.dateOfBirth ?? summary?.dateOfBirth ?? "—"}
@@ -223,10 +225,10 @@ export function BenchPatientPanel({
             <SubmitForReleaseButton summary={submitSummary} fullWidth />
             <RecallFromReleaseButton summary={submitSummary} fullWidth />
           </div>
-        </div>
+      </div>
 
         {orderedByAccession.length > 0 && (
-          <div className="border-b border-border px-4 py-3">
+          <div className="shrink-0 border-b border-border px-4 py-3">
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Ordered tests
             </p>
@@ -254,6 +256,7 @@ export function BenchPatientPanel({
           </div>
         )}
 
+      <ScrollContainer className="min-h-0 flex-1">
         <div className="px-4 py-3">
           <div className="mb-2 flex items-baseline justify-between gap-2">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -270,18 +273,24 @@ export function BenchPatientPanel({
             </p>
           ) : !isDesktop ? (
             <ul className="space-y-2">
-              {sorted.map((r) => (
+              {sorted.map((r) => {
+                const ctx = {
+                  value: r.value,
+                  referenceLow: r.referenceLow,
+                  referenceHigh: r.referenceHigh,
+                };
+                return (
                 <li
                   key={r.id}
                   className="rounded-lg border border-border p-2.5"
                   style={{
-                    boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag)}`,
+                    boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag, ctx)}`,
                   }}
                 >
                   <div className="flex items-baseline justify-between gap-2 pl-1">
                     <span className="font-medium">{r.testCode}</span>
                     <span className="shrink-0 text-lg font-semibold tabular-nums">
-                      <span className={flagValueClass(r.flag)}>{r.value}</span>
+                      <span className={flagValueClass(r.flag, ctx)}>{r.value}</span>
                       {r.units ? (
                         <span className="ml-1 text-sm font-medium text-muted-foreground">
                           {r.units}
@@ -290,8 +299,13 @@ export function BenchPatientPanel({
                     </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-1">
-                    <AlarmSign flag={r.flag} />
-                    <FlagChip flag={r.flag} />
+                    <AlarmSign flag={r.flag} ctx={ctx} />
+                    <FlagChip
+                      flag={r.flag}
+                      value={r.value}
+                      referenceLow={r.referenceLow}
+                      referenceHigh={r.referenceHigh}
+                    />
                     <WorkflowStatusChip status={r.status ?? "pending_review"} />
                   </div>
                   <p className="mt-1.5 pl-1 text-[10px] text-muted-foreground">
@@ -302,7 +316,8 @@ export function BenchPatientPanel({
                     {new Date(r.observedAt).toLocaleString()}
                   </p>
                 </li>
-              ))}
+              );
+              })}
             </ul>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
@@ -318,12 +333,18 @@ export function BenchPatientPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((r) => (
+                  {sorted.map((r) => {
+                    const ctx = {
+                      value: r.value,
+                      referenceLow: r.referenceLow,
+                      referenceHigh: r.referenceHigh,
+                    };
+                    return (
                     <tr
                       key={r.id}
                       className={cn(
                         "border-t border-border/60",
-                        flagRowClass(r.flag),
+                        flagRowClass(r.flag, ctx),
                       )}
                     >
                       <td className="px-2 py-2 align-middle whitespace-nowrap text-xs font-medium tabular-nums text-foreground/85">
@@ -339,7 +360,7 @@ export function BenchPatientPanel({
                         <span
                           className={cn(
                             "text-sm font-semibold tabular-nums",
-                            flagValueClass(r.flag),
+                            flagValueClass(r.flag, ctx),
                           )}
                         >
                           {r.value}
@@ -352,8 +373,13 @@ export function BenchPatientPanel({
                       </td>
                       <td className="px-2 py-2 align-middle">
                         <span className="inline-flex items-center gap-1.5">
-                          <AlarmSign flag={r.flag} />
-                          <FlagChip flag={r.flag} />
+                          <AlarmSign flag={r.flag} ctx={ctx} />
+                          <FlagChip
+                            flag={r.flag}
+                            value={r.value}
+                            referenceLow={r.referenceLow}
+                            referenceHigh={r.referenceHigh}
+                          />
                         </span>
                       </td>
                       <td className="px-2 py-2 align-middle font-mono text-[10px] tracking-tight">
@@ -365,7 +391,8 @@ export function BenchPatientPanel({
                         />
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -28,6 +28,25 @@ export type ResultFlagName =
   | "abnormal"
   | "unknown";
 
+/** Compare numeric value to reference range when available. */
+function flagFromRange(
+  value?: number,
+  low?: number,
+  high?: number,
+): ResultFlagName | null {
+  if (
+    value === undefined ||
+    Number.isNaN(value) ||
+    low === undefined ||
+    high === undefined
+  ) {
+    return null;
+  }
+  if (value < low) return "low";
+  if (value > high) return "high";
+  return "normal";
+}
+
 /** Map ASTM/HL7 abnormal flags to our canonical flag names. */
 export function mapInstrumentFlag(
   raw: string | undefined,
@@ -42,18 +61,12 @@ export function mapInstrumentFlag(
   if (f === "HH" || f === ">") return "critical_high";
   if (f === "A" || f === "AA") return "abnormal";
   if (f === "N" || f === "NORMAL" || f === "") {
-    if (
-      value !== undefined &&
-      !Number.isNaN(value) &&
-      low !== undefined &&
-      high !== undefined
-    ) {
-      if (value < low) return "low";
-      if (value > high) return "high";
-      return "normal";
-    }
+    const fromRange = flagFromRange(value, low, high);
+    if (fromRange) return fromRange;
     return f === "N" || f === "NORMAL" ? "normal" : "unknown";
   }
+  const fromRange = flagFromRange(value, low, high);
+  if (fromRange) return fromRange;
   return "unknown";
 }
 

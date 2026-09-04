@@ -244,7 +244,7 @@ function SidebarBody({
           <NavItem
             to="/orders"
             icon={FlaskConical}
-            label="Orders"
+            label="Test lookup"
             active={pathname === "/orders"}
             collapsed={collapsed}
             onNavigate={onNavigate}
@@ -252,7 +252,7 @@ function SidebarBody({
           <NavItem
             to="/sync"
             icon={Wifi}
-            label="Sync"
+            label="Connection"
             active={pathname === "/sync"}
             collapsed={collapsed}
             onNavigate={onNavigate}
@@ -273,16 +273,6 @@ function SidebarBody({
             collapsed={collapsed}
             onNavigate={onNavigate}
           />
-          {isAdmin(auth.role) && (
-            <NavItem
-              to="/staff"
-              icon={UserCog}
-              label="Staff"
-              active={pathname === "/staff"}
-              collapsed={collapsed}
-              onNavigate={onNavigate}
-            />
-          )}
         </div>
 
         {isAdmin(auth.role) && (
@@ -373,7 +363,6 @@ function SidebarBody({
                 <SidebarUserActions
                   collapsed
                   pathname={pathname}
-                  isAdminUser={isAdmin(auth.role)}
                   onNavigate={onNavigate}
                   onSignOut={() => void onSignOut()}
                 />
@@ -407,7 +396,6 @@ function SidebarBody({
                 <SidebarUserActions
                   collapsed={false}
                   pathname={pathname}
-                  isAdminUser={isAdmin(auth.role)}
                   onNavigate={onNavigate}
                   onSignOut={() => void onSignOut()}
                 />
@@ -443,7 +431,7 @@ function SidebarBody({
           />
           {!collapsed && (
             <span className="truncate text-sidebar-foreground/80">
-              {healthQ.isSuccess ? "Edge online" : "Edge unreachable"}
+              {healthQ.isSuccess ? "Connected" : "Not connected"}
             </span>
           )}
         </div>
@@ -463,13 +451,11 @@ function SidebarBody({
 function SidebarUserActions({
   collapsed,
   pathname,
-  isAdminUser,
   onNavigate,
   onSignOut,
 }: {
   collapsed: boolean;
   pathname: string;
-  isAdminUser: boolean;
   onNavigate?: () => void;
   onSignOut: () => void;
 }) {
@@ -495,17 +481,6 @@ function SidebarUserActions({
           className={itemClass(pathname === "/profile")}
         >
           <UserRound className="size-3.5 shrink-0 opacity-80" />
-        </Link>
-      )}
-      {isAdminUser && (
-        <Link
-          to="/staff"
-          title="Staff registry"
-          onClick={onNavigate}
-          className={itemClass(pathname === "/staff")}
-        >
-          <UserCog className="size-3.5 shrink-0 opacity-80" />
-          {!collapsed && <span className="truncate">Staff</span>}
         </Link>
       )}
       <button

@@ -79,8 +79,10 @@ Codes below are **common clinical abbreviations**. Exact strings from Sysmex / M
 | **Test panel** | Bundle of tests ordered as one profile (e.g. Anaemia I) | Expands to member analyte codes at register |
 | **Test catalog** | Lab’s orderable test + panel list | `test_catalog_items` / `test_panels` in Supabase; bundled in `@drax-lis/catalog` |
 | **Ordered vs received** | Work requested vs results on the bench | v1 shows ordered list; reconciliation (pending/received) is follow-up |
+| **Serum** | Yellow liquid from blood after clotting + spin; no cells | Chemistry/immuno tests; separate tube from whole blood (CBC) |
+| **Specimen type** | What physical sample a test needs (`blood`, `serum`, `urine`, …) | Drives multi-tube accession — see [SPECIMEN_COLLECTION_GUIDE.md](./SPECIMEN_COLLECTION_GUIDE.md) |
 
-Full workflow rules: [WORKFLOW.md](./WORKFLOW.md). Requisition & catalog: [REQUISITION.md](./REQUISITION.md).
+Full workflow rules: [WORKFLOW.md](./WORKFLOW.md). Requisition & catalog: [REQUISITION.md](./REQUISITION.md). **Plain-English draw guide:** [SPECIMEN_COLLECTION_GUIDE.md](./SPECIMEN_COLLECTION_GUIDE.md).
 
 ---
 

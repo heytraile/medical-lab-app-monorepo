@@ -147,6 +147,64 @@ export const RegisterSpecimenRequestSchema = z.object({
 export type RegisterSpecimenRequest = z.infer<
   typeof RegisterSpecimenRequestSchema
 >;
+
+export const LabelPreviewFieldsSchema = z.object({
+  accessionNumber: z.string(),
+  patientName: z.string(),
+  barcode: z.string(),
+  dateOfBirth: z.string(),
+  orderedTests: z.string(),
+  specimenType: z.string(),
+  mrn: z.string().optional(),
+  printedAt: z.string(),
+  widthDots: z.number().optional(),
+  heightDots: z.number().optional(),
+  sizeId: z.string().optional(),
+  sizeName: z.string().optional(),
+  testLines: z.array(z.string()).optional(),
+  testsOverflowCount: z.number().optional(),
+});
+export type LabelPreviewFields = z.infer<typeof LabelPreviewFieldsSchema>;
+
+export const PrintResultSchema = z.object({
+  ok: z.boolean(),
+  error: z.string().optional(),
+  zpl: z.string().optional(),
+  copies: z.number().optional(),
+  fields: LabelPreviewFieldsSchema.optional(),
+});
+export type PrintResult = z.infer<typeof PrintResultSchema>;
+
+export const RegisterSpecimensBatchItemSchema = z.object({
+  specimenType: z.string().min(1),
+  orderedTests: z.array(OrderedTestSchema).min(1),
+});
+export type RegisterSpecimensBatchItem = z.infer<
+  typeof RegisterSpecimensBatchItemSchema
+>;
+
+export const RegisterSpecimensBatchRequestSchema = z.object({
+  patientId: z.string().min(1),
+  identityConfirmation: IdentityConfirmationSchema.optional(),
+  requisitionId: z.string().uuid().optional(),
+  printLabel: z.boolean().optional(),
+  copies: z.number().int().min(1).max(10).optional(),
+  collectedAt: z.string().datetime().optional(),
+  specimens: z.array(RegisterSpecimensBatchItemSchema).min(1),
+});
+export type RegisterSpecimensBatchRequest = z.infer<
+  typeof RegisterSpecimensBatchRequestSchema
+>;
+
+export const RegisterSpecimensBatchResponseSchema = z.object({
+  specimens: z.array(SpecimenSchema),
+  labelPreviews: z.array(LabelPreviewFieldsSchema),
+  printResults: z.array(PrintResultSchema.optional()).optional(),
+});
+export type RegisterSpecimensBatchResponse = z.infer<
+  typeof RegisterSpecimensBatchResponseSchema
+>;
+
 export const CanonicalResultSchema = z.object({
   id: z.string().optional(),
   accessionNumber: z.string().min(1),
@@ -268,7 +326,13 @@ export const CatalogResponseSchema = z.object({
 });
 export type CatalogResponse = z.infer<typeof CatalogResponseSchema>;
 
-export const SpecimenTypeSchema = z.enum(["blood", "urine", "stool", "other"]);
+export const SpecimenTypeSchema = z.enum([
+  "blood",
+  "serum",
+  "urine",
+  "stool",
+  "other",
+]);
 export type SpecimenType = z.infer<typeof SpecimenTypeSchema>;
 
 export const StaffJobTitleSchema = z.enum([

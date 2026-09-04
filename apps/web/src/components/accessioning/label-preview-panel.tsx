@@ -33,13 +33,12 @@ function headerForPhase(
 ): string {
   switch (phase) {
     case "registered":
+    case "lookup":
       return accessionNumber
         ? `Registered · ${accessionNumber}`
         : "Registered label";
     case "draft":
       return "Draft label";
-    case "lookup":
-      return "Label preview";
     default:
       return "Label preview";
   }
@@ -64,7 +63,7 @@ export function LabelPreviewPanel({
   const warning =
     previewWarning ??
     (previewError && fields
-      ? "Could not reach edge for ZPL preview — showing draft."
+      ? "Could not load the label preview — showing a draft."
       : undefined);
 
   return (
@@ -80,7 +79,7 @@ export function LabelPreviewPanel({
         </p>
         {phase === "draft" && (
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Accession assigned when you register
+            Accession numbers assigned when you accession
           </p>
         )}
       </div>

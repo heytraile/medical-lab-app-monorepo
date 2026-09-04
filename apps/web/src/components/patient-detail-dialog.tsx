@@ -21,21 +21,21 @@ function Field({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function originLabel(origin: string | undefined) {
-  if (origin === "local_provisional") return "Provisional (local)";
-  if (origin === "upstream") return "Upstream registry";
+  if (origin === "local_provisional") return "Registered here";
+  if (origin === "upstream") return "Main registry";
   return origin ?? "—";
 }
 
 function syncLabel(status: string | undefined) {
   switch (status) {
     case "pending_upstream":
-      return "Pending upstream";
+      return "Waiting to link";
     case "synced":
-      return "Synced";
+      return "Linked";
     case "failed":
-      return "Sync failed";
+      return "Could not link";
     case "n_a":
-      return "N/A";
+      return "Not applicable";
     default:
       return status ?? "—";
   }
@@ -64,8 +64,7 @@ export function PatientDetailDialog({
         <DialogHeader>
           <DialogTitle>{p?.displayName ?? "Patient"}</DialogTitle>
           <DialogDescription>
-            Operational identity for bench review — MRN-backed demographics
-            only.
+            Patient details for bench review.
           </DialogDescription>
         </DialogHeader>
 
@@ -117,7 +116,7 @@ export function PatientDetailDialog({
                     </span>
                   }
                 />
-                <Field label="Sync" value={syncLabel(p.syncStatus)} />
+                <Field label="Record status" value={syncLabel(p.syncStatus)} />
                 {p.externalId ? (
                   <Field
                     label="External ID"

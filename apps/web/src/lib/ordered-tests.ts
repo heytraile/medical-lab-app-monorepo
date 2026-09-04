@@ -30,13 +30,58 @@ export function orderedTestsForPatient(
     .filter((row) => row.tests.length > 0);
 }
 
-export function orderedTestsForAccession(
+export type CloudSpecimenLookup = {
+  accessionNumber: string;
+  orderedTests: ParsedOrderedTest[];
+};
+
+const SPECIMEN_SUGGESTION_CAP = 20;
+
+/** Partial match on accession or barcode for type-ahead suggestions. */
+export function filterSpecimensByAccessionQuery(
   specimens: SpecimenRow[],
-  accession: string,
-): ParsedOrderedTest[] {
-  const row = specimens.find(
+  filter: string,
+  limit = SPECIMEN_SUGGESTION_CAP,
+): SpecimenRow[] {
+  const q = filter.trim().toLowerCase();
+  if (!q) return specimens.slice(0, limit);
+  const out: SpecimenRow[] = [];
+  for (const s of specimens) {
+    const acc = s.accessionNumber.toLowerCase();
+    const bar = (s.barcode ?? "").toLowerCase();
+    if (acc.includes(q) || bar.includes(q)) {
+      out.push(s);
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
+export function findExactSpecimenMatch(
+  specimens: SpecimenRow[],
+  value: string,
+): SpecimenRow | undefined {
+  const q = value.trim().toLowerCase();
+  if (!q) return undefined;
+  return specimens.find(
     (s) =>
-      s.accessionNumber.toLowerCase() === accession.trim().toLowerCase(),
+      s.accessionNumber.toLowerCase() === q ||
+      (s.barcode ?? "").toLowerCase() === q,
   );
-  return parseOrderedTestsJson(row?.orderedTestsJson);
+}
+
+/** Prefer cloud specimen, then cloud requisition, then edge specimen. */
+export function mergeOrderedTestsLookup(sources: {
+  cloudSpecimen?: ParsedOrderedTest[] | null;
+  cloudRequisition?: ParsedOrderedTest[] | null;
+  edgeSpecimen?: ParsedOrderedTest[] | null;
+}): ParsedOrderedTest[] {
+  for (const list of [
+    sources.cloudSpecimen,
+    sources.cloudRequisition,
+    sources.edgeSpecimen,
+  ]) {
+    if (list?.length) return list;
+  }
+  return [];
 }

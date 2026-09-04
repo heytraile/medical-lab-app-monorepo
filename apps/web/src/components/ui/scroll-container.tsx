@@ -15,7 +15,7 @@ export const ScrollContainer = React.forwardRef<
     className={cn("relative min-h-0 overflow-hidden", className)}
     {...props}
   >
-    <ScrollAreaPrimitive.Viewport className="size-full rounded-[inherit]">
+    <ScrollAreaPrimitive.Viewport className="size-full rounded-[inherit] [&>div]:!block [&>div]:box-border [&>div]:pr-4">
       {children}
     </ScrollAreaPrimitive.Viewport>
     <ScrollBar />

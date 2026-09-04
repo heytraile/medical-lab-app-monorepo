@@ -13,6 +13,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { cn } from "../lib/utils";
+import { flagLabel } from "./result-status";
 import type { BenchGroupSummary } from "./bench-group-row";
 import {
   FormCharCount,
@@ -102,10 +103,10 @@ export function NotifyAuthorizerButton({
           fullWidth && "h-11 w-full justify-center text-sm",
           className,
         )}
-        title={`Authorizer notified ${new Date(existing.requestedAt).toLocaleString()} — waiting for sign-off`}
+        title={`Sign-off requested ${new Date(existing.requestedAt).toLocaleString()} — waiting for review`}
       >
         <Check className="size-3.5" aria-hidden />
-        Authorizer notified
+        Sign-off requested
       </span>
     );
   }
@@ -118,7 +119,7 @@ export function NotifyAuthorizerButton({
         size="sm"
         disabled
         className={cn(fullWidth && "h-11 w-full", className)}
-        title="Sign in to notify an authorizer"
+        title="Sign in to request sign-off"
       >
         <BellRing className="mr-1.5 size-3.5" aria-hidden />
         Notify
@@ -142,16 +143,16 @@ export function NotifyAuthorizerButton({
           variant="outline"
           size="sm"
           className={cn(fullWidth && "h-11 w-full", className)}
-          aria-label={`Notify an authorizer about ${patientLabel}`}
+          aria-label={`Request sign-off for ${patientLabel}`}
         >
           <BellRing className="mr-1.5 size-3.5" aria-hidden />
           Notify
         </Button>
       </PopoverTrigger>
       <PopoverContent className="p-3">
-        <p className="text-sm font-semibold">Notify an authorizer</p>
+        <p className="text-sm font-semibold">Request sign-off</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Goes to every authorizer and admin, in-app and by email.
+          Alerts everyone who can sign off on results, in the app and by email.
         </p>
 
         <dl className="mt-3 space-y-1 rounded-lg bg-muted/60 p-2 text-xs">
@@ -160,7 +161,7 @@ export function NotifyAuthorizerButton({
             <dd className="min-w-0 font-medium">{patientLabel}</dd>
           </div>
           <div className="flex gap-2">
-            <dt className="w-20 shrink-0 text-muted-foreground">Accession</dt>
+            <dt className="w-20 shrink-0 text-muted-foreground">Sample ID</dt>
             <dd className="min-w-0 break-words font-mono">
               {summary.accessionNumbers.join(", ")}
             </dd>
@@ -170,7 +171,7 @@ export function NotifyAuthorizerButton({
             <dd>
               {summary.testCount}
               {summary.worstFlag && summary.worstFlag !== "normal"
-                ? ` · worst flag ${summary.worstFlag.replaceAll("_", " ")}`
+                ? ` · ${flagLabel(summary.worstFlag).toLowerCase()} result`
                 : ""}
             </dd>
           </div>
@@ -199,7 +200,7 @@ export function NotifyAuthorizerButton({
           <FormErrorSummary
             message={
               create.isError
-                ? "Could not send. Is the cloud API running on :3102?"
+                ? "Could not send the alert. Try again in a moment."
                 : null
             }
           />

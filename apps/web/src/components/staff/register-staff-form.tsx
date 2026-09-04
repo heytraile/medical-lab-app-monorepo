@@ -137,8 +137,8 @@ export function RegisterStaffForm({
             }))}
           />
           <p className="text-xs text-muted-foreground">
-            Authorizer and Admin can release results. Only Admin can manage this
-            staff registry.
+            Sign-off staff and Admin can release results. Only Admin can manage
+            this staff registry.
           </p>
         </FormField>
         <FormField label="Job title" error={errors.jobTitle} required>

@@ -84,8 +84,8 @@ export function RegisterPatientForm({
       onSubmit={handleSubmit((values) => mutation.mutate(values))}
     >
       <p className="text-sm text-muted-foreground">
-        Creates a local TEMP MRN for accessioning. Syncs upstream when the
-        registry link is online.
+        Creates a temporary patient number for accessioning. It will be linked to
+        the main registry when available.
       </p>
       <div className="grid gap-3 sm:grid-cols-2">
         <FormField

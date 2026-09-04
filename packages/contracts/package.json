@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"lint ok\"",
-    "test": "echo \"no contract tests yet\""
+    "test": "pnpm run build && node --test dist/label-layout.test.js dist/result-flags.test.js"
   },
   "dependencies": {
     "zod": "^3.25.36"
