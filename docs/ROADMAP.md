@@ -44,7 +44,7 @@ First customer: **Drax Hall Clinical Laboratory**. Architecture stays multi-lab-
 ## Phase 3 — Bench Review, release authority, critical STAT *(in progress)*
 
 - **Bench Review gallery** for techs (filters, live) ✅ (edge)
-- Roles: tech vs **authorizer** via Supabase Auth `profiles.role` ✅
+- Roles: tech vs **authorizer** vs admin, set on the edge `Staff` table and synced to Supabase `profiles.role` ✅
 - Authorizer-only **Release queue** + `POST /results/:id/release` audit ✅
 - **Patient report export** (PDF Letter/Legal + JSON, released-only) ✅
 - Critical / STAT email notifications — later
@@ -52,6 +52,10 @@ First customer: **Drax Hall Clinical Laboratory**. Architecture stays multi-lab-
 
 ## Phase 4 — Lab hardware deployment
 
+- **Lab mini PC runbook** — see [LAB_MINI_PC_SETUP.md](./LAB_MINI_PC_SETUP.md): router static IP, hostname, Docker, serial hub, analyzers, printer, full go-live
+- **Single-container lab image** (`infra/Dockerfile.lab`, Compose profile `lab-prod`) — edge-engine serves API, Socket.IO, and SPA UI on one port
+- **Edge security + backup** — see [EDGE_SECURITY_AND_BACKUP.md](./EDGE_SECURITY_AND_BACKUP.md): auth on PHI routes, CORS/Helmet/throttler, SQLite backups to `/backups`, restore script
+- **Edge-first staff auth + cloud device enrollment** ✅ — see [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md): offline SQLite staff login, cloud login restricted to admin/authorizer via Postgres Auth Hook, one-time device enrollment codes, full login + action audit trail
 - Production Docker Compose on Ubuntu mini PC
 - `/dev/ttyUSB*` device maps + udev rules
 - Real Zebra on LAN; wedge scanner validation

@@ -106,5 +106,6 @@ Analyzer-side Honeywell scanners (if present) talk to the instrument LIS host �
 
 ## Related docs
 
+- [LAB_MINI_PC_SETUP.md](./LAB_MINI_PC_SETUP.md) — mini PC network, Docker, serial hub, go-live
 - [LOCAL_DEV.md](./LOCAL_DEV.md) — register → print → analyze loop
 - [ANALYZERS.md](./ANALYZERS.md) — barcode join on instruments

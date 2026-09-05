@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
+import { useTheme } from "next-themes";
 import {
   ChevronLeft,
   ChevronRight,
@@ -27,8 +28,32 @@ import { ScrollContainer } from "./ui/scroll-container";
 import { Sheet, SheetContent, SheetCloseButton } from "./ui/sheet";
 import { ThemeToggle } from "./theme-provider";
 import { Badge } from "./ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "./ui/tooltip";
 
 const COLLAPSE_KEY = "lis-sidebar-collapsed";
+
+function CollapsedTooltip({
+  collapsed,
+  label,
+  children,
+}: {
+  collapsed: boolean;
+  label: ReactNode;
+  children: ReactElement;
+}) {
+  if (!collapsed) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
 
 type Props = {
   onOpenSearch: () => void;
@@ -74,11 +99,13 @@ export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
           collapsed ? "w-[4.25rem]" : "w-64",
         )}
       >
-        <SidebarBody
-          collapsed={collapsed}
-          onToggleCollapse={toggle}
-          onOpenSearch={onOpenSearch}
-        />
+        <TooltipProvider delayDuration={0} skipDelayDuration={0}>
+          <SidebarBody
+            collapsed={collapsed}
+            onToggleCollapse={toggle}
+            onOpenSearch={onOpenSearch}
+          />
+        </TooltipProvider>
       </aside>
 
       <Sheet open={navOpen} onOpenChange={onNavOpenChange}>
@@ -116,6 +143,8 @@ function SidebarBody({
   const search = useRouterState({ select: (s) => s.location.search });
   const auth = useAuth();
   const navigate = useNavigate();
+  const { resolvedTheme } = useTheme();
+  const darkTheme = resolvedTheme === "dark";
 
   const analyzersQ = useQuery({
     queryKey: ["analyzers-status"],
@@ -169,43 +198,60 @@ function SidebarBody({
           </div>
         )}
         {onToggleCollapse ? (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="text-sidebar-foreground hover:bg-sidebar-muted"
-            onClick={onToggleCollapse}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          <CollapsedTooltip
+            collapsed={collapsed}
+            label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? (
-              <ChevronRight className="size-4" />
-            ) : (
-              <ChevronLeft className="size-4" />
-            )}
-          </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-sidebar-foreground hover:bg-sidebar-muted"
+              onClick={onToggleCollapse}
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {collapsed ? (
+                <ChevronRight className="size-4" />
+              ) : (
+                <ChevronLeft className="size-4" />
+              )}
+            </Button>
+          </CollapsedTooltip>
         ) : (
           <SheetCloseButton className="text-sidebar-foreground hover:bg-sidebar-muted" />
         )}
       </div>
 
       <div className="p-2">
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-muted",
-            collapsed && "justify-center px-0",
-          )}
-          onClick={onOpenSearch}
-        >
-          <Search className="size-4 shrink-0" />
-          {!collapsed && (
-            <>
-              <span className="flex-1 text-left">Search</span>
-              <kbd className="rounded border border-sidebar-border bg-sidebar-muted px-1.5 py-0.5 text-[10px] text-sidebar-foreground/70">
+        <CollapsedTooltip
+          collapsed={collapsed}
+          label={
+            <span className="flex items-center gap-2">
+              Search
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
                 ⌘K
               </kbd>
-            </>
-          )}
-        </Button>
+            </span>
+          }
+        >
+          <Button
+            variant="ghost"
+            className={cn(
+              "w-full justify-start gap-2 text-sidebar-foreground hover:bg-sidebar-muted",
+              collapsed && "justify-center px-0",
+            )}
+            onClick={onOpenSearch}
+          >
+            <Search className="size-4 shrink-0" />
+            {!collapsed && (
+              <>
+                <span className="flex-1 text-left">Search</span>
+                <kbd className="rounded border border-sidebar-border bg-sidebar-muted px-1.5 py-0.5 text-[10px] text-sidebar-foreground/70">
+                  ⌘K
+                </kbd>
+              </>
+            )}
+          </Button>
+        </CollapsedTooltip>
       </div>
 
       <ScrollContainer className="min-h-0 flex-1">
@@ -283,9 +329,11 @@ function SidebarBody({
               </p>
             )}
             {collapsed && (
-              <div className="flex justify-center py-1" title="Admin">
-                <UserCog className="size-4 opacity-60" />
-              </div>
+              <CollapsedTooltip collapsed label="Admin">
+                <span className="flex justify-center py-1">
+                  <UserCog className="size-4 opacity-60" aria-hidden />
+                </span>
+              </CollapsedTooltip>
             )}
             <NavItem
               to="/staff"
@@ -305,9 +353,11 @@ function SidebarBody({
             </p>
           )}
           {collapsed && (
-            <div className="flex justify-center py-1" title="Machines">
-              <Microscope className="size-4 opacity-60" />
-            </div>
+            <CollapsedTooltip collapsed label="Machines">
+              <span className="flex justify-center py-1">
+                <Microscope className="size-4 opacity-60" aria-hidden />
+              </span>
+            </CollapsedTooltip>
           )}
           <NavItem
             to="/bench"
@@ -352,14 +402,18 @@ function SidebarBody({
           >
             {collapsed ? (
               <div className="flex flex-col items-center gap-1">
-                <Link
-                  to="/profile"
-                  title={`${auth.displayName}${auth.role ? ` · ${auth.role}` : ""}`}
-                  onClick={onNavigate}
-                  className="flex size-9 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-accent-foreground ring-2 ring-sidebar-border/50"
+                <CollapsedTooltip
+                  collapsed
+                  label={`${auth.displayName}${auth.role ? ` · ${auth.role}` : ""}`}
                 >
-                  {initials}
-                </Link>
+                  <Link
+                    to="/profile"
+                    onClick={onNavigate}
+                    className="flex size-9 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-accent-foreground ring-2 ring-sidebar-border/50"
+                  >
+                    {initials}
+                  </Link>
+                </CollapsedTooltip>
                 <SidebarUserActions
                   collapsed
                   pathname={pathname}
@@ -403,45 +457,56 @@ function SidebarBody({
             )}
           </div>
         ) : (
-          <Link
-            to="/login"
-            title="Sign in"
-            onClick={onNavigate}
+          <CollapsedTooltip collapsed={collapsed} label="Sign in">
+            <Link
+              to="/login"
+              onClick={onNavigate}
+              className={cn(
+                "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-sidebar-muted",
+                collapsed && "justify-center px-0",
+              )}
+            >
+              <LogIn className="size-4 shrink-0" />
+              {!collapsed && <span>Sign in</span>}
+            </Link>
+          </CollapsedTooltip>
+        )}
+
+        <CollapsedTooltip
+          collapsed={collapsed}
+          label={healthQ.isSuccess ? "Connected" : "Not connected"}
+        >
+          <div
             className={cn(
-              "flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-sidebar-muted",
+              "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs",
               collapsed && "justify-center px-0",
             )}
           >
-            <LogIn className="size-4 shrink-0" />
-            {!collapsed && <span>Sign in</span>}
-          </Link>
-        )}
-
-        <div
-          className={cn(
-            "flex items-center gap-2 rounded-md px-2 py-1.5 text-xs",
-            collapsed && "justify-center px-0",
-          )}
-        >
-          <span
-            className={cn(
-              "size-2 rounded-full",
-              healthQ.isSuccess ? "bg-emerald-400" : "bg-amber-400",
+            <span
+              className={cn(
+                "size-2 rounded-full",
+                healthQ.isSuccess ? "bg-emerald-400" : "bg-amber-400",
+              )}
+            />
+            {!collapsed && (
+              <span className="truncate text-sidebar-foreground/80">
+                {healthQ.isSuccess ? "Connected" : "Not connected"}
+              </span>
             )}
-          />
-          {!collapsed && (
-            <span className="truncate text-sidebar-foreground/80">
-              {healthQ.isSuccess ? "Connected" : "Not connected"}
-            </span>
-          )}
-        </div>
+          </div>
+        </CollapsedTooltip>
         <div
           className={cn(
             "flex items-center",
             collapsed ? "justify-center" : "justify-end",
           )}
         >
-          <ThemeToggle className="text-sidebar-foreground hover:bg-sidebar-muted" />
+          <CollapsedTooltip
+            collapsed={collapsed}
+            label={darkTheme ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            <ThemeToggle className="text-sidebar-foreground hover:bg-sidebar-muted" />
+          </CollapsedTooltip>
         </div>
       </div>
     </>
@@ -474,24 +539,26 @@ function SidebarUserActions({
       aria-label="Account"
     >
       {collapsed && (
-        <Link
-          to="/profile"
-          title="Profile"
-          onClick={onNavigate}
-          className={itemClass(pathname === "/profile")}
-        >
-          <UserRound className="size-3.5 shrink-0 opacity-80" />
-        </Link>
+        <CollapsedTooltip collapsed label="Profile">
+          <Link
+            to="/profile"
+            onClick={onNavigate}
+            className={itemClass(pathname === "/profile")}
+          >
+            <UserRound className="size-3.5 shrink-0 opacity-80" />
+          </Link>
+        </CollapsedTooltip>
       )}
-      <button
-        type="button"
-        title="Sign out"
-        onClick={onSignOut}
-        className={itemClass(false)}
-      >
-        <LogOut className="size-3.5 shrink-0 opacity-80" />
-        {!collapsed && <span className="truncate">Sign out</span>}
-      </button>
+      <CollapsedTooltip collapsed={collapsed} label="Sign out">
+        <button
+          type="button"
+          onClick={onSignOut}
+          className={itemClass(false)}
+        >
+          <LogOut className="size-3.5 shrink-0 opacity-80" />
+          {!collapsed && <span className="truncate">Sign out</span>}
+        </button>
+      </CollapsedTooltip>
     </nav>
   );
 }
@@ -517,11 +584,10 @@ function NavItem({
   title?: string;
   onNavigate?: () => void;
 }) {
-  return (
+  const link = (
     <Link
       to={to}
       search={search}
-      title={title ?? label}
       onClick={onNavigate}
       className={cn(
         "group relative flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors hover:bg-sidebar-muted",
@@ -552,5 +618,11 @@ function NavItem({
         />
       )}
     </Link>
+  );
+
+  return (
+    <CollapsedTooltip collapsed={collapsed} label={title ?? label}>
+      {link}
+    </CollapsedTooltip>
   );
 }

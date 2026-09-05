@@ -1,7 +1,12 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
+import {
+  getCatalogDisplayName,
+  getFulfillment,
+  pendingNonInstrumentTests,
+} from "@drax-lis/catalog";
 import {
   api,
   type BenchPatientSummary,
@@ -25,6 +30,7 @@ import { PatientReportExportMenu } from "./patient-report-export-menu";
 import { SubmitForReleaseButton } from "./submit-for-release-button";
 import { RecallFromReleaseButton } from "./recall-from-release-button";
 import { summarizeGroup } from "./bench-group-row";
+import { ManualResultEntryButton } from "./manual-result-entry";
 import { cn } from "../lib/utils";
 import { usePatientNameOrder } from "../lib/patient-name-order";
 
@@ -47,6 +53,13 @@ function originLabel(origin: string | undefined) {
   if (origin === "local_provisional") return "Registered here";
   if (origin === "upstream") return "Main registry";
   return origin ?? "—";
+}
+
+function fulfillmentBadgeLabel(code: string): string | null {
+  const f = getFulfillment(code);
+  if (f === "manual") return "Manual";
+  if (f === "send_out") return "Send-out";
+  return null;
 }
 
 export function BenchPatientPanel({
@@ -108,6 +121,31 @@ export function BenchPatientPanel({
   );
 
   const submitSummary = summarizeGroup(patientId, results);
+
+  const pendingManualByAccession = useMemo(() => {
+    return orderedByAccession
+      .map((row) => {
+        const orderedCodes = row.tests.map((t) => t.code);
+        const receivedCodes = results
+          .filter((r) => r.accessionNumber === row.accessionNumber)
+          .map((r) => r.testCode);
+        const pendingCodes = pendingNonInstrumentTests(
+          orderedCodes,
+          receivedCodes,
+        );
+        return {
+          accessionNumber: row.accessionNumber,
+          pending: pendingCodes.map((code) => ({
+            code,
+            name:
+              row.tests.find((t) => t.code === code)?.name ??
+              getCatalogDisplayName(code),
+            fulfillment: getFulfillment(code),
+          })),
+        };
+      })
+      .filter((row) => row.pending.length > 0);
+  }, [orderedByAccession, results]);
 
   return (
     <aside
@@ -243,10 +281,63 @@ export function BenchPatientPanel({
                     {row.accessionNumber}
                   </Link>
                   <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-                    {row.tests.map((t) => (
+                    {row.tests.map((t) => {
+                      const badge = fulfillmentBadgeLabel(t.code);
+                      return (
                       <li key={`${row.accessionNumber}-${t.code}`}>
                         <span className="font-mono text-[10px]">{t.code}</span>{" "}
                         {t.name ?? t.code}
+                        {badge ? (
+                          <Badge variant="muted" className="ml-1.5 px-1 py-0 text-[9px]">
+                            {badge}
+                          </Badge>
+                        ) : null}
+                      </li>
+                    );
+                    })}
+                  </ul>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {pendingManualByAccession.length > 0 && (
+          <div className="shrink-0 border-b border-border px-4 py-3">
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Awaiting manual result
+            </p>
+            <ul className="space-y-3">
+              {pendingManualByAccession.map((row) => (
+                <li key={row.accessionNumber}>
+                  <Link
+                    to="/orders"
+                    search={{ accession: row.accessionNumber }}
+                    className="font-mono text-xs text-primary hover:underline"
+                  >
+                    {row.accessionNumber}
+                  </Link>
+                  <ul className="mt-1.5 space-y-2">
+                    {row.pending.map((t) => (
+                      <li
+                        key={`${row.accessionNumber}-${t.code}`}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/25 bg-amber-500/5 px-2 py-1.5"
+                      >
+                        <div className="min-w-0 text-xs">
+                          <span className="font-mono text-[10px]">{t.code}</span>{" "}
+                          <span className="text-foreground">{t.name}</span>
+                          <Badge
+                            variant="warn"
+                            className="ml-1.5 px-1 py-0 text-[9px]"
+                          >
+                            {t.fulfillment === "send_out" ? "Send-out" : "Manual"}
+                          </Badge>
+                        </div>
+                        <ManualResultEntryButton
+                          accessionNumber={row.accessionNumber}
+                          testCode={t.code}
+                          testName={t.name}
+                        />
                       </li>
                     ))}
                   </ul>
@@ -315,6 +406,23 @@ export function BenchPatientPanel({
                   <p className="pl-1 text-sm font-medium tabular-nums text-foreground/85">
                     {new Date(r.observedAt).toLocaleString()}
                   </p>
+                  {r.analyzerId === "manual" &&
+                  r.status !== "released" ? (
+                    <div className="mt-2 pl-1">
+                      <ManualResultEntryButton
+                        accessionNumber={r.accessionNumber}
+                        testCode={r.testCode}
+                        testName={r.testName ?? r.testCode}
+                        existingResult={{
+                          value: r.value,
+                          units: r.units,
+                          flag: r.flag,
+                          referenceLow: r.referenceLow,
+                          referenceHigh: r.referenceHigh,
+                        }}
+                      />
+                    </div>
+                  ) : null}
                 </li>
               );
               })}

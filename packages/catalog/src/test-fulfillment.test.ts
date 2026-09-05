@@ -7,6 +7,7 @@ import {
   analyzerHasWork,
   getFulfillment,
   instrumentToCatalogCodes,
+  pendingNonInstrumentTests,
   pickCatalogCodeForResult,
 } from "./test-fulfillment";
 
@@ -55,6 +56,19 @@ describe("test fulfillment remap", () => {
   it("marks instrument-backed catalog codes", () => {
     assert.equal(getFulfillment("TSH"), "instrument");
     assert.equal(getFulfillment("ELECTROLYTES"), "instrument");
+  });
+
+  it("pendingNonInstrumentTests excludes received manual codes", () => {
+    const pending = pendingNonInstrumentTests(
+      ["CBC", "ESR", "GROUP_RH"],
+      ["CBC", "ESR"],
+    );
+    assert.deepEqual(pending, ["GROUP_RH"]);
+  });
+
+  it("pendingNonInstrumentTests ignores instrument-only orders", () => {
+    const pending = pendingNonInstrumentTests(["CBC", "TSH"], []);
+    assert.deepEqual(pending, []);
   });
 
   it("every simulator analyte maps to at least one catalog code", () => {

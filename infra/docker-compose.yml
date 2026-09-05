@@ -66,5 +66,50 @@ services:
     depends_on:
       - edge-engine
 
+  # Production lab mini PC: one container (API + UI + SQLite + analyzer ports).
+  # Cloud api is remote — set CLOUD_API_URL to your hosted Nest API.
+  lab:
+    profiles: ["lab-prod"]
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.lab
+      args:
+        VITE_LIS_MODE: edge
+        VITE_LIS_API_URL: ""
+        VITE_WS_URL: ""
+        VITE_CLOUD_API_URL: ${CLOUD_API_URL:-http://localhost:3102}
+    ports:
+      - "3101:3101"
+      - "5001:5001"
+      - "5003:5003"
+      - "5004:5004"
+    environment:
+      PORT: "3101"
+      NODE_ENV: production
+      SERVE_WEB_UI: "true"
+      EDGE_HARDENING: "true"
+      DATABASE_URL: "file:/data/edge.db"
+      EDGE_NODE_ID: ${EDGE_NODE_ID:-drax-hall-edge-1}
+      CLOUD_API_URL: ${CLOUD_API_URL:-http://localhost:3102}
+      CLOUD_SYNC_ENABLED: ${CLOUD_SYNC_ENABLED:-true}
+      EDGE_SYNC_TOKEN: ${EDGE_SYNC_TOKEN:-dev-edge-sync-token}
+      # Staff sign-in — see docs/EDGE_AUTH_AND_STAFF.md. Generate with `openssl rand -hex 32`.
+      EDGE_JWT_SECRET: ${EDGE_JWT_SECRET:-}
+      # No demo accounts on a real lab PC — first admin comes from POST /staff/bootstrap-admin.
+      EDGE_STAFF_SEED: ${EDGE_STAFF_SEED:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3101}
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      BACKUP_INTERVAL_MINUTES: ${BACKUP_INTERVAL_MINUTES:-30}
+      SYSMEX_TCP_PORT: "5001"
+      MINDRAY_TCP_PORT: "5003"
+      IFLASH_TCP_PORT: "5004"
+      ZEBRA_PRINTER_HOST: ${ZEBRA_PRINTER_HOST:-zebra}
+      ZEBRA_PRINTER_PORT: ${ZEBRA_PRINTER_PORT:-9100}
+    volumes:
+      - edge-sqlite:/data
+      - edge-backups:/backups
+
 volumes:
   edge-sqlite:
+  edge-backups:

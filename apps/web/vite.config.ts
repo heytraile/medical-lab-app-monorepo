@@ -7,6 +7,7 @@ import tailwindcss from "@tailwindcss/vite";
 import tsconfigPaths from "vite-tsconfig-paths";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+const spaMode = process.env.TSS_SPA === "1";
 
 export default defineConfig({
   server: {
@@ -29,5 +30,22 @@ export default defineConfig({
   optimizeDeps: {
     include: ["zod"],
   },
-  plugins: [tsconfigPaths(), tailwindcss(), tanstackStart(), viteReact()],
+  plugins: [
+    tsconfigPaths(),
+    tailwindcss(),
+    tanstackStart(
+      spaMode
+        ? {
+            spa: {
+              enabled: true,
+              prerender: {
+                outputPath: "/index",
+                crawlLinks: false,
+              },
+            },
+          }
+        : undefined,
+    ),
+    viteReact(),
+  ],
 });

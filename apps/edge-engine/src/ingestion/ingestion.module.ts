@@ -9,10 +9,12 @@ import { HostQueryService } from "./host-query.service";
 import { SyncModule } from "../sync/sync.module";
 import { RealtimeModule } from "../realtime/realtime.module";
 import { PrismaModule } from "../prisma/prisma.module";
+import { AuthModule } from "../auth/auth.module";
 
 @Module({
   imports: [
     PrismaModule,
+    AuthModule,
     forwardRef(() => SyncModule),
     forwardRef(() => RealtimeModule),
   ],

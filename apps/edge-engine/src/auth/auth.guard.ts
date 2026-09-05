@@ -8,14 +8,17 @@ import {
   UnauthorizedException,
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
-import { SupabaseService } from "../supabase/supabase.module";
 import type { ActorSnapshot } from "@drax-lis/contracts";
+import { isProductionHardened } from "../config/production-hardening";
+import { rejectDevTokenInHardenedMode } from "./hardened-auth.guard";
+import { EdgeJwtService } from "./edge-jwt.service";
 
 export type AuthUser = {
   id: string;
   email?: string;
   role: "tech" | "authorizer" | "admin";
   fullName?: string | null;
+  jobTitle?: string | null;
 };
 
 export const ROLES_KEY = "roles";
@@ -43,17 +46,35 @@ export function toActorSnapshot(user: AuthUser): ActorSnapshot {
     email: user.email ?? null,
     fullName: user.fullName ?? null,
     role: user.role,
+    jobTitle: (user.jobTitle as ActorSnapshot["jobTitle"]) ?? null,
   };
 }
 
+function devUserFromToken(token: string): AuthUser | null {
+  const role = token.slice(4) as AuthUser["role"];
+  if (!["tech", "authorizer", "admin"].includes(role)) return null;
+  return {
+    id: `dev-${role}`,
+    email: `${role}@local.dev`,
+    role,
+    fullName: `Dev ${role}`,
+  };
+}
+
+/**
+ * Requires a valid edge-issued session JWT (see `EdgeJwtService`).
+ *
+ * Edge login never talks to the internet — the token is signed and verified
+ * locally against `EDGE_JWT_SECRET`, so bench staff can sign in offline.
+ */
 @Injectable()
-export class SupabaseAuthGuard implements CanActivate {
+export class EdgeAuthGuard implements CanActivate {
   constructor(
-    private readonly supabase: SupabaseService,
+    private readonly jwt: EdgeJwtService,
     private readonly reflector: Reflector,
   ) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<{
       headers: { authorization?: string };
       user?: AuthUser;
@@ -64,57 +85,26 @@ export class SupabaseAuthGuard implements CanActivate {
       throw new UnauthorizedException("Missing Authorization bearer token");
     }
 
-    if (
-      token.startsWith("dev:") &&
-      (!this.supabase.enabled ||
-        !this.supabase.client ||
-        process.env.NODE_ENV !== "production")
-    ) {
-      const role = token.slice(4) as AuthUser["role"];
-      if (!["tech", "authorizer", "admin"].includes(role)) {
-        throw new UnauthorizedException("Invalid dev role token");
-      }
-      req.user = {
-        id: `dev-${role}`,
-        email: `${role}@local.dev`,
-        role,
-        fullName: `Dev ${role}`,
-      };
-      return this.assertRoles(context, req.user);
+    rejectDevTokenInHardenedMode(token);
+
+    if (token.startsWith("dev:") && !isProductionHardened()) {
+      const devUser = devUserFromToken(token);
+      if (!devUser) throw new UnauthorizedException("Invalid dev role token");
+      req.user = devUser;
+      return this.assertRoles(context, devUser);
     }
 
-    if (!this.supabase.enabled || !this.supabase.authClient) {
-      throw new UnauthorizedException(
-        "Sign in required — Supabase auth not configured on edge",
-      );
-    }
-
-    const { data, error } = await this.supabase.authClient.auth.getUser(token);
-    if (error || !data.user) {
-      throw new UnauthorizedException("Invalid session token");
-    }
-
-    let role: AuthUser["role"] = "tech";
-    let fullName: string | null = null;
-    if (this.supabase.client) {
-      const { data: profile } = await this.supabase.client
-        .from("profiles")
-        .select("role, email, full_name")
-        .eq("id", data.user.id)
-        .maybeSingle();
-      if (profile?.role === "authorizer" || profile?.role === "admin") {
-        role = profile.role;
-      } else if (profile?.role === "tech") {
-        role = "tech";
-      }
-      fullName = (profile?.full_name as string | null) ?? null;
+    const payload = this.jwt.verify(token);
+    if (!payload) {
+      throw new UnauthorizedException("Invalid or expired session token");
     }
 
     req.user = {
-      id: data.user.id,
-      email: data.user.email,
-      role,
-      fullName,
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+      fullName: payload.fullName,
+      jobTitle: payload.jobTitle,
     };
     return this.assertRoles(context, req.user);
   }
@@ -140,10 +130,10 @@ export class SupabaseAuthGuard implements CanActivate {
 
 /** Sets req.user when a valid bearer token is present; allows anonymous requests. */
 @Injectable()
-export class OptionalSupabaseAuthGuard implements CanActivate {
-  constructor(private readonly supabase: SupabaseService) {}
+export class OptionalEdgeAuthGuard implements CanActivate {
+  constructor(private readonly jwt: EdgeJwtService) {}
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
+  canActivate(context: ExecutionContext): boolean {
     const req = context.switchToHttp().getRequest<{
       headers: { authorization?: string };
       user?: AuthUser;
@@ -152,50 +142,23 @@ export class OptionalSupabaseAuthGuard implements CanActivate {
     const token = header?.replace(/^Bearer\s+/i, "").trim();
     if (!token) return true;
 
-    if (
-      token.startsWith("dev:") &&
-      (!this.supabase.enabled ||
-        !this.supabase.client ||
-        process.env.NODE_ENV !== "production")
-    ) {
-      const role = token.slice(4) as AuthUser["role"];
-      if (["tech", "authorizer", "admin"].includes(role)) {
-        req.user = {
-          id: `dev-${role}`,
-          email: `${role}@local.dev`,
-          role,
-          fullName: `Dev ${role}`,
-        };
-      }
+    rejectDevTokenInHardenedMode(token);
+
+    if (token.startsWith("dev:") && !isProductionHardened()) {
+      const devUser = devUserFromToken(token);
+      if (devUser) req.user = devUser;
       return true;
     }
 
-    if (!this.supabase.enabled || !this.supabase.authClient) return true;
-
-    const { data, error } = await this.supabase.authClient.auth.getUser(token);
-    if (error || !data.user) return true;
-
-    let role: AuthUser["role"] = "tech";
-    let fullName: string | null = null;
-    if (this.supabase.client) {
-      const { data: profile } = await this.supabase.client
-        .from("profiles")
-        .select("role, email, full_name")
-        .eq("id", data.user.id)
-        .maybeSingle();
-      if (profile?.role === "authorizer" || profile?.role === "admin") {
-        role = profile.role;
-      } else if (profile?.role === "tech") {
-        role = "tech";
-      }
-      fullName = (profile?.full_name as string | null) ?? null;
-    }
+    const payload = this.jwt.verify(token);
+    if (!payload) return true;
 
     req.user = {
-      id: data.user.id,
-      email: data.user.email,
-      role,
-      fullName,
+      id: payload.sub,
+      email: payload.email,
+      role: payload.role,
+      fullName: payload.fullName,
+      jobTitle: payload.jobTitle,
     };
     return true;
   }

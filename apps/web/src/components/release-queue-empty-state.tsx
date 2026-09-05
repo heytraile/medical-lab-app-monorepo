@@ -26,7 +26,7 @@ export function ReleaseQueueEmptyState({
   const pendingReviewQ = useQuery({
     queryKey: ["cloud-results", "pending_review"],
     queryFn: () => api.cloudResults("pending_review"),
-    enabled: auth.ready && Boolean(auth.accessToken),
+    enabled: auth.ready && auth.hasCloudSession,
     refetchInterval: 10_000,
     retry: (count, err) =>
       count < 2 && !(err instanceof ApiError && err.status === 401),

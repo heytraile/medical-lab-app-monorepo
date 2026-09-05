@@ -4,11 +4,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoginFormSchema, type LoginFormValues } from "@drax-lis/contracts";
 import { useAuth } from "../lib/auth";
-import { supabaseConfigured } from "../lib/supabase";
+import { isCloudMode, supabaseConfigured } from "../lib/supabase";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { FormErrorSummary, FormField } from "../components/forms/form-field";
+import { DeviceEnrollmentForm } from "../components/auth/device-enrollment-form";
 
 type LoginSearch = {
   redirect?: string;
@@ -62,6 +63,7 @@ function LoginPage() {
 
   const signedIn = Boolean(auth.accessToken);
   const [showDevAccounts, setShowDevAccounts] = useState(false);
+  const showRealForm = !isCloudMode || supabaseConfigured;
 
   async function goAfterAuth() {
     void navigate({ to: dest });
@@ -91,11 +93,15 @@ function LoginPage() {
             Sign in
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Staff login for Bench, Profile, and the Release queue.
+            {isCloudMode
+              ? "Cloud sign-in for admin and authorizer — remote release and sign-off."
+              : "Staff login for Bench, Profile, and the Release queue."}
           </p>
         </div>
 
-        {signedIn ? (
+        {signedIn && auth.needsDeviceEnrollment ? (
+          <DeviceEnrollmentForm onDone={() => void goAfterAuth()} />
+        ) : signedIn ? (
           <div className="space-y-4 rounded-xl border border-border bg-card p-4">
             <div className="space-y-1">
               <p className="text-sm font-medium">{auth.displayName}</p>
@@ -121,7 +127,7 @@ function LoginPage() {
               </Button>
             </div>
           </div>
-        ) : supabaseConfigured ? (
+        ) : showRealForm ? (
           <form
             className="space-y-3"
             noValidate

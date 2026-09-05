@@ -5,12 +5,16 @@ import {
 } from "@nestjs/common";
 import type {
   ActorSnapshot,
+  ManualResultEntry,
   RecallAccessionRequest,
   ReleaseAccessionRequest,
   SubmitResultsRequest,
 } from "@drax-lis/contracts";
 import {
+  getCatalogDisplayName,
+  getFulfillment,
   isResultExpectedOnOrder,
+  normalizeCode,
   parseOrderedTestCodes,
 } from "@drax-lis/catalog";
 import { PrismaService } from "../prisma/prisma.service";
@@ -184,6 +188,135 @@ export class ResultsService {
       submitted: updated.length,
       accessionNumbers,
       results: updated,
+    };
+  }
+
+  async enterManualResult(body: ManualResultEntry, actor: ActorSnapshot) {
+    const accessionNumber = body.accessionNumber.trim();
+    const testCode = normalizeCode(body.testCode);
+
+    const specimen = await this.prisma.specimen.findUnique({
+      where: { accessionNumber },
+      include: { patient: true },
+    });
+    if (!specimen) {
+      throw new NotFoundException(`Accession ${accessionNumber} not found`);
+    }
+
+    const orderedCodes = parseOrderedTestCodes(specimen.orderedTestsJson);
+    if (!isResultExpectedOnOrder(testCode, orderedCodes)) {
+      throw new BadRequestException(
+        `${testCode} is not on the order for ${accessionNumber}`,
+      );
+    }
+
+    const fulfillment = getFulfillment(testCode);
+    if (fulfillment === "instrument") {
+      throw new BadRequestException(
+        `${testCode} is an instrument test — results must come from the analyzer`,
+      );
+    }
+
+    const testName = getCatalogDisplayName(testCode);
+    const observedAt = body.observedAt ? new Date(body.observedAt) : new Date();
+    const flag = body.flag ?? "unknown";
+
+    const existing = await this.prisma.result.findFirst({
+      where: {
+        accessionNumber,
+        testCode,
+        analyzerId: "manual",
+      },
+      orderBy: { observedAt: "desc" },
+    });
+
+    let result;
+    if (existing) {
+      if (existing.status === "released") {
+        throw new BadRequestException(
+          `Manual result for ${testCode} is already released and cannot be edited`,
+        );
+      }
+      result = await this.prisma.result.update({
+        where: { id: existing.id },
+        data: {
+          barcode: specimen.barcode,
+          testName,
+          value: body.value,
+          units: body.units ?? null,
+          referenceLow: body.referenceLow ?? null,
+          referenceHigh: body.referenceHigh ?? null,
+          flag,
+          status: existing.status || "pending_review",
+        },
+      });
+    } else {
+      result = await this.prisma.result.create({
+        data: {
+          accessionNumber,
+          barcode: specimen.barcode,
+          analyzerId: "manual",
+          testCode,
+          testName,
+          value: body.value,
+          units: body.units ?? null,
+          referenceLow: body.referenceLow ?? null,
+          referenceHigh: body.referenceHigh ?? null,
+          flag,
+          status: "pending_review",
+          observedAt,
+        },
+      });
+    }
+
+    await this.sync.enqueue({
+      type: "result.batch",
+      payload: {
+        analyzerId: "manual",
+        accessionNumber,
+        barcode: specimen.barcode,
+        results: [
+          {
+            id: result.id,
+            testCode: result.testCode,
+            testName: result.testName,
+            value: result.value,
+            units: result.units,
+            referenceLow: result.referenceLow,
+            referenceHigh: result.referenceHigh,
+            flag: result.flag,
+            status: result.status,
+            observedAt: result.observedAt.toISOString(),
+          },
+        ],
+      },
+    });
+
+    await this.audit.log({
+      eventType: "result.manual_entered",
+      entityType: "result",
+      entityId: result.id,
+      actor,
+      payload: {
+        accessionNumber,
+        testCode,
+        value: result.value,
+        units: result.units,
+        flag: result.flag,
+        updated: Boolean(existing),
+      },
+    });
+
+    return {
+      id: result.id,
+      accessionNumber: result.accessionNumber,
+      testCode: result.testCode,
+      testName: result.testName,
+      value: result.value,
+      units: result.units,
+      flag: result.flag,
+      status: result.status,
+      observedAt: result.observedAt.toISOString(),
     };
   }
 

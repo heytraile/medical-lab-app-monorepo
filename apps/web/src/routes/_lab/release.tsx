@@ -60,7 +60,7 @@ function ReleasePage() {
   const queueQ = useQuery({
     queryKey: ["release-queue"],
     queryFn: () => api.releaseQueue(),
-    enabled: auth.ready && Boolean(auth.accessToken),
+    enabled: auth.ready && auth.hasCloudSession,
     refetchInterval: 10_000,
     retry: (count, err) =>
       count < 2 && !(err instanceof ApiError && err.status === 401),

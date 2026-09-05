@@ -5,13 +5,14 @@ import type {
 } from "@drax-lis/contracts";
 import { SpecimensService } from "./specimens.service";
 import {
-  OptionalSupabaseAuthGuard,
   OptionalUser,
   toActorSnapshot,
   type AuthUser,
 } from "../auth/auth.guard";
+import { HardenedAuthGuard, HardenedRequiredAuthGuard } from "../auth/hardened-auth.guard";
 
 @Controller("specimens")
+@UseGuards(HardenedAuthGuard)
 export class SpecimensController {
   constructor(private readonly specimens: SpecimensService) {}
 
@@ -24,7 +25,7 @@ export class SpecimensController {
   }
 
   @Post()
-  @UseGuards(OptionalSupabaseAuthGuard)
+  @UseGuards(HardenedRequiredAuthGuard)
   register(
     @Body()
     body: {
@@ -51,7 +52,7 @@ export class SpecimensController {
   }
 
   @Post("batch")
-  @UseGuards(OptionalSupabaseAuthGuard)
+  @UseGuards(HardenedRequiredAuthGuard)
   registerBatch(
     @Body() body: RegisterSpecimensBatchRequest,
     @OptionalUser() user?: AuthUser,

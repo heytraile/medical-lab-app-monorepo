@@ -4,7 +4,7 @@ Run the full edge loop on this Mac **without** the four physical analyzers.
 
 Clinical product rules (Bench Review, authorizer release, critical STAT alerts) live in [WORKFLOW.md](./WORKFLOW.md) — implement those next; this doc is how to run the stack locally.
 
-Confused by an acronym or assay code? See [GLOSSARY.md](./GLOSSARY.md).
+Confused by an acronym or assay code? See [GLOSSARY.md](./GLOSSARY.md). Curious how staff sign-in actually works (edge vs cloud, device enrollment)? See [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md).
 
 ## Prerequisites
 
@@ -68,6 +68,8 @@ doppler secrets set SUPABASE_URL=https://xxxx.supabase.co
 | `CLOUD_API_URL` | edge | `http://localhost:3102` |
 | `CLOUD_SYNC_ENABLED` | edge | `true` / `false` |
 | `EDGE_SYNC_TOKEN` | edge + api | Same value both sides |
+| `EDGE_JWT_SECRET` | edge | Signs edge staff login sessions — see [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md); optional locally (falls back to an insecure dev default with a warning) |
+| `EDGE_STAFF_SEED` | edge | `true` (default) seeds the 7 dev staff accounts on first boot; set `false` to test the bootstrap-admin flow from empty |
 | `SUPABASE_URL` | api | Optional; empty → in-memory sync |
 | `SUPABASE_SERVICE_ROLE_KEY` | api | Server only — never `VITE_` |
 | `VITE_LIS_API_URL` | web | `http://localhost:3101` |
@@ -281,25 +283,42 @@ pnpm supabase:reset     # rebuild from migrations + seed — destroys local data
 
 ### Seeded staff logins
 
-[`supabase/seed.sql`](../supabase/seed.sql) creates these on every `supabase:reset`:
+Staff signup happens on the **edge** only (see [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md)). On first boot, edge-engine's `StaffSeedService` creates these accounts directly in its SQLite `Staff` table and pushes them to the local Supabase project through the normal outbox sync loop. [`supabase/seed.sql`](../supabase/seed.sql) also inserts the **same** fixed UUIDs directly (belt-and-suspenders, so `pnpm dev` cloud-mode testing works even before the edge has synced) — the two are idempotent against each other:
 
-| Email | Password | Role | Job title |
-| --- | --- | --- | --- |
-| `admin@draxhall.local` | `password123` | admin — staff registry at `/staff`, full authorizer powers | admin staff |
-| `authorizer@draxhall.local` | `password123` | authorizer — can release results | — |
-| `tech@draxhall.local` | `password123` | tech — accession / bench | phlebotomist (Marlon Reid) |
-| `phleb@draxhall.local` | `password123` | tech — accession / bench | lab technologist (Jordan Blake) |
-| `karen@draxhall.local` | `password123` | tech — phlebotomist | phlebotomist (Karen Sinclair) |
-| `reception@draxhall.local` | `password123` | tech — front desk | receptionist (Tanya Clarke) |
-| `labtech@draxhall.local` | `password123` | tech — bench | lab technologist (Devon Matthews) |
+| Email | Password | Role | Job title | Can sign into the **cloud** app? |
+| --- | --- | --- | --- | --- |
+| `admin@draxhall.local` | `password123` | admin — staff registry at `/staff`, full authorizer powers | admin staff | ✅ |
+| `authorizer@draxhall.local` | `password123` | authorizer — can release results | — | ✅ |
+| `tech@draxhall.local` | `password123` | tech — accession / bench | phlebotomist (Marlon Reid) | ❌ blocked by the Auth Hook |
+| `phleb@draxhall.local` | `password123` | tech — accession / bench | lab technologist (Jordan Blake) | ❌ |
+| `karen@draxhall.local` | `password123` | tech — phlebotomist | phlebotomist (Karen Sinclair) | ❌ |
+| `reception@draxhall.local` | `password123` | tech — front desk | receptionist (Tanya Clarke) | ❌ |
+| `labtech@draxhall.local` | `password123` | tech — bench | lab technologist (Devon Matthews) | ❌ |
 
-Sign in at http://localhost:3100/login. Use **`admin@draxhall.local`** to open **Staff**
-(`/staff`) and assign who has authorizer permission. If that account or the Staff page is
-missing after pulling new migrations, run **`pnpm supabase:reset`** once to re-seed users.
+Sign in at http://localhost:3100/login (edge mode). Use **`admin@draxhall.local`** to open **Staff**
+(`/staff`) and assign who has authorizer permission — this now writes to the **edge**, not directly to Supabase. If that account or the Staff page is
+missing after pulling new migrations, run **`pnpm supabase:reset`** once to re-seed the cloud, and restart edge-engine so it re-seeds its own SQLite (or delete `apps/edge-engine/dev.db` and `pnpm db:push`).
+
+To try the cloud login + device enrollment flow locally: run a `VITE_LIS_MODE=cloud` build/tab, sign in as `authorizer@draxhall.local` or `admin@draxhall.local` (tech accounts will correctly fail here), then use the **Issue cloud device** button on the edge Staff page to generate a code and enroll that browser.
 
 Staff sign-in/out and **Profile** live in the sidebar; sessions work in edge or cloud mode.
 The dev-role shortcut (“Continue as admin (dev)”) still exists for when Supabase is not
 running.
+
+### Edge vs cloud session (default `pnpm dev:local`)
+
+The web app runs in **edge mode** (`VITE_LIS_MODE=edge`). Sign-in at `/login` uses the **edge** API (`POST :3101/auth/login`) — that is what the sidebar shows (your name in the lower left).
+
+Two sessions can exist at once:
+
+| Session | Used for | How you get it |
+| --- | --- | --- |
+| **Edge** | Bench, accession, staff registry, sync drain | Always — normal sign-in at `/login` |
+| **Cloud (Supabase)** | Release queue, review-request alerts, cloud-only APIs | Automatically for **admin** and **authorizer** after edge sign-in (same email/password). Tech accounts are edge-only — the Auth Hook blocks their cloud login. |
+
+Cloud API calls send the **Supabase JWT**, not the edge JWT. A cloud 401 no longer wipes your edge login (so the sidebar stays signed in).
+
+**Release / sign-off from the edge tab:** after signing in as admin or authorizer, the release queue **loads** once the Supabase session is established. **Release** actions (`POST /results/release-accession`) still require a **lab device** enrollment in dev if you hit `LabDeviceGuard` errors — issue a code from **Staff → Issue cloud device** on the edge app, or test release from a `VITE_LIS_MODE=cloud` tab with enrollment.
 
 Release queue: http://localhost:3100/release — admins and authorizers release cloud
 `pending_authorization` accessions (`POST /results/release-accession`).

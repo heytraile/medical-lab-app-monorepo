@@ -16,13 +16,22 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function ThemeToggle({ className }: { className?: string }) {
+export const ThemeToggle = React.forwardRef<
+  HTMLButtonElement,
+  { className?: string }
+>(function ThemeToggle({ className }, ref) {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
   if (!mounted) {
     return (
-      <Button variant="ghost" size="icon" className={className} aria-label="Theme">
+      <Button
+        ref={ref}
+        variant="ghost"
+        size="icon"
+        className={className}
+        aria-label="Theme"
+      >
         <Sun className="size-4" />
       </Button>
     );
@@ -30,6 +39,7 @@ export function ThemeToggle({ className }: { className?: string }) {
   const dark = (resolvedTheme ?? theme) === "dark";
   return (
     <Button
+      ref={ref}
       variant="ghost"
       size="icon"
       className={className}
@@ -39,4 +49,4 @@ export function ThemeToggle({ className }: { className?: string }) {
       {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
     </Button>
   );
-}
+});

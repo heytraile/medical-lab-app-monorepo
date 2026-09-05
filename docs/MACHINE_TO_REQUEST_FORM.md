@@ -50,7 +50,7 @@ Remapping links those ions back to the single **ELECTROLYTES** line on the order
 
 - **Ordered on form:** `PAP SMEAR`, `CULTURE & SENSITIVITY`, `URINALYSIS - COMPLETE`, `GROUP & Rh`
 
-These are often done **by hand**, on a different bench, or at a reference lab. **No result message** will arrive from Sysmex, Mindray, ProLyte, or iFlash. That is **normal**. The order still exists; staff enter or attach those results through a different path (manual entry or future workflow).
+These are often done **by hand**, on a different bench, or at a reference lab. **No result message** will arrive from Sysmex, Mindray, ProLyte, or iFlash. That is **normal**. The order still exists; staff enter those results on **Bench Review** (patient focus panel → **Awaiting manual result** → **Enter result**).
 
 ---
 
@@ -224,10 +224,11 @@ When a result arrives, the system uses this table to **rename for display** and 
 | --- | --- | --- |
 | Order tests from PDF catalog on Accession | Yes | — |
 | Machines send results to Bench | Yes | — |
-| Remap machine codes → form codes | **No** | Yes (remap table + ingestion) |
-| Simulators only send ordered tests | **No** — sends fixed demo set | Yes |
-| Show “manual test pending” on order | **No** | Yes |
-| Flag unexpected machine results | **No** | Yes (optional, still store) |
+| Remap machine codes → form codes | Yes | — |
+| Simulators only send ordered tests | Yes | — |
+| Show “manual test pending” on order | Yes (Bench patient panel) | — |
+| Manual result entry for non-instrument tests | Yes (`POST /results/manual`, `analyzerId: manual`) | — |
+| Flag unexpected machine results | Partial (`expectedOnOrder` on list) | Stronger Bench UX |
 
 ---
 

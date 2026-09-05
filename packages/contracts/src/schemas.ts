@@ -7,12 +7,13 @@ import {
   profileFullNameField,
 } from "./form-validators";
 
-/** Four physical analyzers at Drax Hall. */
+/** Four physical analyzers at Drax Hall, plus manual staff entry. */
 export const AnalyzerIdSchema = z.enum([
   "sysmex_xs1000i",
   "diamond_prolyte",
   "mindray_bs240",
   "yhlo_iflash1200",
+  "manual",
 ]);
 export type AnalyzerId = z.infer<typeof AnalyzerIdSchema>;
 
@@ -231,6 +232,7 @@ export const OutboxEventTypeSchema = z.enum([
   "result.recalled",
   "instrument.status",
   "patient.provisional_created",
+  "staff.upsert",
 ]);
 export type OutboxEventType = z.infer<typeof OutboxEventTypeSchema>;
 
@@ -437,3 +439,99 @@ export const HealthResponseSchema = z.object({
   timestamp: z.string().datetime(),
 });
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
+
+// ---------------------------------------------------------------------------
+// Edge-first staff auth + device enrollment (see docs/EDGE_AUTH_AND_STAFF.md)
+// ---------------------------------------------------------------------------
+
+/** Edge `POST /auth/login` request body. */
+export const EdgeLoginRequestSchema = z.object({
+  email: emailField,
+  password: z.string().min(1, "Password is required").max(128),
+});
+export type EdgeLoginRequest = z.infer<typeof EdgeLoginRequestSchema>;
+
+export const EdgeStaffUserSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().email(),
+  fullName: z.string(),
+  role: StaffRoleSchema,
+  jobTitle: StaffJobTitleSchema.nullable(),
+  isActive: z.boolean(),
+});
+export type EdgeStaffUser = z.infer<typeof EdgeStaffUserSchema>;
+
+/** Edge `POST /auth/login` response body. */
+export const EdgeLoginResponseSchema = z.object({
+  accessToken: z.string(),
+  user: EdgeStaffUserSchema,
+});
+export type EdgeLoginResponse = z.infer<typeof EdgeLoginResponseSchema>;
+
+/** Payload carried by the `staff.upsert` outbox event (edge → cloud). */
+export const StaffUpsertEventPayloadSchema = z.object({
+  staffId: z.string().uuid(),
+  email: z.string().email(),
+  fullName: z.string(),
+  role: StaffRoleSchema,
+  jobTitle: StaffJobTitleSchema.nullable(),
+  isActive: z.boolean(),
+  /** true for admin/authorizer — false (tech) is blocked from cloud login. */
+  cloudLoginAllowed: z.boolean(),
+  /** Only present on create or password change — never persisted longer than needed. */
+  password: z.string().optional(),
+});
+export type StaffUpsertEventPayload = z.infer<
+  typeof StaffUpsertEventPayloadSchema
+>;
+
+/** A cloud-registered laptop/phone issued to a specific staff member. */
+export const LabDeviceStatusSchema = z.enum(["active", "revoked"]);
+export type LabDeviceStatus = z.infer<typeof LabDeviceStatusSchema>;
+
+export const LabDeviceSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string(),
+  ownerStaffId: z.string().uuid(),
+  ownerFullName: z.string().nullable().optional(),
+  issuedByStaffId: z.string().uuid().nullable().optional(),
+  status: LabDeviceStatusSchema,
+  registeredAt: z.string(),
+  lastLoginAt: z.string().nullable().optional(),
+  lastSeenAt: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+export type LabDevice = z.infer<typeof LabDeviceSchema>;
+
+/** Edge `POST /staff/devices/enrollment-codes` request — admin issues a code. */
+export const DeviceEnrollmentCodeCreateSchema = z.object({
+  assignToStaffId: z.string().uuid(),
+  deviceLabel: z.string().max(100).optional(),
+});
+export type DeviceEnrollmentCodeCreate = z.infer<
+  typeof DeviceEnrollmentCodeCreateSchema
+>;
+
+export const DeviceEnrollmentCodeResponseSchema = z.object({
+  code: z.string(),
+  expiresAt: z.string(),
+  assignToStaffId: z.string().uuid(),
+});
+export type DeviceEnrollmentCodeResponse = z.infer<
+  typeof DeviceEnrollmentCodeResponseSchema
+>;
+
+/** Cloud `POST /devices/enroll` request — browser redeems a one-time code. */
+export const DeviceEnrollRequestSchema = z.object({
+  code: z.string().min(4).max(32),
+  deviceName: z.string().min(1, "Name this device").max(100),
+});
+export type DeviceEnrollRequest = z.infer<typeof DeviceEnrollRequestSchema>;
+
+export const DeviceEnrollResponseSchema = z.object({
+  deviceId: z.string().uuid(),
+  deviceToken: z.string(),
+  deviceName: z.string(),
+  ownerStaffId: z.string().uuid(),
+});
+export type DeviceEnrollResponse = z.infer<typeof DeviceEnrollResponseSchema>;

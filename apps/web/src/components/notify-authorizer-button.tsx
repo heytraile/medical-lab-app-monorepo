@@ -48,6 +48,7 @@ export function NotifyAuthorizerButton({
   const [open, setOpen] = useState(false);
 
   const signedIn = Boolean(auth.accessToken);
+  const cloudReady = auth.hasCloudSession;
 
   const {
     register,
@@ -68,7 +69,7 @@ export function NotifyAuthorizerButton({
   const { data: requests } = useQuery({
     queryKey: ["review-requests"],
     queryFn: () => api.listReviewRequests(),
-    enabled: signedIn,
+    enabled: cloudReady,
     refetchInterval: 15_000,
   });
 

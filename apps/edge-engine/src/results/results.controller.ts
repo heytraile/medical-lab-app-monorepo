@@ -3,12 +3,13 @@ import {
   RecallAccessionRequestSchema,
   ReleaseAccessionRequestSchema,
   SubmitResultsRequestSchema,
+  ManualResultEntrySchema,
 } from "@drax-lis/contracts";
 import { ResultsService } from "./results.service";
 import {
   CurrentUser,
+  EdgeAuthGuard,
   Roles,
-  SupabaseAuthGuard,
   toActorSnapshot,
   type AuthUser,
 } from "../auth/auth.guard";
@@ -23,14 +24,22 @@ export class ResultsController {
   }
 
   @Post("submit")
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(EdgeAuthGuard)
   submit(@Body() body: unknown, @CurrentUser() user: AuthUser) {
     const parsed = SubmitResultsRequestSchema.parse(body);
     return this.results.submitForRelease(parsed, toActorSnapshot(user));
   }
 
+  @Post("manual")
+  @UseGuards(EdgeAuthGuard)
+  @Roles("tech", "authorizer", "admin")
+  enterManual(@Body() body: unknown, @CurrentUser() user: AuthUser) {
+    const parsed = ManualResultEntrySchema.parse(body);
+    return this.results.enterManualResult(parsed, toActorSnapshot(user));
+  }
+
   @Post("recall")
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(EdgeAuthGuard)
   @Roles("tech", "authorizer", "admin")
   recall(@Body() body: unknown, @CurrentUser() user: AuthUser) {
     const parsed = RecallAccessionRequestSchema.parse(body);
@@ -38,7 +47,7 @@ export class ResultsController {
   }
 
   @Post("mark-released")
-  @UseGuards(SupabaseAuthGuard)
+  @UseGuards(EdgeAuthGuard)
   @Roles("authorizer", "admin")
   markReleased(@Body() body: unknown, @CurrentUser() user: AuthUser) {
     const parsed = ReleaseAccessionRequestSchema.parse(body);

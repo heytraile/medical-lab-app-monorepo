@@ -5,9 +5,10 @@ import {
 } from "@nestjs/websockets";
 import { Logger } from "@nestjs/common";
 import { Server, Socket } from "socket.io";
+import { getCorsOrigins } from "../config/cors-origins";
 
 @WebSocketGateway({
-  cors: { origin: "*" },
+  cors: { origin: getCorsOrigins(), credentials: true },
   namespace: "/bench",
 })
 export class RealtimeGateway implements OnGatewayConnection {

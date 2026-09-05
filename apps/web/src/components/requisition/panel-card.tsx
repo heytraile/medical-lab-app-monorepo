@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import type { CatalogPanel } from "@drax-lis/contracts";
 import { Badge } from "../ui/badge";
+import { FulfillmentBadge } from "./fulfillment-badge";
 import { cn } from "../../lib/utils";
 
 export function PanelCard({
@@ -87,6 +88,7 @@ export function PanelCard({
           {members.map((m) => (
             <li key={m.code} className="py-0.5">
               <span className="font-mono text-[10px]">{m.code}</span> — {m.name}
+              <FulfillmentBadge code={m.code} />
             </li>
           ))}
         </ul>

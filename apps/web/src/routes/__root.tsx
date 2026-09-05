@@ -9,7 +9,10 @@ import type { QueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 import appCss from "../styles.css?url";
 import { AuthProvider, useAuth } from "../lib/auth";
-import { setAuthTokenProvider } from "../lib/api";
+import {
+  setCloudAuthTokenProvider,
+  setEdgeAuthTokenProvider,
+} from "../lib/api";
 
 export const Route = createRootRouteWithContext<{
   queryClient: QueryClient;
@@ -37,10 +40,13 @@ function RootComponent() {
 }
 
 function AuthTokenBridge() {
-  const { accessToken } = useAuth();
-  const tokenRef = useRef<string | null>(accessToken);
-  tokenRef.current = accessToken;
-  setAuthTokenProvider(() => tokenRef.current);
+  const { edgeAccessToken, cloudAccessToken } = useAuth();
+  const edgeRef = useRef<string | null>(edgeAccessToken);
+  const cloudRef = useRef<string | null>(cloudAccessToken);
+  edgeRef.current = edgeAccessToken;
+  cloudRef.current = cloudAccessToken;
+  setEdgeAuthTokenProvider(() => edgeRef.current);
+  setCloudAuthTokenProvider(() => cloudRef.current);
   return null;
 }
 

@@ -499,6 +499,23 @@ export function manualTestsInOrder(orderedCatalogCodes: string[]): string[] {
   );
 }
 
+export function nonInstrumentTestsInOrder(codes: string[]): string[] {
+  return codes.filter((c) => {
+    const f = getFulfillment(c);
+    return f === "manual" || f === "send_out";
+  });
+}
+
+export function pendingNonInstrumentTests(
+  orderedCodes: string[],
+  receivedTestCodes: Iterable<string>,
+): string[] {
+  const received = new Set([...receivedTestCodes].map(normalizeCode));
+  return nonInstrumentTestsInOrder(orderedCodes).filter(
+    (c) => !received.has(normalizeCode(c)),
+  );
+}
+
 export function allSimulatorInstrumentCodes(): string[] {
   const codes = new Set<string>();
   for (const analytes of Object.values(ANALYZER_SIM_ANALYTES)) {

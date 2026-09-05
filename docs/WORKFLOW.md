@@ -93,11 +93,26 @@ The **Bench Review** screen is the tech’s day board:
 
 This is the “gallery of tests for the day” described with the lab team.
 
+### Manual / visual tests (non-instrument)
+
+Not every ordered test comes from the four bench analyzers. Cultures, microscopy, blood bank typing, many urine tests, and send-out work are classified in `@drax-lis/catalog` as **`manual`** or **`send_out`**.
+
+When a patient is opened on Bench:
+
+1. **Ordered tests** lists everything on the requisition (with **Manual** / **Send-out** badges at accession and on Bench).
+2. **Awaiting manual result** lists ordered non-instrument tests that do not yet have a result row.
+3. The tech taps **Enter result**, types the observed value (numeric or qualitative), optional units/flag, and saves.
+4. The result is stored with `analyzerId: manual` and status `pending_review` — same submit → authorize → release path as machine results.
+
+Mixed accessions are normal: e.g. **CBC** from Sysmex plus **ESR** and **GROUP_RH** entered manually. Submit for release promotes **all** pending results on the accession regardless of source.
+
+Accession shows **Manual** / **Send-out** badges on individual tests and panel members so staff know at order time which lines will not auto-populate from analyzers.
+
 ---
 
 ## Release / authorization flow
 
-1. Result arrives from analyzer → stored on edge as `pending_review`.
+1. Result arrives from analyzer **or** tech enters a manual result → stored on edge as `pending_review`.
 2. Bench tech reviews on **Bench** → **Submit for release** → `pending_authorization` (+ audit).
 3. Outbox syncs submit event to cloud; authorizer opens **Release queue** (`GET /cloud/release-queue`).
 4. **While awaiting authorization** (before release):

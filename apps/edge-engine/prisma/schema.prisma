@@ -136,6 +136,49 @@ model SyncMeta {
   accessionSeq Int    @default(0)
 }
 
+/// Lab staff account — created on the edge (lab PC), never on cloud.
+/// `id` is a client-generated UUID that becomes the Supabase `auth.users.id`
+/// / `profiles.id` once synced, so edge and cloud always agree on identity.
+model Staff {
+  id                String    @id
+  email             String    @unique
+  passwordHash      String
+  fullName          String
+  /// tech | authorizer | admin
+  role              String
+  /// StaffJobTitle enum value (see packages/contracts)
+  jobTitle          String?
+  isActive          Boolean   @default(true)
+  /// Derived from role: true for admin/authorizer, false for tech.
+  cloudLoginAllowed Boolean   @default(false)
+  /// pending | synced | failed — outbox push status for this staff row.
+  syncStatus        String    @default("pending")
+  passwordChangedAt DateTime  @default(now())
+  lastSyncedAt      DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([role])
+  @@index([syncStatus])
+}
+
+/// One-time code an edge admin issues so a specific staff member can enroll
+/// their browser as a "lab-issued device" for cloud login. Short-lived; the
+/// authoritative copy lives on the cloud (`device_enrollment_codes`) once
+/// pushed — this row is the edge's local record for audit/troubleshooting.
+model DeviceEnrollmentCode {
+  id               String    @id @default(cuid())
+  codeHash         String    @unique
+  assignToStaffId  String
+  createdByStaffId String?
+  deviceLabel      String?
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdAt        DateTime  @default(now())
+
+  @@index([expiresAt])
+}
+
 /// Append-only clinical audit trail (WORM on edge).
 model AuditEvent {
   id           String   @id @default(cuid())

@@ -281,9 +281,12 @@ max_frequency = "5s"
 # uri = "pg-functions://postgres/auth/before-user-created-hook"
 
 # This hook runs before a token is issued and allows you to add additional claims based on the authentication method used.
-# [auth.hook.custom_access_token]
-# enabled = true
-# uri = "pg-functions://<database>/<schema>/<hook_name>"
+# Blocks cloud login for tech accounts (profiles.cloud_login_allowed = false) — see
+# supabase/migrations/20260905000000_edge_auth_and_devices.sql and docs/EDGE_AUTH_AND_STAFF.md.
+# For hosted Supabase, enable the same hook from Dashboard → Authentication → Hooks.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
 
 # Configure one of the supported SMS providers: `twilio`, `twilio_verify`, `messagebird`, `textlocal`, `vonage`.
 [auth.sms.twilio]

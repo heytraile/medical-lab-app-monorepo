@@ -1,8 +1,19 @@
-import { Body, Controller, Get, Param, Post, Query } from "@nestjs/common";
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  Query,
+  UseGuards,
+} from "@nestjs/common";
 import { PatientsService } from "./patients.service";
 import { PatientsSeedService } from "./patients-seed.service";
+import { DevOnlyGuard } from "../auth/dev-only.guard";
+import { HardenedAuthGuard } from "../auth/hardened-auth.guard";
 
 @Controller("patients")
+@UseGuards(HardenedAuthGuard)
 export class PatientsController {
   constructor(
     private readonly patients: PatientsService,
@@ -37,6 +48,7 @@ export class PatientsController {
 
   /** Must be declared before `:id` so it is not captured as an id. */
   @Post("seed")
+  @UseGuards(DevOnlyGuard)
   async reseed() {
     return this.seed.seed();
   }

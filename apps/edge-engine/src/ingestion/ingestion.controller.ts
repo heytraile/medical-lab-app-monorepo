@@ -1,8 +1,10 @@
-import { Body, Controller, Post } from "@nestjs/common";
+import { Body, Controller, Post, UseGuards } from "@nestjs/common";
 import { IngestionService } from "./ingestion.service";
+import { DevOnlyGuard } from "../auth/dev-only.guard";
 
 /** Dev/test endpoint to inject a raw frame without a real socket. */
 @Controller("ingest")
+@UseGuards(DevOnlyGuard)
 export class IngestionController {
   constructor(private readonly ingestion: IngestionService) {}
 

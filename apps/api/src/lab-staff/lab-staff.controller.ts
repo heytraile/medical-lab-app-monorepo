@@ -1,16 +1,14 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Patch,
   Post,
   UseGuards,
 } from "@nestjs/common";
-import {
-  StaffMemberCreateSchema,
-  StaffMemberUpdateSchema,
-} from "@drax-lis/contracts";
+import { StaffMemberUpdateSchema } from "@drax-lis/contracts";
 import {
   CurrentUser,
   Roles,
@@ -35,11 +33,17 @@ export class LabStaffController {
     return this.service.listAll(user);
   }
 
+  /**
+   * Staff signup now only happens on the lab edge app (offline-capable),
+   * then pushes to the cloud via the `staff.upsert` outbox event. See
+   * docs/EDGE_AUTH_AND_STAFF.md.
+   */
   @Post()
   @Roles("admin")
-  create(@CurrentUser() user: AuthUser, @Body() body: unknown) {
-    const parsed = StaffMemberCreateSchema.parse(body);
-    return this.service.create(user, parsed);
+  create(): never {
+    throw new ForbiddenException(
+      "Create staff on the lab edge app — it syncs here automatically",
+    );
   }
 
   @Patch(":id")

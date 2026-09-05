@@ -4,6 +4,7 @@ import type { OrderSelection } from "@drax-lis/catalog";
 import { ClearableInput } from "../ui/clearable-input";
 import { ScrollContainer } from "../ui/scroll-container";
 import { CategoryPill } from "./category-pill";
+import { FulfillmentBadge } from "./fulfillment-badge";
 import { cn } from "../../lib/utils";
 
 export const ALL_TESTS_CATEGORY = "__all__";
@@ -131,6 +132,7 @@ export function IndividualTestsSection({
                         {item.code}
                       </span>{" "}
                       <span className="font-medium">{item.name}</span>
+                      <FulfillmentBadge code={item.code} />
                     </span>
                   </label>
                 </li>

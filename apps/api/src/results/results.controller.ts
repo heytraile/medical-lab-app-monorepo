@@ -5,9 +5,10 @@ import {
   Post,
   UseGuards,
 } from "@nestjs/common";
-import type { ReleaseAccessionRequest } from "@drax-lis/contracts";
+import type { DeviceSnapshot, ReleaseAccessionRequest } from "@drax-lis/contracts";
 import { SyncService } from "../sync/sync.service";
 import { AuditService } from "../audit/audit.service";
+import { CurrentDevice, LabDeviceGuard } from "../devices/lab-device.guard";
 import {
   CurrentUser,
   Roles,
@@ -16,8 +17,13 @@ import {
   type AuthUser,
 } from "../auth/auth.guard";
 
+/**
+ * Cloud login always requires a lab-issued device — every release/recall
+ * here is attributed to both the signed-in authorizer AND the device they
+ * used (see docs/EDGE_AUTH_AND_STAFF.md, docs/AUDIT.md).
+ */
 @Controller("results")
-@UseGuards(SupabaseAuthGuard)
+@UseGuards(SupabaseAuthGuard, LabDeviceGuard)
 export class ResultsController {
   constructor(
     private readonly sync: SyncService,
@@ -29,6 +35,7 @@ export class ResultsController {
   async releaseAccession(
     @Body() body: ReleaseAccessionRequest,
     @CurrentUser() user: AuthUser,
+    @CurrentDevice() device: DeviceSnapshot | undefined,
   ) {
     const actor = toActorSnapshot(user);
     const released = await this.sync.releaseAccession({
@@ -41,6 +48,7 @@ export class ResultsController {
       entityType: "accession",
       entityId: body.accessionNumber,
       actor,
+      device: device ?? null,
       payload: {
         accessionNumber: body.accessionNumber,
         resultIds: released.resultIds,
@@ -52,7 +60,11 @@ export class ResultsController {
 
   @Post(":id/release")
   @Roles("authorizer", "admin")
-  async release(@Param("id") id: string, @CurrentUser() user: AuthUser) {
+  async release(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthUser,
+    @CurrentDevice() device: DeviceSnapshot | undefined,
+  ) {
     const actor = toActorSnapshot(user);
     const row = await this.sync.releaseResult({
       id,
@@ -64,6 +76,7 @@ export class ResultsController {
       entityType: "result",
       entityId: id,
       actor,
+      device: device ?? null,
       payload: {
         accessionNumber: row.accession_number,
         testCode: row.test_code,

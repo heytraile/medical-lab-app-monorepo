@@ -16,6 +16,7 @@ First customer: Drax Hall Clinical Laboratory. Product intent: multi-lab LIS.
 | [Hardware & links](#hardware--links) | RS-232, TCP, printers, serial |
 | [Analyzer protocols](#analyzer-protocols) | ASTM, HL7, MLLP, record types |
 | [Our software stack](#our-software-stack) | Nest, Prisma, Supabase, web tools |
+| [Auth & devices](../docs/EDGE_AUTH_AND_STAFF.md) | Edge staff login, cloud device enrollment, audit — full doc |
 | [Common lab test / analyte codes](#common-lab-test--analyte-codes) | What instruments print in `R` / `OBX` fields |
 | [Machine → discipline map](#machine--discipline-map-drax-hall) | Which analyzer tends to produce which codes |
 
@@ -47,6 +48,29 @@ Codes below are **common clinical abbreviations**. Exact strings from Sysmex / M
 | **CLI** | Command-Line Interface | `pnpm`, simulator `send:sysmex`, etc. |
 | **SSH** | Secure Shell | Secure remote/git access |
 | **HTTPS** | HTTP Secure | Encrypted HTTP for sync |
+| **CORS** | Cross-Origin Resource Sharing | Browser rule for which origins may call the edge API — see [EDGE_SECURITY_AND_BACKUP.md](./EDGE_SECURITY_AND_BACKUP.md) |
+| **LUKS** | Linux Unified Key Setup | Full-disk encryption on the mini PC — OS-level |
+| **3-2-1** | Backup rule (3 copies, 2 media, 1 off-site) | Disaster recovery best practice for `/backups` + cloud |
+| **Helmet** | HTTP security headers middleware | Enabled on edge when hardened |
+| **Rate limiting** | Cap requests per IP/time window | `@nestjs/throttler` on hardened edge |
+| **Pentest** | Penetration test | Third-party security review before external exposure |
+| **JWT** | JSON Web Token — signed login session ticket | Edge issues its own JWT for lab sign-in (offline); cloud uses a Supabase JWT for admin/authorizer — see [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md) |
+| **scrypt** | Password-hashing algorithm built into Node.js | Edge hashes staff passwords with it — no plaintext ever stored |
+| **Lab device** | A specific enrolled browser/computer allowed to sign into the **cloud** app | `lab_devices` table; has a named owner; required for every cloud login |
+| **Device enrollment code** | One-time 8-character code an edge admin generates | Binds a browser to a lab device on first cloud sign-in |
+| **cloud_login_allowed** | Flag on a staff profile | `true` for admin/authorizer, `false` for tech — enforced by a Postgres Auth Hook, not just app code |
+| **LAN** | Local Area Network | Clinic internal network hosting the mini PC |
+| **VLAN** | Virtual LAN | Network segment to isolate lab devices |
+| **NAS** | Network Attached Storage | Optional second copy target for `/backups` |
+| **NestJS** | Node.js server framework | `apps/edge-engine` and `apps/api` |
+| **Socket.IO** | WebSocket realtime library | Bench live updates at `/bench` namespace |
+| **SQLite** | Embedded file database | Edge `/data/edge.db` |
+| **Acked** | Acknowledged (sync) | Outbox row confirmed by cloud — safe to prune |
+| **DHCP** | Dynamic Host Configuration Protocol | Router assigns IPs; use reservation for stable mini PC IP — [LAB_MINI_PC_SETUP.md](./LAB_MINI_PC_SETUP.md) |
+| **DNS** | Domain Name System | Maps names like `drax-lis.local` to IP addresses |
+| **mDNS** | Multicast DNS | `.local` names on LAN without a DNS server (Avahi) |
+| **Docker** | Container runtime | Runs lab app as one `lab` container on mini PC |
+| **udev** | Linux device rules | Stable serial port names (`/dev/prolyte`) |
 | **CI** | Continuous Integration | Automated test/build on push (later) |
 | **Monorepo** | One git repo with many apps/packages | This repository |
 | **PTY** | Pseudo-Terminal | Fake serial ports via `socat` for home testing |
@@ -73,7 +97,7 @@ Codes below are **common clinical abbreviations**. Exact strings from Sysmex / M
 | **Aliquot** | Portion of a specimen split into another tube | Labeling / routing later |
 | **Phlebotomy / phleb** | Blood draw | Collectors are staff with job title phlebotomist or lab technologist |
 | **Job title** | What someone does at the bench (phlebotomist, lab technologist, …) | Stored on `profiles.job_title`; separate from permission **role** |
-| **Permission role** | What the app lets you do (`tech`, `authorizer`, `admin`) | Supabase Auth + RLS; see Staff page for job title assignment |
+| **Permission role** | What the app lets you do (`tech`, `authorizer`, `admin`) | Set on the edge `Staff` table (source of truth), synced to Supabase `profiles`; see Staff page for job title assignment and [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md) |
 
 | **Requisition** | Doctor/reception test order before or at draw | Cloud `requisitions` row with `ordered_selections` + expanded `ordered_tests` |
 | **Test panel** | Bundle of tests ordered as one profile (e.g. Anaemia I) | Expands to member analyte codes at register |

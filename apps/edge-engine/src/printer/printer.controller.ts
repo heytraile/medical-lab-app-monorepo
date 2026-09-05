@@ -4,7 +4,9 @@ import {
   Get,
   NotFoundException,
   Post,
+  UseGuards,
 } from "@nestjs/common";
+import { HardenedAuthGuard } from "../auth/hardened-auth.guard";
 import { PrismaService } from "../prisma/prisma.service";
 import { displayName } from "../patients/patient-normalize";
 import {
@@ -25,6 +27,7 @@ export class PrinterController {
   }
 
   @Post("preview")
+  @UseGuards(HardenedAuthGuard)
   preview(
     @Body()
     body: LabelPayload & { copies?: number },
@@ -42,6 +45,7 @@ export class PrinterController {
   }
 
   @Post("label")
+  @UseGuards(HardenedAuthGuard)
   async printLabel(
     @Body()
     body: LabelPayload & { copies?: number },
@@ -60,6 +64,7 @@ export class PrinterController {
   }
 
   @Post("reprint")
+  @UseGuards(HardenedAuthGuard)
   async reprint(
     @Body() body: { accessionNumber: string; copies?: number },
   ) {
@@ -131,6 +136,7 @@ export class PrinterController {
   }
 
   @Post("test")
+  @UseGuards(HardenedAuthGuard)
   async testLabel(@Body() body: { copies?: number }) {
     const { zpl, fields } = this.printer.buildTestLabel();
     const result = await this.printer.printZpl(zpl, body.copies ?? 1);

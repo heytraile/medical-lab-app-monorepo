@@ -266,7 +266,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const { data: reviewRequests } = useQuery({
     queryKey: ["review-requests"],
     queryFn: () => api.listReviewRequests(),
-    enabled: Boolean(auth.accessToken),
+    enabled: auth.hasCloudSession,
     refetchInterval: 15_000,
   });
 

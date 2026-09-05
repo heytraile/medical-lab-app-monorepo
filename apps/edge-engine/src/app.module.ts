@@ -1,4 +1,6 @@
-import { Module } from "@nestjs/common";
+import { Module, DynamicModule } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
+import { ThrottlerGuard, ThrottlerModule } from "@nestjs/throttler";
 import { ScheduleModule } from "@nestjs/schedule";
 import { PrismaModule } from "./prisma/prisma.module";
 import { HealthModule } from "./health/health.module";
@@ -10,14 +12,37 @@ import { SpecimensModule } from "./specimens/specimens.module";
 import { ResultsModule } from "./results/results.module";
 import { PatientsModule } from "./patients/patients.module";
 import { DemoModule } from "./demo/demo.module";
-import { SupabaseModule } from "./supabase/supabase.module";
 import { AuditModule } from "./audit/audit.module";
+import { BackupModule } from "./backup/backup.module";
+import { AuthModule } from "./auth/auth.module";
+import { StaffModule } from "./staff/staff.module";
+import { isProductionHardened } from "./config/production-hardening";
+
+const hardened = isProductionHardened();
+
+const hardenedImports: DynamicModule[] = hardened
+  ? [
+      ThrottlerModule.forRoot([
+        {
+          name: "default",
+          ttl: 60_000,
+          limit: 100,
+        },
+      ]),
+    ]
+  : [];
+
+const hardenedProviders = hardened
+  ? [{ provide: APP_GUARD, useClass: ThrottlerGuard }]
+  : [];
 
 @Module({
   imports: [
     ScheduleModule.forRoot(),
+    ...hardenedImports,
     PrismaModule,
-    SupabaseModule,
+    AuthModule,
+    StaffModule,
     AuditModule,
     HealthModule,
     IngestionModule,
@@ -27,7 +52,9 @@ import { AuditModule } from "./audit/audit.module";
     SpecimensModule,
     ResultsModule,
     PatientsModule,
-    DemoModule,
+    BackupModule,
+    ...(hardened ? [] : [DemoModule]),
   ],
+  providers: [...hardenedProviders],
 })
 export class AppModule {}

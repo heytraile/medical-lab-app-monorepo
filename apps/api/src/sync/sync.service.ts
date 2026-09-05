@@ -13,8 +13,10 @@ import type {
   PatientReportPayload,
   ReleaseQueueGroup,
   ReleaseAccessionResponse,
+  StaffUpsertEventPayload,
 } from "@drax-lis/contracts";
 import { assembleReleaseQueueGroups, type SpecimenContext } from "./release-queue.helpers";
+import { StaffProvisioningService } from "../lab-staff/staff-provisioning.service";
 
 type StoredEvent = {
   eventId: string;
@@ -36,6 +38,7 @@ export class SyncService {
   constructor(
     private readonly supabase: SupabaseService,
     private readonly audit: AuditService,
+    private readonly staffProvisioning: StaffProvisioningService,
   ) {}
 
   async ingest(request: SyncEventsRequest): Promise<SyncEventsResponse> {
@@ -646,6 +649,23 @@ export class SyncService {
         payload: {
           accessionNumbers,
           reason: payload.reason ?? null,
+        },
+        edgeNodeId: edgeNodeId ?? null,
+      });
+      return;
+    }
+
+    if (type === "staff.upsert") {
+      const staffPayload = payload as unknown as StaffUpsertEventPayload;
+      await this.staffProvisioning.upsertFromEdge(staffPayload);
+      await this.audit.log({
+        eventType: "staff.updated",
+        entityType: "staff",
+        entityId: staffPayload.staffId,
+        payload: {
+          email: staffPayload.email,
+          role: staffPayload.role,
+          cloudLoginAllowed: staffPayload.cloudLoginAllowed,
         },
         edgeNodeId: edgeNodeId ?? null,
       });

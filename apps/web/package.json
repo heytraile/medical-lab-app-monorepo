@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite dev --port 3100",
     "build": "vite build",
+    "build:spa": "TSS_SPA=1 vite build && node scripts/prepare-spa-ui.mjs",
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"lint ok\"",

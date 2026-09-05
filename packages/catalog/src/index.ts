@@ -39,6 +39,8 @@ export {
   instrumentToCatalogCodes,
   isResultExpectedOnOrder,
   manualTestsInOrder,
+  nonInstrumentTestsInOrder,
+  pendingNonInstrumentTests,
   normalizeCode,
   parseOrderedTestCodes,
   pickCatalogCodeForResult,

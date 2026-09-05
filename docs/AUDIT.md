@@ -50,6 +50,33 @@ Result and specimen rows also store snapshots on submit/release/register columns
 | `report.emailed` | Report emailed to doctor or patient (`recipientType`, sender reference in audit) |
 | `review_request.created` | Tech notifies authorizer (alert only) |
 | `review_request.acknowledged` | Authorizer acks alert |
+| `staff.created` / `staff.updated` | Staff row created/changed on the edge |
+| `staff.login` / `staff.login_failed` | Edge sign-in attempt (SQLite `AuditEvent`) |
+| `device.enrolled` / `device.revoked` / `device.reassigned` | Lab device lifecycle (cloud) |
+| `device.login` / `device.login_failed` | Cloud sign-in attempt from a lab device (`device_login_log`, cloud) |
+
+See [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md) for the full staff/device model.
+
+---
+
+## Device-attributed cloud actions
+
+Every admin/authorizer action on the **cloud** app (release, recall, dismiss from release queue, email a report, edit staff) is required to come from an **enrolled lab device** (see [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md)). When it does, the resulting `clinical_audit_log` row carries the device alongside the usual actor snapshot:
+
+```json
+{
+  "actor_snapshot": { "userId": "uuid", "email": "authorizer@draxhall.local", "fullName": "Dr. Alicia Bennett", "role": "authorizer" },
+  "device_id": "uuid",
+  "device_snapshot": {
+    "deviceId": "uuid",
+    "deviceName": "Dr. Bennett's laptop",
+    "ownerStaffId": "uuid",
+    "ownerFullName": "Dr. Alicia Bennett"
+  }
+}
+```
+
+`device_snapshot` is frozen at action time — same reasoning as `actor_snapshot` — so the audit trail still reads correctly even if the device is later renamed, reassigned to someone else, or revoked. To answer "what did device X do" or "what did person Y do, and from where," query `clinical_audit_log` filtered on `device_id`, and cross-reference `device_login_log` for the sign-in events themselves.
 
 ---
 
@@ -105,3 +132,4 @@ pnpm --filter @drax-lis/edge-engine exec sqlite3 dev.db \
 
 - [WORKFLOW.md](./WORKFLOW.md) — two-step submit → authorize release
 - [LOCAL_DEV.md](./LOCAL_DEV.md) — Mailpit for report email testing
+- [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md) — staff accounts, cloud login, device enrollment, and the audit trail they produce

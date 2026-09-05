@@ -11,11 +11,13 @@ import {
 import {
   DismissReleaseQueueAccessionRequestSchema,
   EmailPatientReportRequestSchema,
+  type DeviceSnapshot,
 } from "@drax-lis/contracts";
 import { SyncService } from "./sync.service";
 import { ReportsService } from "../reports/reports.service";
 import { MailService } from "../reports/mail.service";
 import { AuditService } from "../audit/audit.service";
+import { CurrentDevice, LabDeviceGuard } from "../devices/lab-device.guard";
 import {
   CurrentUser,
   Roles,
@@ -49,10 +51,12 @@ export class CloudReadController {
   }
 
   @Post("release-queue/dismiss-accession")
+  @UseGuards(LabDeviceGuard)
   @Roles("authorizer", "admin")
   async dismissReleaseQueueAccession(
     @Body() body: unknown,
     @CurrentUser() user: AuthUser,
+    @CurrentDevice() device: DeviceSnapshot | undefined,
   ) {
     const parsed = DismissReleaseQueueAccessionRequestSchema.parse(body);
     const actor = toActorSnapshot(user);
@@ -64,14 +68,19 @@ export class CloudReadController {
       entityType: "accession",
       entityId: parsed.accessionNumber,
       actor,
+      device: device ?? null,
       payload: { accessionNumber: parsed.accessionNumber },
     });
     return result;
   }
 
   @Post("release-queue/dismiss-all-released")
+  @UseGuards(LabDeviceGuard)
   @Roles("authorizer", "admin")
-  async dismissAllReleasedFromReleaseQueue(@CurrentUser() user: AuthUser) {
+  async dismissAllReleasedFromReleaseQueue(
+    @CurrentUser() user: AuthUser,
+    @CurrentDevice() device: DeviceSnapshot | undefined,
+  ) {
     const actor = toActorSnapshot(user);
     const result = await this.sync.dismissAllReleasedFromReleaseQueue();
     await this.audit.log({
@@ -79,6 +88,7 @@ export class CloudReadController {
       entityType: "release_queue",
       entityId: "ready_to_send",
       actor,
+      device: device ?? null,
       payload: { dismissedCount: result.dismissedCount },
     });
     return result;
@@ -98,10 +108,12 @@ export class CloudReadController {
   }
 
   @Post("patients/:edgePatientId/report/email")
+  @UseGuards(LabDeviceGuard)
   async emailPatientReport(
     @Param("edgePatientId") edgePatientId: string,
     @Body() body: unknown,
     @CurrentUser() user: AuthUser,
+    @CurrentDevice() device: DeviceSnapshot | undefined,
   ) {
     const parsed = EmailPatientReportRequestSchema.parse(body);
     const payload = await this.reports.buildPatientReport(edgePatientId);
@@ -136,6 +148,7 @@ export class CloudReadController {
       entityType: "patient",
       entityId: edgePatientId,
       actor,
+      device: device ?? null,
       payload: {
         to: parsed.to,
         recipientType: parsed.recipientType,

@@ -1,5 +1,12 @@
 import type {
   CatalogResponse,
+  DeviceEnrollmentCodeCreate,
+  DeviceEnrollmentCodeResponse,
+  DeviceEnrollRequest,
+  DeviceEnrollResponse,
+  EdgeLoginResponse,
+  EdgeStaffUser,
+  LabDevice,
   LabRequisition,
   PatientReportPayload,
   ReleaseQueueGroup,
@@ -14,15 +21,27 @@ import type {
   StaffMemberCreate,
   StaffMemberUpdate,
 } from "@drax-lis/contracts";
+import { getStoredDevice } from "./device";
 
 export type { ReviewRequest, ReviewRequestCreate, CatalogResponse, LabRequisition };
 export type { StaffCollector, StaffMember, StaffMemberCreate, StaffMemberUpdate };
 export type { PatientReportPayload, ReleaseQueueGroup };
+export type {
+  DeviceEnrollmentCodeCreate,
+  DeviceEnrollmentCodeResponse,
+  DeviceEnrollRequest,
+  DeviceEnrollResponse,
+  EdgeLoginResponse,
+  EdgeStaffUser,
+  LabDevice,
+};
 
 const EDGE_API_URL =
   (typeof import.meta !== "undefined" &&
     import.meta.env?.VITE_LIS_API_URL) ||
-  "http://localhost:3101";
+  (typeof window !== "undefined"
+    ? window.location.origin
+    : "http://localhost:3101");
 
 const CLOUD_API_URL =
   (typeof import.meta !== "undefined" &&
@@ -48,22 +67,67 @@ export class ApiError extends Error {
   }
 }
 
-let authTokenProvider: (() => string | null) | null = null;
-let authRefreshProvider: (() => Promise<string | null>) | null = null;
-let authInvalidatedHandler: (() => void) | null = null;
+export type AuthInvalidationScope = "edge" | "cloud" | "all";
 
+let edgeAuthTokenProvider: (() => string | null) | null = null;
+let cloudAuthTokenProvider: (() => string | null) | null = null;
+let edgeAuthRefreshProvider: (() => Promise<string | null>) | null = null;
+let cloudAuthRefreshProvider: (() => Promise<string | null>) | null = null;
+let authInvalidatedHandler: ((scope: AuthInvalidationScope) => void) | null =
+  null;
+
+/** Bearer token for edge-engine (`:3101`) requests. */
+export function setEdgeAuthTokenProvider(fn: () => string | null) {
+  edgeAuthTokenProvider = fn;
+}
+
+/** Bearer token for cloud API (`:3102`) requests — Supabase JWT, not edge JWT. */
+export function setCloudAuthTokenProvider(fn: () => string | null) {
+  cloudAuthTokenProvider = fn;
+}
+
+/** @deprecated Use setEdgeAuthTokenProvider — kept for older call sites. */
 export function setAuthTokenProvider(fn: () => string | null) {
-  authTokenProvider = fn;
+  edgeAuthTokenProvider = fn;
 }
 
-/** Called from AuthProvider — refresh Supabase session and return a new access token. */
+export function setEdgeAuthRefreshProvider(fn: () => Promise<string | null>) {
+  edgeAuthRefreshProvider = fn;
+}
+
+export function setCloudAuthRefreshProvider(fn: () => Promise<string | null>) {
+  cloudAuthRefreshProvider = fn;
+}
+
+/** @deprecated Use setCloudAuthRefreshProvider for cloud; setEdgeAuthRefreshProvider for edge. */
 export function setAuthRefreshProvider(fn: () => Promise<string | null>) {
-  authRefreshProvider = fn;
+  cloudAuthRefreshProvider = fn;
+  edgeAuthRefreshProvider = fn;
 }
 
-/** Called when cloud API rejects the session — clear stale local auth state. */
-export function setAuthInvalidatedHandler(fn: () => void) {
+/** Clear stale auth — scope limits which session(s) are wiped on 401. */
+export function setAuthInvalidatedHandler(
+  fn: (scope: AuthInvalidationScope) => void,
+) {
   authInvalidatedHandler = fn;
+}
+
+function authScopeForUrl(url: string): AuthInvalidationScope {
+  if (url.startsWith(CLOUD_API_URL)) return "cloud";
+  if (url.startsWith(EDGE_API_URL)) return "edge";
+  return "all";
+}
+
+function tokenForUrl(url: string): string | null {
+  if (url.startsWith(CLOUD_API_URL)) {
+    return cloudAuthTokenProvider?.() ?? null;
+  }
+  return edgeAuthTokenProvider?.() ?? null;
+}
+
+function refreshProviderForUrl(url: string) {
+  if (url.startsWith(CLOUD_API_URL)) return cloudAuthRefreshProvider;
+  return edgeAuthRefreshProvider;
 }
 
 async function fetchWithAuth(
@@ -76,25 +140,24 @@ async function fetchWithAuth(
     ...(init.headers as Record<string, string> | undefined),
   };
   if (init.auth !== false) {
-    const token = authTokenProvider?.();
+    const token = tokenForUrl(url);
     if (token) headers.Authorization = `Bearer ${token}`;
   }
 
   const res = await fetch(url, { ...init, headers });
 
-  if (
-    res.status === 401 &&
-    init.auth !== false &&
-    !retried &&
-    authRefreshProvider
-  ) {
-    const fresh = await authRefreshProvider();
-    if (fresh) {
-      headers.Authorization = `Bearer ${fresh}`;
-      const retry = await fetch(url, { ...init, headers });
-      if (retry.ok || retry.status !== 401) return retry;
+  if (res.status === 401 && init.auth !== false && !retried) {
+    const refresh = refreshProviderForUrl(url);
+    if (refresh) {
+      const fresh = await refresh();
+      if (fresh) {
+        headers.Authorization = `Bearer ${fresh}`;
+        const retry = await fetch(url, { ...init, headers });
+        if (retry.ok || retry.status !== 401) return retry;
+      }
     }
-    authInvalidatedHandler?.();
+    // Cloud 401 with only an edge session must not wipe the edge login.
+    authInvalidatedHandler?.(authScopeForUrl(url));
   }
 
   return res;
@@ -106,8 +169,19 @@ async function request<T>(
 ): Promise<T> {
   const base = init?.baseUrl ?? API_URL;
   const { baseUrl: _b, auth: _a, ...rest } = init ?? {};
+  const device = base === CLOUD_API_URL ? getStoredDevice() : null;
+  const headers = {
+    ...(rest.headers as Record<string, string> | undefined),
+    ...(device
+      ? {
+          "X-Lab-Device-Id": device.deviceId,
+          "X-Lab-Device-Token": device.deviceToken,
+        }
+      : {}),
+  };
   const res = await fetchWithAuth(`${base}${path}`, {
     ...rest,
+    headers,
     auth: init?.auth,
   });
   if (!res.ok) {
@@ -467,6 +541,24 @@ export const api = {
         auth: true,
       },
     ),
+  enterManualResult: (body: {
+    accessionNumber: string;
+    testCode: string;
+    value: string;
+    units?: string;
+    flag?: string;
+    referenceLow?: number;
+    referenceHigh?: number;
+    observedAt?: string;
+  }) =>
+    request<{ id: string; accessionNumber: string; testCode: string; value: string }>(
+      "/results/manual",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        auth: true,
+      },
+    ),
   recallResults: (body: { accessionNumbers: string[]; reason?: string }) =>
     request<{ recalled: number; accessionNumbers: string[] }>(
       "/results/recall",
@@ -563,32 +655,86 @@ export const api = {
       baseUrl: CLOUD_API_URL,
       auth: true,
     }),
+  /** Cloud admin UI reads the same roster; edge SPA reads/writes it directly. */
   listStaff: () =>
-    request<StaffMember[]>("/lab/staff", {
-      baseUrl: CLOUD_API_URL,
+    isCloudMode
+      ? request<StaffMember[]>("/lab/staff", { baseUrl: CLOUD_API_URL, auth: true })
+      : request<StaffMember[]>("/staff", { auth: true }),
+  /** Staff signup always happens on the edge — see docs/EDGE_AUTH_AND_STAFF.md. */
+  createStaff: (body: StaffMemberCreate) =>
+    request<StaffMember>("/staff", {
+      method: "POST",
+      body: JSON.stringify(body),
       auth: true,
     }),
-  createStaff: (body: StaffMemberCreate) =>
-    request<StaffMember>("/lab/staff", {
+  updateStaff: (id: string, body: StaffMemberUpdate & { password?: string }) =>
+    isCloudMode
+      ? request<StaffMember>(`/lab/staff/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+          baseUrl: CLOUD_API_URL,
+          auth: true,
+        })
+      : request<StaffMember>(`/staff/${encodeURIComponent(id)}`, {
+          method: "PATCH",
+          body: JSON.stringify(body),
+          auth: true,
+        }),
+
+  /** Edge-first auth — bench staff sign in here, entirely offline. */
+  edgeLogin: (email: string, password: string) =>
+    request<EdgeLoginResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+      auth: false,
+    }),
+  edgeMe: () => request<EdgeStaffUser>("/auth/me", { auth: true }),
+  /** One-time: create the first admin on a brand new lab PC. */
+  bootstrapAdmin: (body: StaffMemberCreate) =>
+    request<EdgeStaffUser>("/staff/bootstrap-admin", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: false,
+    }),
+  /** Edge admin issues a one-time code so an admin/authorizer can enroll a cloud device. */
+  issueDeviceCode: (body: DeviceEnrollmentCodeCreate) =>
+    request<DeviceEnrollmentCodeResponse>("/staff/devices/enrollment-codes", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    }),
+
+  /** Cloud mode — redeem the code, then register the device session. */
+  enrollDevice: (body: DeviceEnrollRequest) =>
+    request<DeviceEnrollResponse>("/devices/enroll", {
       method: "POST",
       body: JSON.stringify(body),
       baseUrl: CLOUD_API_URL,
       auth: true,
     }),
-  updateStaff: (id: string, body: StaffMemberUpdate) =>
-    request<StaffMember>(`/lab/staff/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
+  /** Called once right after Supabase sign-in — the "cloud login" audit checkpoint. */
+  deviceSession: () =>
+    request<{ ok: boolean }>("/devices/session", {
+      method: "POST",
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  listDevices: () =>
+    request<LabDevice[]>("/devices", { baseUrl: CLOUD_API_URL, auth: true }),
+  revokeDevice: (id: string) =>
+    request<LabDevice>(`/devices/${encodeURIComponent(id)}/revoke`, {
+      method: "POST",
       baseUrl: CLOUD_API_URL,
       auth: true,
     }),
 };
 
 export function getWsBaseUrl() {
-  return (
-    (typeof import.meta !== "undefined" && import.meta.env?.VITE_WS_URL) ||
-    EDGE_API_URL
-  );
+  const configured =
+    typeof import.meta !== "undefined" && import.meta.env?.VITE_WS_URL;
+  if (configured) return configured;
+  if (typeof window !== "undefined") return window.location.origin;
+  return EDGE_API_URL;
 }
 
 export function isIdentityConfirmationRequired(

@@ -23,9 +23,10 @@ So we run an **edge gateway** on an Ubuntu mini PC next to the instruments, and 
      ▼        ▼         ▼         ▼          ▲
 ┌────────────────────────────────────────────┴────────────────┐
 │ Ubuntu Mini PC (Docker)                                     │
-│  apps/edge-engine (Nest #1 = bridge)                        │
-│       → SQLite WAL → outbox worker (PUSH upstream)          │
-│  apps/web (LIS_MODE=edge)  ← Socket.IO bench events         │
+│  Production: single `lab` container (profile lab-prod)      │
+│    edge-engine — API + Socket.IO + SPA UI on :3101          │
+│    → SQLite WAL → outbox worker (PUSH upstream)             │
+│  Dev simulation: separate edge + web + api containers       │
 │  apps/simulators (dev only)                                 │
 └────────────────────────────┬────────────────────────────────┘
                              │ HTTPS JSON POST /sync/events
@@ -161,12 +162,27 @@ Same `apps/web` binary:
 | `VITE_LIS_API_URL` | Base URL for REST |
 | `VITE_WS_URL` | Socket.IO base (edge) |
 
+**Lab production (single container):** `infra/Dockerfile.lab` builds a SPA via `pnpm --filter @drax-lis/web build:spa`, embeds it in `edge-engine` at `dist/public/ui`, and serves it from the same origin when `SERVE_WEB_UI=true`. Staff open `http://<mini-pc>:3101` — no separate web port. Empty `VITE_LIS_API_URL` / `VITE_WS_URL` at build time makes the UI call `window.location.origin`.
+
+**On-site deployment:** step-by-step from Ubuntu installed to working analyzers — [LAB_MINI_PC_SETUP.md](./LAB_MINI_PC_SETUP.md).
+
+**Local full-stack dev:** `infra/docker-compose.yml` (default) runs **three** containers to simulate edge + cloud on one machine. Production hardware uses profile `lab-prod` instead:
+
+```bash
+cd infra && docker compose --profile lab-prod up --build lab
+```
+
 ## Security / PHI
+
+See **[EDGE_SECURITY_AND_BACKUP.md](./EDGE_SECURITY_AND_BACKUP.md)** for the full plain-English security and backup guide (acronyms, go-live checklist, restore drill), and **[EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md)** for how staff sign in and how cloud device access works.
 
 - Edge disk encryption + physical access control on the mini PC
 - TLS to cloud; edge node auth token on sync
-- Supabase Auth + RLS: `tech`, `authorizer`, `admin` (phleb later)
-- Audit log on escalate, release, amend
+- **Staff signup happens on the edge only** — SQLite `Staff` table, `scrypt` password hashes, edge-issued JWTs. Sign-in works fully offline. Edge pushes staff to the cloud via the `staff.upsert` outbox event; it is not a raw table copy — it lands in Supabase `auth.users` + `profiles`.
+- **Lab production:** `EDGE_HARDENING=true` — edge JWT login on PHI routes, CORS allowlist, Helmet, rate limits, automated SQLite backups to `/backups`
+- **Cloud login is admin/authorizer only.** Techs get a Supabase Auth user (for sync/audit attribution) but `profiles.cloud_login_allowed = false`, and a Postgres `custom_access_token_hook` refuses to issue them a session token even with a correct password.
+- **Cloud login always requires a lab-issued device.** A one-time enrollment code from an edge admin binds a browser to a `lab_devices` row with a named owner; day-to-day sign-in is just email + password, and the browser sends the saved device token automatically.
+- Audit log on escalate, release, amend — cloud actions also record **which device** and **whose device it was** (`clinical_audit_log.device_id` / `device_snapshot`)
 - Doctor-facing outputs: **released only**
 - No PHI in simulator defaults beyond fake demographics
 

@@ -10,8 +10,10 @@ import {
 import type { StaffJobTitle, StaffMember, StaffRole } from "@drax-lis/contracts";
 import { api } from "../../lib/api";
 import { isAdmin, useAuth } from "../../lib/auth";
+import { isCloudMode } from "../../lib/supabase";
 import { PLACEHOLDER_STAFF } from "../../lib/placeholder-staff";
 import { RegisterStaffDialog } from "../../components/staff/register-staff-dialog";
+import { IssueDeviceCodeDialog } from "../../components/staff/issue-device-code-dialog";
 import {
   StaffJobTitleBadge,
   StaffRoleBadge,
@@ -38,6 +40,9 @@ function StaffPage() {
   const qc = useQueryClient();
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [deviceCodeStaff, setDeviceCodeStaff] = useState<StaffMember | null>(
+    null,
+  );
 
   const staffQ = useQuery({
     queryKey: ["staff"],
@@ -98,11 +103,23 @@ function StaffPage() {
             <strong className="font-medium text-foreground">Admin</strong> for lab
             managers who can release and manage this registry. Phlebotomists and
             lab technologists appear in the Accession collector dropdown.
+            {isCloudMode && (
+              <>
+                {" "}New staff are created on the lab PC and sync here
+                automatically — see{" "}
+                <strong className="font-medium text-foreground">
+                  Issue cloud device
+                </strong>{" "}
+                to let an admin or authorizer sign in remotely.
+              </>
+            )}
           </p>
         </div>
-        <Button type="button" onClick={() => setRegisterOpen(true)}>
-          Add staff
-        </Button>
+        {!isCloudMode && (
+          <Button type="button" onClick={() => setRegisterOpen(true)}>
+            Add staff
+          </Button>
+        )}
       </div>
 
       {usingPlaceholder && (
@@ -160,6 +177,11 @@ function StaffPage() {
                 }}
                 onToggleActive={() => toggleActive.mutate(member)}
                 togglePending={toggleActive.isPending}
+                onIssueDevice={
+                  !isCloudMode && (member.role === "admin" || member.role === "authorizer")
+                    ? () => setDeviceCodeStaff(member)
+                    : undefined
+                }
               />
             ))}
           </tbody>
@@ -169,6 +191,13 @@ function StaffPage() {
       <RegisterStaffDialog
         open={registerOpen}
         onOpenChange={setRegisterOpen}
+      />
+      <IssueDeviceCodeDialog
+        open={Boolean(deviceCodeStaff)}
+        onOpenChange={(next) => {
+          if (!next) setDeviceCodeStaff(null);
+        }}
+        staff={deviceCodeStaff}
       />
     </div>
   );
@@ -183,6 +212,7 @@ function StaffRow({
   onSaved,
   onToggleActive,
   togglePending,
+  onIssueDevice,
 }: {
   member: StaffMember;
   readOnly?: boolean;
@@ -192,6 +222,7 @@ function StaffRow({
   onSaved: () => void;
   onToggleActive: () => void;
   togglePending: boolean;
+  onIssueDevice?: () => void;
 }) {
   const {
     register,
@@ -352,6 +383,16 @@ function StaffRow({
             >
               {member.isActive ? "Deactivate" : "Activate"}
             </Button>
+            {onIssueDevice && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={onIssueDevice}
+              >
+                Issue cloud device
+              </Button>
+            )}
           </div>
         )}
       </td>
