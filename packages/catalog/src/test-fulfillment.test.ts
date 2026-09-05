@@ -6,7 +6,9 @@ import {
   analytesForOrder,
   analyzerHasWork,
   getFulfillment,
+  getTestResultRequirement,
   instrumentToCatalogCodes,
+  missingManualResultRequirements,
   pendingNonInstrumentTests,
   pickCatalogCodeForResult,
 } from "./test-fulfillment";
@@ -69,6 +71,44 @@ describe("test fulfillment remap", () => {
   it("pendingNonInstrumentTests ignores instrument-only orders", () => {
     const pending = pendingNonInstrumentTests(["CBC", "TSH"], []);
     assert.deepEqual(pending, []);
+  });
+
+  it("defines manual-only and hybrid result requirements", () => {
+    const manual = getTestResultRequirement("ESR");
+    assert.equal(manual.workflow, "manual_only");
+    assert.deepEqual(manual.manualComponents, [
+      { code: "RESULT", name: "Manual result" },
+    ]);
+
+    const hybrid = getTestResultRequirement("URINALYSIS_COMPLETE");
+    assert.equal(hybrid.workflow, "hybrid");
+    assert.deepEqual(
+      hybrid.manualComponents.map((component) => component.code),
+      ["CHEMISTRY", "MICROSCOPY"],
+    );
+    assert.equal(hybrid.confirmationStatus, "provisional");
+  });
+
+  it("tracks each missing hybrid manual component independently", () => {
+    const missing = missingManualResultRequirements(
+      ["CREATININE", "URINALYSIS_COMPLETE", "ESR"],
+      [
+        {
+          testCode: "CREATININE",
+          analyzerId: "mindray_bs240",
+        },
+        {
+          testCode: "URINALYSIS_COMPLETE",
+          orderedTestCode: "URINALYSIS_COMPLETE",
+          resultComponentCode: "CHEMISTRY",
+          analyzerId: "manual",
+        },
+      ],
+    );
+    assert.deepEqual(
+      missing.map((item) => `${item.orderedTestCode}:${item.componentCode}`),
+      ["URINALYSIS_COMPLETE:MICROSCOPY", "ESR:RESULT"],
+    );
   });
 
   it("every simulator analyte maps to at least one catalog code", () => {

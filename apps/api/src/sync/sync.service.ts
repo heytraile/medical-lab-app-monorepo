@@ -149,6 +149,8 @@ export class SyncService {
           accession_number: payload.accessionNumber,
           barcode: payload.barcode,
           analyzer_id: payload.analyzerId,
+          ordered_test_code: r.orderedTestCode ?? r.testCode,
+          result_component_code: r.resultComponentCode ?? null,
           status: r.status ?? "pending_review",
         });
       }
@@ -175,6 +177,8 @@ export class SyncService {
           barcode: r.barcode ?? accession,
           analyzer_id: r.analyzerId ?? "unknown",
           test_code: r.testCode,
+          ordered_test_code: r.orderedTestCode ?? r.testCode,
+          result_component_code: r.resultComponentCode ?? null,
           test_name: r.testName,
           value: r.value,
           units: r.units,
@@ -212,13 +216,17 @@ export class SyncService {
       for (const [accession, specData] of Object.entries(
         specimensByAccession,
       )) {
-        if (!this.memorySpecimens.has(accession)) {
-          this.memorySpecimens.set(accession, {
-            accessionNumber: accession,
-            ...specData,
-            status: "registered",
-          });
-        }
+        const missingByAccession =
+          (payload.missingExpectedByAccession as Record<string, unknown[]>) ??
+          {};
+        const existingSpecimen = this.memorySpecimens.get(accession) ?? {};
+        this.memorySpecimens.set(accession, {
+          ...existingSpecimen,
+          accessionNumber: accession,
+          ...specData,
+          submit_missing_expected: missingByAccession[accession] ?? [],
+          status: "registered",
+        });
         const patient = specData.patient as Record<string, unknown> | undefined;
         if (patient?.id) {
           this.memoryPatients.set(String(patient.id), patient);
@@ -240,6 +248,15 @@ export class SyncService {
             submitted_at: null,
             submitted_by: null,
             submitted_by_snapshot: null,
+          });
+        }
+      }
+      for (const accession of accessionNumbers) {
+        const specimen = this.memorySpecimens.get(accession);
+        if (specimen) {
+          this.memorySpecimens.set(accession, {
+            ...specimen,
+            submit_missing_expected: null,
           });
         }
       }
@@ -497,6 +514,11 @@ export class SyncService {
             barcode,
             analyzer_id: analyzerId,
             test_code: String(r.testCode ?? ""),
+            ordered_test_code: String(
+              r.orderedTestCode ?? r.testCode ?? "",
+            ),
+            result_component_code:
+              (r.resultComponentCode as string | null) ?? null,
             test_name: (r.testName as string | null) ?? null,
             value: String(r.value ?? ""),
             units: (r.units as string | null) ?? null,
@@ -544,6 +566,11 @@ export class SyncService {
           barcode,
           analyzer_id: analyzerId,
           test_code: String(r.testCode ?? ""),
+          ordered_test_code: String(
+            r.orderedTestCode ?? r.testCode ?? "",
+          ),
+          result_component_code:
+            (r.resultComponentCode as string | null) ?? null,
           test_name: (r.testName as string | null) ?? null,
           value: String(r.value ?? ""),
           units: (r.units as string | null) ?? null,
@@ -591,6 +618,19 @@ export class SyncService {
           specimensByAccession,
         );
       }
+      const missingExpectedByAccession =
+        (payload.missingExpectedByAccession as Record<string, unknown[]>) ?? {};
+      for (const accession of accessionNumbers) {
+        const { error } = await client
+          .from("specimens")
+          .update({
+            submit_missing_expected:
+              missingExpectedByAccession[accession] ?? [],
+            updated_at: new Date().toISOString(),
+          })
+          .eq("accession_number", accession);
+        if (error) throw error;
+      }
 
       const actor = submittedBySnapshot as ActorSnapshot | null;
       const resultIds = edgeResults
@@ -605,6 +645,8 @@ export class SyncService {
           accessionNumbers,
           resultIds,
           resultCount: edgeResults.length || accessionNumbers.length,
+          missingExpectedByAccession,
+          incompleteAcknowledged: payload.incompleteAcknowledged === true,
         },
         edgeNodeId: edgeNodeId ?? null,
       });
@@ -630,7 +672,10 @@ export class SyncService {
 
       const { error: specErr } = await client
         .from("specimens")
-        .update({ release_queue_dismissed_at: null })
+        .update({
+          release_queue_dismissed_at: null,
+          submit_missing_expected: null,
+        })
         .in("accession_number", accessionNumbers);
       if (specErr) throw specErr;
 
@@ -767,6 +812,7 @@ export class SyncService {
             registered_at: s.registered_at as string | null,
             registered_by_snapshot: s.registered_by_snapshot,
             patient_json: s.patient_json,
+            submit_missing_expected: s.submit_missing_expected,
             patients,
           },
         ];
@@ -825,6 +871,7 @@ export class SyncService {
         ),
         registered_by_snapshot: spec.registeredBySnapshot ?? null,
         patient_json: patientJson,
+        submit_missing_expected: spec.submit_missing_expected ?? null,
         patients,
       });
     }
@@ -937,6 +984,11 @@ export class SyncService {
               barcode: String(row.barcode ?? accession),
               analyzer_id: String(row.analyzerId ?? "unknown"),
               test_code: String(row.testCode ?? ""),
+              ordered_test_code: String(
+                row.orderedTestCode ?? row.testCode ?? "",
+              ),
+              result_component_code:
+                (row.resultComponentCode as string | null) ?? null,
               test_name: (row.testName as string | null) ?? null,
               value: String(row.value ?? ""),
               units: (row.units as string | null) ?? null,
@@ -1011,6 +1063,7 @@ export class SyncService {
           registered_at,
           registered_by_snapshot,
           patient_json,
+          submit_missing_expected,
           patients (
             edge_patient_id,
             mrn,
@@ -1097,6 +1150,7 @@ export class SyncService {
           registered_by_snapshot,
           patient_json,
           release_queue_dismissed_at,
+          submit_missing_expected,
           patients (
             edge_patient_id,
             mrn,

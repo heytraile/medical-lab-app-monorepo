@@ -212,6 +212,8 @@ export const CanonicalResultSchema = z.object({
   barcode: z.string().min(1),
   analyzerId: AnalyzerIdSchema,
   testCode: z.string().min(1),
+  orderedTestCode: z.string().optional(),
+  resultComponentCode: z.string().optional(),
   testName: z.string().optional(),
   value: z.union([z.string(), z.number()]),
   units: z.string().optional(),

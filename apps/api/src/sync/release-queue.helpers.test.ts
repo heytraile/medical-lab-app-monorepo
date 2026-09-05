@@ -67,6 +67,49 @@ describe("assembleReleaseQueueGroups", () => {
     assert.equal(groups[0]?.worstFlag, "normal");
   });
 
+  it("exposes the acknowledged missing-result snapshot", () => {
+    const specimens = new Map([
+      [
+        "ACC-1",
+        {
+          ...specimenByAccession.get("ACC-1")!,
+          submit_missing_expected: [
+            {
+              orderedTestCode: "ESR",
+              orderedTestName: "ESR",
+              componentCode: "RESULT",
+              componentName: "Manual result",
+              workflow: "manual_only",
+              confirmationStatus: "provisional",
+            },
+          ],
+        },
+      ],
+    ]);
+    const groups = assembleReleaseQueueGroups(
+      [
+        {
+          id: "r1",
+          accession_number: "ACC-1",
+          analyzer_id: "mindray_bs240",
+          test_code: "CREATININE",
+          value: "0.9",
+          flag: "normal",
+          observed_at: "2026-01-01T11:00:00.000Z",
+          submitted_at: "2026-01-01T12:00:00.000Z",
+        },
+      ],
+      specimens,
+      "pending_authorization",
+    );
+
+    assert.equal(groups[0]?.submittedIncomplete, true);
+    assert.equal(
+      groups[0]?.missingExpectedResults[0]?.orderedTestCode,
+      "ESR",
+    );
+  });
+
   it("tags released groups with released metadata", () => {
     const groups = assembleReleaseQueueGroups(
       [

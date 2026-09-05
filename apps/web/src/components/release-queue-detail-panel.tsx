@@ -89,6 +89,11 @@ export function ReleaseQueueDetailPanel({ group, className }: Props) {
           <Badge variant="muted" className="text-[10px]">
             {group.testCount} {group.testCount === 1 ? "test" : "tests"}
           </Badge>
+          {group.submittedIncomplete ? (
+            <Badge variant="warn" className="text-[10px]">
+              Incomplete order
+            </Badge>
+          ) : null}
         </div>
 
         <dl className="space-y-1 text-xs text-muted-foreground">
@@ -130,6 +135,45 @@ export function ReleaseQueueDetailPanel({ group, className }: Props) {
 
       <ScrollContainer className="min-h-0 flex-1">
         <div className="overflow-x-auto p-4">
+          {group.missingExpectedResults.length > 0 ? (
+            <section className="mb-4 rounded-lg border border-amber-500/35 bg-amber-500/10 p-3">
+              <h4 className="text-sm font-semibold text-amber-950 dark:text-amber-100">
+                Missing expected results at submission
+              </h4>
+              <p className="mt-1 text-xs text-muted-foreground">
+                The bench tech explicitly submitted this incomplete order.
+                Review these items before releasing, or return it to the bench.
+              </p>
+              <ul className="mt-2 space-y-2 text-sm">
+                {group.missingExpectedResults.map((item) => (
+                  <li
+                    key={`${item.orderedTestCode}-${item.componentCode}`}
+                    className="rounded-md border border-amber-500/20 bg-card/60 px-2.5 py-2"
+                  >
+                    <div>
+                      <span className="font-mono text-xs font-semibold">
+                        {item.orderedTestCode}
+                      </span>
+                      {" · "}
+                      {item.orderedTestName}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      Missing: {item.componentName}
+                      {" · "}
+                      {item.workflow === "hybrid"
+                        ? "Hybrid manual component"
+                        : item.workflow === "send_out"
+                          ? "Reference laboratory result"
+                          : "Manual result"}
+                      {item.confirmationStatus === "provisional"
+                        ? " · Provisional workflow mapping"
+                        : ""}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
           <p className="mb-3 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             {isPending ? "Tests awaiting sign-off" : "Released tests"}
           </p>

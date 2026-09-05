@@ -22,6 +22,23 @@ export const ReleaseQueueResultSchema = z.object({
 });
 export type ReleaseQueueResult = z.infer<typeof ReleaseQueueResultSchema>;
 
+export const MissingExpectedResultSchema = z.object({
+  orderedTestCode: z.string(),
+  orderedTestName: z.string(),
+  componentCode: z.string(),
+  componentName: z.string(),
+  workflow: z.enum([
+    "instrument_only",
+    "manual_only",
+    "hybrid",
+    "send_out",
+  ]),
+  confirmationStatus: z.enum(["provisional", "lab_confirmed"]),
+});
+export type MissingExpectedResult = z.infer<
+  typeof MissingExpectedResultSchema
+>;
+
 export const ReleaseQueuePhaseSchema = z.enum([
   "pending_authorization",
   "released",
@@ -40,6 +57,8 @@ export const ReleaseQueueGroupSchema = z.object({
   releasedBy: ActorSnapshotSchema.nullable().optional(),
   releasedAt: z.string().nullable().optional(),
   results: z.array(ReleaseQueueResultSchema),
+  missingExpectedResults: z.array(MissingExpectedResultSchema).default([]),
+  submittedIncomplete: z.boolean().default(false),
   testCount: z.number().int().nonnegative(),
   worstFlag: z.string(),
 });

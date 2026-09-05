@@ -1,5 +1,6 @@
 import {
   ActorSnapshotSchema,
+  MissingExpectedResultSchema,
   type ActorSnapshot,
   type ReleaseQueueGroup,
   type ReleaseQueuePatient,
@@ -64,6 +65,7 @@ export type SpecimenContext = {
   registered_at?: string | null;
   registered_by_snapshot?: unknown;
   patient_json?: unknown;
+  submit_missing_expected?: unknown;
   patients?: {
     edge_patient_id?: string;
     mrn?: string;
@@ -167,6 +169,12 @@ export function assembleReleaseQueueGroups(
     });
     const flags = resolvedResults.map((entry) => entry.displayFlag);
     const releasedRow = sorted.find((r) => r.released_at) ?? first;
+    const missingParsed = Array.isArray(specimen?.submit_missing_expected)
+      ? specimen.submit_missing_expected
+          .map((row) => MissingExpectedResultSchema.safeParse(row))
+          .filter((row) => row.success)
+          .map((row) => row.data)
+      : [];
 
     groups.push({
       accessionNumber,
@@ -203,6 +211,8 @@ export function assembleReleaseQueueGroups(
         observedAt: String(r.observed_at),
         analyzerId: String(r.analyzer_id ?? "unknown"),
       })),
+      missingExpectedResults: missingParsed,
+      submittedIncomplete: missingParsed.length > 0,
       testCount: sorted.length,
       worstFlag: worstFlag(flags),
     });

@@ -140,6 +140,11 @@ function BenchPage() {
     queryFn: () => api.results(),
     refetchInterval: 10_000,
   });
+  const specimensQ = useQuery({
+    queryKey: ["specimens"],
+    queryFn: () => api.specimens(),
+    refetchInterval: 10_000,
+  });
 
   const debouncedQ = useDebouncedValue(q ?? "", 150);
   const deferredQ = useDeferredValue(debouncedQ.trim().toLowerCase());
@@ -188,9 +193,19 @@ function BenchPage() {
       else byKey.set(key, [r]);
     }
     const out = new Map<string, BenchGroupSummary>();
-    for (const [key, rows] of byKey) out.set(key, summarizeGroup(key, rows));
+    for (const [key, rows] of byKey) {
+      out.set(
+        key,
+        summarizeGroup(
+          key,
+          rows,
+          specimensQ.data ?? [],
+          data.filter((result) => groupKeyFor(result) === key),
+        ),
+      );
+    }
     return out;
-  }, [filtered]);
+  }, [data, filtered, specimensQ.data]);
 
   const searching = deferredQ.length > 0;
 

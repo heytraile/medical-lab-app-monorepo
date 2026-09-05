@@ -1,6 +1,11 @@
 import type { MouseEvent } from "react";
 import { ChevronRight } from "lucide-react";
-import type { BenchResult } from "../lib/api";
+import {
+  missingManualResultRequirements,
+  type MissingExpectedResult,
+} from "@drax-lis/catalog";
+import type { BenchResult, SpecimenRow } from "../lib/api";
+import { parseOrderedTestsJson } from "../lib/ordered-tests";
 import { Badge } from "./ui/badge";
 import {
   AlarmSign,
@@ -34,12 +39,16 @@ export type BenchGroupSummary = {
   /** Payload for a review request: the identifiers the cloud API can store. */
   accessionNumbers: string[];
   testCodes: string[];
+  missingExpectedByAccession: Record<string, MissingExpectedResult[]>;
+  missingExpectedCount: number;
 };
 
 /** Roll a group's leaf results into the counts a collapsed header must show. */
 export function summarizeGroup(
   key: string,
   results: BenchResult[],
+  specimens: SpecimenRow[] = [],
+  completenessResults: BenchResult[] = results,
 ): BenchGroupSummary {
   const worst = worstFlag(
     results.map((r) => ({
@@ -54,6 +63,28 @@ export function summarizeGroup(
   for (const r of results) {
     if (!latest || r.observedAt > latest) latest = r.observedAt;
   }
+  const missingExpectedByAccession: Record<string, MissingExpectedResult[]> = {};
+  for (const accessionNumber of accessions) {
+    const specimen = specimens.find(
+      (row) => row.accessionNumber === accessionNumber,
+    );
+    if (!specimen) continue;
+    const orderedCodes = parseOrderedTestsJson(specimen.orderedTestsJson).map(
+      (test) => test.code,
+    );
+    const missing = missingManualResultRequirements(
+      orderedCodes,
+      completenessResults.filter(
+        (result) => result.accessionNumber === accessionNumber,
+      ),
+    );
+    if (missing.length > 0) {
+      missingExpectedByAccession[accessionNumber] = missing;
+    }
+  }
+  const missingExpectedCount = Object.values(
+    missingExpectedByAccession,
+  ).reduce((total, rows) => total + rows.length, 0);
   return {
     key,
     patient: results.find((r) => r.patient)?.patient ?? null,
@@ -75,6 +106,8 @@ export function summarizeGroup(
     hasAlarm: isAlarmFlag(worst),
     accessionNumbers: [...accessions].sort(),
     testCodes: [...new Set(results.map((r) => r.testCode))].sort(),
+    missingExpectedByAccession,
+    missingExpectedCount,
   };
 }
 
@@ -246,6 +279,11 @@ export function BenchGroupRow({
               {patient?.status === "quarantined" && (
                 <Badge variant="danger" className="px-1 py-0 text-[10px]">
                   Quarantined
+                </Badge>
+              )}
+              {summary.missingExpectedCount > 0 && (
+                <Badge variant="warn" className="px-1 py-0 text-[10px]">
+                  {summary.missingExpectedCount} manual pending
                 </Badge>
               )}
             </div>

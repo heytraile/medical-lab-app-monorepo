@@ -133,6 +133,8 @@ export class IngestionService {
           where: { id: existing.id },
           data: {
             barcode,
+            orderedTestCode: catalogCode,
+            resultComponentCode: null,
             testName,
             instrumentTestCode,
             value: r.value,
@@ -167,6 +169,7 @@ export class IngestionService {
             barcode,
             analyzerId: input.analyzerId,
             testCode: catalogCode,
+            orderedTestCode: catalogCode,
             instrumentTestCode,
             testName,
             value: r.value,
@@ -203,6 +206,8 @@ export class IngestionService {
         results: createdResults.map((r) => ({
           id: r.id,
           testCode: r.testCode,
+          orderedTestCode: r.orderedTestCode,
+          resultComponentCode: r.resultComponentCode,
           testName: r.testName,
           value: r.value,
           units: r.units,

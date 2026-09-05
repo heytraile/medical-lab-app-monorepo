@@ -189,7 +189,7 @@ Rough guide based on the PDF catalog and how hospital labs usually work. **Confi
    Today our simulators blast every machine’s demo results every 30 seconds **whether or not** that test was ordered — confusing for training. We will tie simulators to the actual order so behaviour matches real life.
 
 5. **Clear status for manual work**  
-   Ordered tests with no machine should show as **“awaiting manual result”**, not look like something is broken.
+   Ordered manual-only tests and required manual components of hybrid tests show as **“awaiting manual result”**, not as a broken analyzer feed. Incomplete release submission requires an explicit override and remains visible to the authorizer.
 
 6. **Room to grow**  
    A written remap table can be updated when Drax Hall adds an assay, buys a new machine, or sends a test to a reference lab — without rewriting the whole app.
@@ -228,6 +228,9 @@ When a result arrives, the system uses this table to **rename for display** and 
 | Simulators only send ordered tests | Yes | — |
 | Show “manual test pending” on order | Yes (Bench patient panel) | — |
 | Manual result entry for non-instrument tests | Yes (`POST /results/manual`, `analyzerId: manual`) | — |
+| Hybrid machine + manual component tracking | Yes (provisional requirement profiles) | Lab SOP confirmation |
+| Warn before submitting missing manual results | Yes, with explicit **Submit anyway** | — |
+| Show missing manual components to authorizer | Yes, release queue snapshot | — |
 | Flag unexpected machine results | Partial (`expectedOnOrder` on list) | Stronger Bench UX |
 
 ---
@@ -241,6 +244,8 @@ When a result arrives, the system uses this table to **rename for display** and 
 5. For any ambiguous form line, is it **machine**, **manual**, or **reference lab**?
 
 Until confirmed, we mark uncertain lines as **manual** in the table rather than guess.
+
+The complete provisional per-test checklist is [TEST_RESULT_REQUIREMENTS.md](./TEST_RESULT_REQUIREMENTS.md). It must be reviewed against Drax Hall’s actual analyzer configuration and SOPs; general medical knowledge is not treated as a runtime clinical rule.
 
 ---
 

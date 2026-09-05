@@ -108,6 +108,7 @@ export class DemoSeedService {
             barcode,
             analyzerId: r.analyzerId,
             testCode: r.testCode,
+            orderedTestCode: r.testCode,
             testName: r.testName ?? null,
             value: r.value,
             units: r.units ?? null,

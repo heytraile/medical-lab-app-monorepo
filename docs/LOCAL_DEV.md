@@ -231,6 +231,14 @@ Then open:
 
 Simulator default barcode is `DHDEMO0001` (Marlon Campbell) so ongoing sim traffic stays patient-linked. Override with `SIM_BARCODE=…` if needed.
 
+**Manual/hybrid completeness demo:** open **Anika S Henry** (`MRN-7004`), accession `DHDEMO0007`, on Bench. It contains completed Mindray `CREATININE` and the automated portion of `WBC_DIFF`, while these observations remain pending:
+
+- `ESR` — manual result
+- `GROUP_RH` — manual result
+- `WBC_DIFF` — provisional blood-film/manual differential review
+
+Click **Submit for release** to see the incomplete-order warning. **Submit anyway** sends the point-in-time missing list to the release queue, where an authorizer sees the **Incomplete order** badge and can return it to Bench or release it.
+
 ### Order-aware simulators (catalog remap)
 
 Simulators read the accession’s `orderedTestsJson` from edge (`GET /specimens?accession=…`) and only send analytes that match the order. Ingestion remaps machine codes (e.g. `GLU` → `GLUCOSE_RAND`, `BUN` → `UREA_BUN`) so Bench shows request-form names. Results not on the order get a **Not ordered** badge.

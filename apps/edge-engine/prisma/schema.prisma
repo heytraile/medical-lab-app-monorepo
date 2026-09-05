@@ -47,6 +47,8 @@ model Specimen {
   identityConfirmationJson String?
   specimenType           String    @default("blood")
   orderedTestsJson       String    @default("[]")
+  /// Point-in-time missing-result snapshot acknowledged at last submit.
+  submitMissingExpectedJson String?
   /// Cloud requisition id when reception created an order before accession.
   requisitionId          String?
   status                 String    @default("registered")
@@ -69,6 +71,10 @@ model Result {
   barcode         String
   analyzerId      String
   testCode        String
+  /// Catalog order line this result fulfills (especially manual components).
+  orderedTestCode String?
+  /// Stable component key for multi-part/hybrid manual observations.
+  resultComponentCode String?
   /// Raw instrument code before remap to catalog testCode.
   instrumentTestCode String?
   testName        String?

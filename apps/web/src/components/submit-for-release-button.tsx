@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Loader2, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, Check, Loader2, RefreshCw, Send } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Button } from "./ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { cn } from "../lib/utils";
 import type { BenchGroupSummary } from "./bench-group-row";
 
@@ -19,14 +26,17 @@ export function SubmitForReleaseButton({
   const auth = useAuth();
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
+  const [warningOpen, setWarningOpen] = useState(false);
 
-  const submit = useMutation({
-    mutationFn: () =>
+  const submit = useMutation<unknown, Error, boolean>({
+    mutationFn: (acknowledgeMissingManual) =>
       api.submitResults({
         accessionNumbers: summary.accessionNumbers,
+        acknowledgeMissingManual,
       }),
     onSuccess: async () => {
       setError(null);
+      setWarningOpen(false);
       void queryClient.invalidateQueries({ queryKey: ["results"] });
       void queryClient.invalidateQueries({ queryKey: ["cloud-results"] });
       void queryClient.invalidateQueries({ queryKey: ["release-queue"] });
@@ -53,6 +63,78 @@ export function SubmitForReleaseButton({
       }
     },
   });
+
+  function requestSubmit() {
+    if (summary.missingExpectedCount > 0) {
+      setWarningOpen(true);
+      return;
+    }
+    submit.mutate(false);
+  }
+
+  const warningDialog = (
+    <Dialog open={warningOpen} onOpenChange={setWarningOpen}>
+      <DialogContent
+        onPointerDownOutside={(event) => event.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle>Manual results are still missing</DialogTitle>
+          <DialogDescription>
+            This order is not complete. Enter the expected observations, or
+            explicitly submit it for the authorizer to review.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 px-5 pb-5">
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-100">
+              <AlertTriangle className="size-4" aria-hidden />
+              {summary.missingExpectedCount} expected manual{" "}
+              {summary.missingExpectedCount === 1 ? "result" : "results"}
+            </div>
+            <ul className="space-y-2 text-sm">
+              {Object.entries(summary.missingExpectedByAccession).flatMap(
+                ([accessionNumber, rows]) =>
+                  rows.map((row) => (
+                    <li
+                      key={`${accessionNumber}-${row.orderedTestCode}-${row.componentCode}`}
+                    >
+                      <span className="font-mono text-xs">
+                        {accessionNumber}
+                      </span>
+                      {" · "}
+                      <strong>{row.orderedTestCode}</strong>
+                      {row.componentName !== "Manual result"
+                        ? ` — ${row.componentName}`
+                        : ""}
+                      {row.confirmationStatus === "provisional"
+                        ? " (provisional mapping)"
+                        : ""}
+                    </li>
+                  )),
+              )}
+            </ul>
+          </div>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={submit.isPending}
+              onClick={() => setWarningOpen(false)}
+            >
+              Go back and enter results
+            </Button>
+            <Button
+              type="button"
+              disabled={submit.isPending}
+              onClick={() => submit.mutate(true)}
+            >
+              {submit.isPending ? "Submitting…" : "Submit anyway"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 
   if (!auth.accessToken) {
     return (
@@ -104,7 +186,7 @@ export function SubmitForReleaseButton({
           size="sm"
           className={cn(fullWidth && "h-11 w-full", className)}
           disabled={submit.isPending}
-          onClick={() => submit.mutate()}
+          onClick={() => submit.mutate(summary.missingExpectedCount > 0)}
         >
           {submit.isPending ? (
             <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
@@ -116,6 +198,7 @@ export function SubmitForReleaseButton({
         {error ? (
           <p className="text-xs text-lab-danger">{error}</p>
         ) : null}
+        {warningDialog}
       </div>
     );
   }
@@ -132,7 +215,7 @@ export function SubmitForReleaseButton({
         size="sm"
         className={cn(fullWidth && "h-11 w-full", className)}
         disabled={submit.isPending}
-        onClick={() => submit.mutate()}
+        onClick={requestSubmit}
       >
         {submit.isPending ? (
           <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
@@ -144,6 +227,7 @@ export function SubmitForReleaseButton({
       {error ? (
         <p className="text-xs text-lab-danger">{error}</p>
       ) : null}
+      {warningDialog}
     </div>
   );
 }

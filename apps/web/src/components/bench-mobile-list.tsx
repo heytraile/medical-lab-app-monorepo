@@ -164,6 +164,11 @@ export function BenchMobileList({
                       Quarantined
                     </Badge>
                   )}
+                  {summary.missingExpectedCount > 0 && (
+                    <Badge variant="warn" className="px-1 py-0 text-[10px]">
+                      {summary.missingExpectedCount} manual pending
+                    </Badge>
+                  )}
                   {summary.worstFlag && summary.worstFlag !== "normal" && (
                     <button
                       type="button"

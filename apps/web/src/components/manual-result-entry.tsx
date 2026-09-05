@@ -26,6 +26,8 @@ export function ManualResultEntryDialog({
   accessionNumber,
   testCode,
   testName,
+  resultComponentCode,
+  resultComponentName,
   open,
   onOpenChange,
   initialValue,
@@ -37,6 +39,8 @@ export function ManualResultEntryDialog({
   accessionNumber: string;
   testCode: string;
   testName: string;
+  resultComponentCode?: string;
+  resultComponentName?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialValue?: string;
@@ -62,6 +66,8 @@ export function ManualResultEntryDialog({
     mutationFn: () =>
       api.enterManualResult({
         accessionNumber,
+        orderedTestCode: testCode,
+        resultComponentCode,
         testCode,
         value: value.trim(),
         units: units.trim() || undefined,
@@ -105,6 +111,13 @@ export function ManualResultEntryDialog({
           <DialogTitle>{isEdit ? "Edit manual result" : "Enter manual result"}</DialogTitle>
           <DialogDescription>
             <span className="font-mono">{testCode}</span> — {testName}
+            {resultComponentName &&
+            resultComponentName !== "Manual result" ? (
+              <>
+                <br />
+                Required observation: {resultComponentName}
+              </>
+            ) : null}
             <br />
             Accession <span className="font-mono">{accessionNumber}</span>
           </DialogDescription>
@@ -227,11 +240,15 @@ export function ManualResultEntryButton({
   accessionNumber,
   testCode,
   testName,
+  resultComponentCode,
+  resultComponentName,
   existingResult,
 }: {
   accessionNumber: string;
   testCode: string;
   testName: string;
+  resultComponentCode?: string;
+  resultComponentName?: string;
   existingResult?: {
     value: string;
     units?: string | null;
@@ -258,6 +275,8 @@ export function ManualResultEntryButton({
         accessionNumber={accessionNumber}
         testCode={testCode}
         testName={testName}
+        resultComponentCode={resultComponentCode}
+        resultComponentName={resultComponentName}
         open={open}
         onOpenChange={setOpen}
         initialValue={existingResult?.value}

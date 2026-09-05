@@ -139,5 +139,36 @@
         "referenceHigh": 56
       }
     ]
+  },
+  {
+    "mrn": "MRN-7004",
+    "accessionNumber": "DHDEMO0007",
+    "orderedTests": [
+      { "code": "CREATININE", "name": "CREATININE" },
+      { "code": "WBC_DIFF", "name": "WBC / Diff" },
+      { "code": "ESR", "name": "ESR" },
+      { "code": "GROUP_RH", "name": "GROUP & Rh" }
+    ],
+    "results": [
+      {
+        "analyzerId": "mindray_bs240",
+        "testCode": "CREATININE",
+        "testName": "CREATININE",
+        "value": "0.9",
+        "units": "mg/dL",
+        "flag": "normal",
+        "status": "pending_review",
+        "referenceLow": 0.6,
+        "referenceHigh": 1.2
+      },
+      {
+        "analyzerId": "sysmex_xs1000i",
+        "testCode": "WBC_DIFF",
+        "testName": "WBC / Diff — automated portion",
+        "value": "Completed",
+        "flag": "normal",
+        "status": "pending_review"
+      }
+    ]
   }
 ]

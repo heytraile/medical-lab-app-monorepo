@@ -57,11 +57,14 @@ export type DeviceSnapshot = z.infer<typeof DeviceSnapshotSchema>;
 export const SubmitResultsRequestSchema = z.object({
   accessionNumbers: z.array(z.string().min(1)).min(1).optional(),
   patientId: z.string().min(1).optional(),
+  acknowledgeMissingManual: z.boolean().optional(),
 });
 export type SubmitResultsRequest = z.infer<typeof SubmitResultsRequestSchema>;
 
 export const ManualResultEntrySchema = z.object({
   accessionNumber: z.string().min(1),
+  orderedTestCode: z.string().min(1).optional(),
+  resultComponentCode: z.string().min(1).optional(),
   testCode: z.string().min(1),
   value: z.string().min(1),
   units: z.string().optional(),

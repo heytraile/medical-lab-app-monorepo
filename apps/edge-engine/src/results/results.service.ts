@@ -12,8 +12,9 @@ import type {
 } from "@drax-lis/contracts";
 import {
   getCatalogDisplayName,
-  getFulfillment,
+  getTestResultRequirement,
   isResultExpectedOnOrder,
+  missingManualResultRequirements,
   normalizeCode,
   parseOrderedTestCodes,
 } from "@drax-lis/catalog";
@@ -70,7 +71,10 @@ export class ResultsService {
       const orderedCodes = parseOrderedTestCodes(specimen?.orderedTestsJson);
       return {
         ...result,
-        expectedOnOrder: isResultExpectedOnOrder(result.testCode, orderedCodes),
+        expectedOnOrder: isResultExpectedOnOrder(
+          result.orderedTestCode ?? result.testCode,
+          orderedCodes,
+        ),
         patient: this.resolvePatient(specimen),
       };
     });
@@ -85,17 +89,48 @@ export class ResultsService {
       throw new BadRequestException("No accession numbers to submit");
     }
 
-    const candidates = await this.prisma.result.findMany({
+    const allAccessionResults = await this.prisma.result.findMany({
       where: {
         accessionNumber: { in: accessionNumbers },
-        status: { in: ["pending_review", "pending_authorization"] },
       },
     });
+    const candidates = allAccessionResults.filter((result) =>
+      ["pending_review", "pending_authorization"].includes(result.status),
+    );
 
     if (candidates.length === 0) {
       throw new NotFoundException(
         "No pending results found for those accessions",
       );
+    }
+
+    const specimens = await this.prisma.specimen.findMany({
+      where: { accessionNumber: { in: accessionNumbers } },
+      include: { patient: true },
+    });
+    const missingExpectedByAccession: Record<string, unknown[]> = {};
+    for (const specimen of specimens) {
+      missingExpectedByAccession[specimen.accessionNumber] =
+        missingManualResultRequirements(
+          parseOrderedTestCodes(specimen.orderedTestsJson),
+          allAccessionResults.filter(
+            (result) =>
+              result.accessionNumber === specimen.accessionNumber &&
+              result.status !== "cancelled",
+          ),
+        );
+    }
+    const missingCount = Object.values(missingExpectedByAccession).reduce(
+      (total, rows) => total + rows.length,
+      0,
+    );
+    if (missingCount > 0 && !body.acknowledgeMissingManual) {
+      throw new BadRequestException({
+        message:
+          "Manual results are still required. Review them or choose Submit anyway.",
+        code: "MISSING_EXPECTED_RESULTS",
+        missingExpectedByAccession,
+      });
     }
 
     const now = new Date();
@@ -121,13 +156,16 @@ export class ResultsService {
       where: { id: { in: candidates.map((r) => r.id) } },
     });
 
-    const specimens = await this.prisma.specimen.findMany({
-      where: { accessionNumber: { in: accessionNumbers } },
-      include: { patient: true },
-    });
-
     const specimensByAccession: Record<string, unknown> = {};
     for (const spec of specimens) {
+      const missingSnapshot =
+        missingExpectedByAccession[spec.accessionNumber] ?? [];
+      await this.prisma.specimen.update({
+        where: { accessionNumber: spec.accessionNumber },
+        data: {
+          submitMissingExpectedJson: JSON.stringify(missingSnapshot),
+        },
+      });
       const patientSummary = this.resolvePatient(spec);
       let registeredBySnapshot: unknown = null;
       if (spec.registeredBySnapshot) {
@@ -156,6 +194,7 @@ export class ResultsService {
         registeredBy: spec.registeredBy,
         registeredBySnapshot,
         registeredAt: spec.registeredAt.toISOString(),
+        orderedTestsJson: spec.orderedTestsJson,
       };
     }
 
@@ -168,6 +207,12 @@ export class ResultsService {
         submittedAt: now.toISOString(),
         results: updated.map((r) => this.toSubmittedSyncRow(r)),
         specimensByAccession,
+        missingExpectedByAccession,
+        incompleteAcknowledged: missingCount > 0,
+        incompleteAcknowledgedAt:
+          missingCount > 0 ? now.toISOString() : null,
+        incompleteAcknowledgedBy:
+          missingCount > 0 ? actor : null,
       },
     });
 
@@ -181,6 +226,8 @@ export class ResultsService {
         resultCount: updated.length,
         resultIds: updated.map((r) => r.id),
         resyncOnly: toPromote.length === 0,
+        missingExpectedByAccession,
+        incompleteAcknowledged: missingCount > 0,
       },
     });
 
@@ -193,7 +240,9 @@ export class ResultsService {
 
   async enterManualResult(body: ManualResultEntry, actor: ActorSnapshot) {
     const accessionNumber = body.accessionNumber.trim();
-    const testCode = normalizeCode(body.testCode);
+    const orderedTestCode = normalizeCode(
+      body.orderedTestCode ?? body.testCode,
+    );
 
     const specimen = await this.prisma.specimen.findUnique({
       where: { accessionNumber },
@@ -204,27 +253,50 @@ export class ResultsService {
     }
 
     const orderedCodes = parseOrderedTestCodes(specimen.orderedTestsJson);
-    if (!isResultExpectedOnOrder(testCode, orderedCodes)) {
+    if (!isResultExpectedOnOrder(orderedTestCode, orderedCodes)) {
       throw new BadRequestException(
-        `${testCode} is not on the order for ${accessionNumber}`,
+        `${orderedTestCode} is not on the order for ${accessionNumber}`,
       );
     }
 
-    const fulfillment = getFulfillment(testCode);
-    if (fulfillment === "instrument") {
+    const requirement = getTestResultRequirement(orderedTestCode);
+    const requestedComponent = body.resultComponentCode
+      ? normalizeCode(body.resultComponentCode)
+      : null;
+    const component =
+      requirement.manualComponents.find(
+        (item) => normalizeCode(item.code) === requestedComponent,
+      ) ??
+      (!requestedComponent && requirement.manualComponents.length === 1
+        ? requirement.manualComponents[0]
+        : undefined);
+    if (!component) {
       throw new BadRequestException(
-        `${testCode} is an instrument test — results must come from the analyzer`,
+        requirement.manualComponents.length === 0
+          ? `${orderedTestCode} is an instrument-only test`
+          : `Choose a valid manual component for ${orderedTestCode}`,
       );
     }
 
-    const testName = getCatalogDisplayName(testCode);
+    const resultComponentCode = normalizeCode(component.code);
+    const isLegacySingleResult =
+      requirement.manualComponents.length === 1 &&
+      resultComponentCode === "RESULT";
+    const testCode = isLegacySingleResult
+      ? orderedTestCode
+      : `${orderedTestCode}:${resultComponentCode}`;
+    const orderedTestName = getCatalogDisplayName(orderedTestCode);
+    const testName = isLegacySingleResult
+      ? orderedTestName
+      : `${orderedTestName} — ${component.name}`;
     const observedAt = body.observedAt ? new Date(body.observedAt) : new Date();
     const flag = body.flag ?? "unknown";
 
     const existing = await this.prisma.result.findFirst({
       where: {
         accessionNumber,
-        testCode,
+        orderedTestCode,
+        resultComponentCode,
         analyzerId: "manual",
       },
       orderBy: { observedAt: "desc" },
@@ -241,6 +313,8 @@ export class ResultsService {
         where: { id: existing.id },
         data: {
           barcode: specimen.barcode,
+          orderedTestCode,
+          resultComponentCode,
           testName,
           value: body.value,
           units: body.units ?? null,
@@ -257,6 +331,8 @@ export class ResultsService {
           barcode: specimen.barcode,
           analyzerId: "manual",
           testCode,
+          orderedTestCode,
+          resultComponentCode,
           testName,
           value: body.value,
           units: body.units ?? null,
@@ -279,6 +355,8 @@ export class ResultsService {
           {
             id: result.id,
             testCode: result.testCode,
+            orderedTestCode: result.orderedTestCode,
+            resultComponentCode: result.resultComponentCode,
             testName: result.testName,
             value: result.value,
             units: result.units,
@@ -299,7 +377,8 @@ export class ResultsService {
       actor,
       payload: {
         accessionNumber,
-        testCode,
+        testCode: orderedTestCode,
+        resultComponentCode,
         value: result.value,
         units: result.units,
         flag: result.flag,
@@ -311,6 +390,8 @@ export class ResultsService {
       id: result.id,
       accessionNumber: result.accessionNumber,
       testCode: result.testCode,
+      orderedTestCode: result.orderedTestCode,
+      resultComponentCode: result.resultComponentCode,
       testName: result.testName,
       value: result.value,
       units: result.units,
@@ -353,6 +434,10 @@ export class ResultsService {
         submittedBy: null,
         submittedBySnapshot: null,
       },
+    });
+    await this.prisma.specimen.updateMany({
+      where: { accessionNumber: { in: accessionNumbers } },
+      data: { submitMissingExpectedJson: null },
     });
 
     const isAuthorizerReject =
@@ -457,6 +542,8 @@ export class ResultsService {
     barcode: string;
     analyzerId: string;
     testCode: string;
+    orderedTestCode: string | null;
+    resultComponentCode: string | null;
     testName: string | null;
     value: string;
     units: string | null;
@@ -469,6 +556,8 @@ export class ResultsService {
     return {
       id: r.id,
       testCode: r.testCode,
+      orderedTestCode: r.orderedTestCode,
+      resultComponentCode: r.resultComponentCode,
       testName: r.testName,
       value: r.value,
       units: r.units,

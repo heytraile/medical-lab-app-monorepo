@@ -215,6 +215,8 @@ export type BenchResult = {
   barcode: string;
   analyzerId: string;
   testCode: string;
+  orderedTestCode?: string | null;
+  resultComponentCode?: string | null;
   instrumentTestCode?: string | null;
   testName: string | null;
   value: string;
@@ -532,7 +534,11 @@ export const api = {
         auth: true,
       },
     ),
-  submitResults: (body: { accessionNumbers?: string[]; patientId?: string }) =>
+  submitResults: (body: {
+    accessionNumbers?: string[];
+    patientId?: string;
+    acknowledgeMissingManual?: boolean;
+  }) =>
     request<{ submitted: number; accessionNumbers: string[] }>(
       "/results/submit",
       {
@@ -543,6 +549,8 @@ export const api = {
     ),
   enterManualResult: (body: {
     accessionNumber: string;
+    orderedTestCode?: string;
+    resultComponentCode?: string;
     testCode: string;
     value: string;
     units?: string;

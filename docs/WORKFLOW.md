@@ -95,16 +95,20 @@ This is the “gallery of tests for the day” described with the lab team.
 
 ### Manual / visual tests (non-instrument)
 
-Not every ordered test comes from the four bench analyzers. Cultures, microscopy, blood bank typing, many urine tests, and send-out work are classified in `@drax-lis/catalog` as **`manual`** or **`send_out`**.
+Not every ordered test comes from the four bench analyzers. The catalog assigns each order line an explicit `instrument_only`, `manual_only`, `hybrid`, or `send_out` requirement. Hybrid tests can require named manual observations in addition to an equipment-produced portion.
+
+These assignments are **provisional** until Drax Hall confirms them against the installed analyzer menus and bench SOPs. The review checklist is [TEST_RESULT_REQUIREMENTS.md](./TEST_RESULT_REQUIREMENTS.md); laboratory SOP always overrides a general default.
 
 When a patient is opened on Bench:
 
 1. **Ordered tests** lists everything on the requisition (with **Manual** / **Send-out** badges at accession and on Bench).
-2. **Awaiting manual result** lists ordered non-instrument tests that do not yet have a result row.
+2. **Awaiting manual result** lists every required manual component that does not yet have a result row.
 3. The tech taps **Enter result**, types the observed value (numeric or qualitative), optional units/flag, and saves.
 4. The result is stored with `analyzerId: manual` and status `pending_review` — same submit → authorize → release path as machine results.
 
-Mixed accessions are normal: e.g. **CBC** from Sysmex plus **ESR** and **GROUP_RH** entered manually. Submit for release promotes **all** pending results on the accession regardless of source.
+Mixed accessions are normal: e.g. **CREATININE** from Mindray plus **ESR** and **GROUP_RH** entered manually. A hybrid test can show its automated portion as complete while a named visual component remains pending.
+
+If manual components are missing, **Submit for release** first shows a warning with the exact tests. The tech can return to data entry or choose **Submit anyway**. The edge API recalculates completeness and requires that explicit acknowledgment. The release queue then shows **Incomplete order** and the same point-in-time missing-component list so the authorizer can release or **Return to bench**.
 
 Accession shows **Manual** / **Send-out** badges on individual tests and panel members so staff know at order time which lines will not auto-populate from analyzers.
 
@@ -113,7 +117,7 @@ Accession shows **Manual** / **Send-out** badges on individual tests and panel m
 ## Release / authorization flow
 
 1. Result arrives from analyzer **or** tech enters a manual result → stored on edge as `pending_review`.
-2. Bench tech reviews on **Bench** → **Submit for release** → `pending_authorization` (+ audit).
+2. Bench tech reviews on **Bench** → **Submit for release**. Missing manual components require an explicit **Submit anyway** acknowledgment → `pending_authorization` (+ audit).
 3. Outbox syncs submit event to cloud; authorizer opens **Release queue** (`GET /cloud/release-queue`).
 4. **While awaiting authorization** (before release):
    - **Tech recall** (Bench): returns accession to `pending_review` — removes from release queue; tech can fix and re-submit.
@@ -126,6 +130,7 @@ Accession shows **Manual** / **Send-out** badges on individual tests and panel m
    - Expandable read-only test list (one row per analyte — normal LIS storage)
    - **One Release button per accession** — authorizer signs off the whole requisition at once
    - **Return to bench** — sends the accession back to the tech (confirmation required)
+   - **Incomplete order** warning — lists manual/hybrid components missing when the tech submitted
 6. Authorizer releases → all pending results on that accession move to `released`; audit: `result.accession_released` with result IDs. The accession **stays in the release queue** on the **Ready to send** tab (clinical release ≠ leaving the queue).
 7. **Ready to send** tab — released accessions remain until dismissed:
    - **Send report** menu — same PDF (Letter/Legal), JSON download, and email to doctor/patient as Bench patient panel (`PatientReportExportMenu`)

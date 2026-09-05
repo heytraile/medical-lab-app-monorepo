@@ -4,8 +4,8 @@ import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import {
   getCatalogDisplayName,
-  getFulfillment,
-  pendingNonInstrumentTests,
+  getTestResultRequirement,
+  missingManualResultRequirements,
 } from "@drax-lis/catalog";
 import {
   api,
@@ -56,9 +56,10 @@ function originLabel(origin: string | undefined) {
 }
 
 function fulfillmentBadgeLabel(code: string): string | null {
-  const f = getFulfillment(code);
-  if (f === "manual") return "Manual";
-  if (f === "send_out") return "Send-out";
+  const workflow = getTestResultRequirement(code).workflow;
+  if (workflow === "manual_only") return "Manual";
+  if (workflow === "send_out") return "Send-out";
+  if (workflow === "hybrid") return "Hybrid";
   return null;
 }
 
@@ -120,28 +121,25 @@ export function BenchPatientPanel({
       new Date(b.observedAt).getTime() - new Date(a.observedAt).getTime(),
   );
 
-  const submitSummary = summarizeGroup(patientId, results);
+  const submitSummary = summarizeGroup(
+    patientId,
+    results,
+    specimensQ.data ?? [],
+  );
 
   const pendingManualByAccession = useMemo(() => {
     return orderedByAccession
       .map((row) => {
         const orderedCodes = row.tests.map((t) => t.code);
-        const receivedCodes = results
-          .filter((r) => r.accessionNumber === row.accessionNumber)
-          .map((r) => r.testCode);
-        const pendingCodes = pendingNonInstrumentTests(
+        const pending = missingManualResultRequirements(
           orderedCodes,
-          receivedCodes,
+          results.filter(
+            (result) => result.accessionNumber === row.accessionNumber,
+          ),
         );
         return {
           accessionNumber: row.accessionNumber,
-          pending: pendingCodes.map((code) => ({
-            code,
-            name:
-              row.tests.find((t) => t.code === code)?.name ??
-              getCatalogDisplayName(code),
-            fulfillment: getFulfillment(code),
-          })),
+          pending,
         };
       })
       .filter((row) => row.pending.length > 0);
@@ -320,23 +318,36 @@ export function BenchPatientPanel({
                   <ul className="mt-1.5 space-y-2">
                     {row.pending.map((t) => (
                       <li
-                        key={`${row.accessionNumber}-${t.code}`}
+                        key={`${row.accessionNumber}-${t.orderedTestCode}-${t.componentCode}`}
                         className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/25 bg-amber-500/5 px-2 py-1.5"
                       >
                         <div className="min-w-0 text-xs">
-                          <span className="font-mono text-[10px]">{t.code}</span>{" "}
-                          <span className="text-foreground">{t.name}</span>
+                          <span className="font-mono text-[10px]">
+                            {t.orderedTestCode}
+                          </span>{" "}
+                          <span className="text-foreground">
+                            {t.orderedTestName}
+                            {t.componentName !== "Manual result"
+                              ? ` — ${t.componentName}`
+                              : ""}
+                          </span>
                           <Badge
                             variant="warn"
                             className="ml-1.5 px-1 py-0 text-[9px]"
                           >
-                            {t.fulfillment === "send_out" ? "Send-out" : "Manual"}
+                            {t.workflow === "send_out"
+                              ? "Send-out"
+                              : t.workflow === "hybrid"
+                                ? "Hybrid · manual"
+                                : "Manual"}
                           </Badge>
                         </div>
                         <ManualResultEntryButton
                           accessionNumber={row.accessionNumber}
-                          testCode={t.code}
-                          testName={t.name}
+                          testCode={t.orderedTestCode}
+                          testName={t.orderedTestName}
+                          resultComponentCode={t.componentCode}
+                          resultComponentName={t.componentName}
                         />
                       </li>
                     ))}
@@ -411,8 +422,11 @@ export function BenchPatientPanel({
                     <div className="mt-2 pl-1">
                       <ManualResultEntryButton
                         accessionNumber={r.accessionNumber}
-                        testCode={r.testCode}
+                        testCode={r.orderedTestCode ?? r.testCode}
                         testName={r.testName ?? r.testCode}
+                        resultComponentCode={
+                          r.resultComponentCode ?? undefined
+                        }
                         existingResult={{
                           value: r.value,
                           units: r.units,

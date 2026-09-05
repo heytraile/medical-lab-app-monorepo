@@ -84,6 +84,11 @@ export function ReleaseQueueListItem({
             <Badge variant="muted" className="text-[10px]">
               {group.testCount} {group.testCount === 1 ? "test" : "tests"}
             </Badge>
+            {group.submittedIncomplete ? (
+              <Badge variant="warn" className="text-[10px]">
+                Incomplete order · {group.missingExpectedResults.length} missing
+              </Badge>
+            ) : null}
           </div>
         </div>
       </button>

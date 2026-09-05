@@ -13,6 +13,44 @@ export type AnalyzerId =
 
 export type Fulfillment = "instrument" | "manual" | "send_out";
 
+export type ResultWorkflow =
+  | "instrument_only"
+  | "manual_only"
+  | "hybrid"
+  | "send_out";
+
+export type RequirementConfirmationStatus = "provisional" | "lab_confirmed";
+
+export type ManualResultComponent = {
+  code: string;
+  name: string;
+};
+
+export type TestResultRequirement = {
+  orderedTestCode: string;
+  workflow: ResultWorkflow;
+  confirmationStatus: RequirementConfirmationStatus;
+  instrumentRequired: boolean;
+  manualComponents: ManualResultComponent[];
+  note?: string;
+};
+
+export type ReceivedResultForCompleteness = {
+  testCode: string;
+  analyzerId: string;
+  orderedTestCode?: string | null;
+  resultComponentCode?: string | null;
+};
+
+export type MissingExpectedResult = {
+  orderedTestCode: string;
+  orderedTestName: string;
+  componentCode: string;
+  componentName: string;
+  workflow: ResultWorkflow;
+  confirmationStatus: RequirementConfirmationStatus;
+};
+
 export type SimAnalyte = {
   instrumentCode: string;
   catalogCodes: string[];
@@ -65,6 +103,36 @@ export const MANUAL_CATALOG_CODES = new Set(
     "ESR",
   ].map(normalizeCode),
 );
+
+/**
+ * Conservative defaults that require a manual observation in addition to, or
+ * as part of, the equipment workflow. These assignments are provisional until
+ * Drax Hall confirms them against its analyzer menus and bench SOPs.
+ */
+export const PROVISIONAL_HYBRID_REQUIREMENTS: Record<
+  string,
+  Omit<TestResultRequirement, "orderedTestCode">
+> = {
+  WBC_DIFF: {
+    workflow: "hybrid",
+    confirmationStatus: "provisional",
+    instrumentRequired: true,
+    manualComponents: [
+      { code: "BLOOD_FILM_REVIEW", name: "Blood film / manual differential review" },
+    ],
+    note: "Confirm whether a manual film review is required for every order or only by reflex criteria.",
+  },
+  URINALYSIS_COMPLETE: {
+    workflow: "hybrid",
+    confirmationStatus: "provisional",
+    instrumentRequired: false,
+    manualComponents: [
+      { code: "CHEMISTRY", name: "Urine chemistry / strip observations" },
+      { code: "MICROSCOPY", name: "Urine microscopy observations" },
+    ],
+    note: "The current four-analyzer integration has no urine interface; equipment readings may be transcribed manually.",
+  },
+};
 
 /** Canned analytes per machine (simulator + remap source of truth). */
 export const ANALYZER_SIM_ANALYTES: Record<AnalyzerId, SimAnalyte[]> = {
@@ -398,6 +466,95 @@ export function getFulfillment(catalogCode: string): Fulfillment {
   if (instrumentCatalogCodes.has(key)) return "instrument";
   if (item?.category === "drugs_of_abuse") return "send_out";
   return "manual";
+}
+
+export function getTestResultRequirement(
+  catalogCode: string,
+): TestResultRequirement {
+  const key = normalizeCode(catalogCode);
+  const hybrid = PROVISIONAL_HYBRID_REQUIREMENTS[key];
+  if (hybrid) {
+    return { orderedTestCode: key, ...hybrid };
+  }
+
+  const fulfillment = getFulfillment(key);
+  if (fulfillment === "instrument") {
+    return {
+      orderedTestCode: key,
+      workflow: "instrument_only",
+      confirmationStatus: "provisional",
+      instrumentRequired: true,
+      manualComponents: [],
+    };
+  }
+  if (fulfillment === "send_out") {
+    return {
+      orderedTestCode: key,
+      workflow: "send_out",
+      confirmationStatus: "provisional",
+      instrumentRequired: false,
+      manualComponents: [
+        { code: "REFERENCE_RESULT", name: "Reference laboratory result" },
+      ],
+    };
+  }
+  return {
+    orderedTestCode: key,
+    workflow: "manual_only",
+    confirmationStatus: "provisional",
+    instrumentRequired: false,
+    manualComponents: [{ code: "RESULT", name: "Manual result" }],
+  };
+}
+
+export function allTestResultRequirements(): TestResultRequirement[] {
+  return DHMS_CATALOG_ITEMS.map((item) =>
+    getTestResultRequirement(item.code),
+  );
+}
+
+export function missingManualResultRequirements(
+  orderedCodes: string[],
+  receivedResults: Iterable<ReceivedResultForCompleteness>,
+): MissingExpectedResult[] {
+  const results = [...receivedResults];
+  const missing: MissingExpectedResult[] = [];
+
+  for (const rawCode of orderedCodes) {
+    const requirement = getTestResultRequirement(rawCode);
+    for (const component of requirement.manualComponents) {
+      const found = results.some((result) => {
+        if (result.analyzerId !== "manual") return false;
+        const parent = normalizeCode(
+          result.orderedTestCode || result.testCode,
+        );
+        if (parent !== requirement.orderedTestCode) return false;
+        const resultComponent = result.resultComponentCode
+          ? normalizeCode(result.resultComponentCode)
+          : null;
+        // Backward compatibility: legacy single-value manual rows had no
+        // component code and used the ordered catalog code as testCode.
+        return (
+          resultComponent === normalizeCode(component.code) ||
+          (!resultComponent &&
+            requirement.manualComponents.length === 1 &&
+            normalizeCode(result.testCode) === requirement.orderedTestCode)
+        );
+      });
+      if (!found) {
+        missing.push({
+          orderedTestCode: requirement.orderedTestCode,
+          orderedTestName: getCatalogDisplayName(requirement.orderedTestCode),
+          componentCode: component.code,
+          componentName: component.name,
+          workflow: requirement.workflow,
+          confirmationStatus: requirement.confirmationStatus,
+        });
+      }
+    }
+  }
+
+  return missing;
 }
 
 export function getAnalyzerForCatalogCode(
