@@ -9,7 +9,7 @@
     "start:prod": "node dist/main.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"lint ok\"",
-    "test": "pnpm run build && node --test dist/sync/release-queue.helpers.test.js"
+    "test": "pnpm run build && node --test dist/sync/release-queue.helpers.test.js dist/sync/result-sync.helpers.test.js"
   },
   "dependencies": {
     "@drax-lis/catalog": "workspace:*",

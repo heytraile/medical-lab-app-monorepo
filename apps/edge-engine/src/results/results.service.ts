@@ -302,11 +302,26 @@ export class ResultsService {
       orderBy: { observedAt: "desc" },
     });
 
+    const submittedOnAccession = await this.prisma.result.findFirst({
+      where: { accessionNumber, status: "pending_authorization" },
+      select: { id: true },
+    });
+    if (submittedOnAccession) {
+      throw new BadRequestException(
+        `${accessionNumber} is awaiting authorization. Recall from release queue or ask the authorizer to return to bench before entering or editing manual results.`,
+      );
+    }
+
     let result;
     if (existing) {
       if (existing.status === "released") {
         throw new BadRequestException(
           `Manual result for ${testCode} is already released and cannot be edited`,
+        );
+      }
+      if (existing.status === "pending_authorization") {
+        throw new BadRequestException(
+          `Manual result for ${testCode} is awaiting authorization. Recall from release queue or ask the authorizer to return to bench before editing.`,
         );
       }
       result = await this.prisma.result.update({

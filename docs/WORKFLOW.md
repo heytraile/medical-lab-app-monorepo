@@ -105,6 +105,7 @@ When a patient is opened on Bench:
 2. **Awaiting manual result** lists every required manual component that does not yet have a result row.
 3. The tech taps **Enter result**, types the observed value (numeric or qualitative), optional units/flag, and saves.
 4. The result is stored with `analyzerId: manual` and status `pending_review` — same submit → authorize → release path as machine results.
+5. **Editing manual results:** In **All results**, each manual row shows **Edit result** only while the accession is on the bench (`pending_review`) — before submit for release. Once submitted (`pending_authorization`), manual results are locked until the tech **Recall from release queue** or the authorizer **Return to bench** (both reset to `pending_review`). After authorizer release (`released`), manual results can never be edited again — the edge API rejects updates and the Bench UI hides the edit action. Instrument retransmits are also skipped once a row is released.
 
 Mixed accessions are normal: e.g. **CREATININE** from Mindray plus **ESR** and **GROUP_RH** entered manually. A hybrid test can show its automated portion as complete while a named visual component remains pending.
 

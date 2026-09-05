@@ -32,6 +32,7 @@ import { RecallFromReleaseButton } from "./recall-from-release-button";
 import { summarizeGroup } from "./bench-group-row";
 import { ManualResultEntryButton } from "./manual-result-entry";
 import { cn } from "../lib/utils";
+import { canEditManualResult } from "../lib/manual-results";
 import { usePatientNameOrder } from "../lib/patient-name-order";
 
 function Field({
@@ -417,8 +418,7 @@ export function BenchPatientPanel({
                   <p className="pl-1 text-sm font-medium tabular-nums text-foreground/85">
                     {new Date(r.observedAt).toLocaleString()}
                   </p>
-                  {r.analyzerId === "manual" &&
-                  r.status !== "released" ? (
+                  {canEditManualResult(r) ? (
                     <div className="mt-2 pl-1">
                       <ManualResultEntryButton
                         accessionNumber={r.accessionNumber}
@@ -452,6 +452,7 @@ export function BenchPatientPanel({
                     <th className="px-2 py-2 font-medium">Flag</th>
                     <th className="px-2 py-2 font-medium">Accession</th>
                     <th className="px-2 py-2 font-medium">Status</th>
+                    <th className="px-2 py-2 font-medium">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -511,6 +512,25 @@ export function BenchPatientPanel({
                         <WorkflowStatusChip
                           status={r.status ?? "pending_review"}
                         />
+                      </td>
+                      <td className="px-2 py-2 align-middle">
+                        {canEditManualResult(r) ? (
+                          <ManualResultEntryButton
+                            accessionNumber={r.accessionNumber}
+                            testCode={r.orderedTestCode ?? r.testCode}
+                            testName={r.testName ?? r.testCode}
+                            resultComponentCode={
+                              r.resultComponentCode ?? undefined
+                            }
+                            existingResult={{
+                              value: r.value,
+                              units: r.units,
+                              flag: r.flag,
+                              referenceLow: r.referenceLow,
+                              referenceHigh: r.referenceHigh,
+                            }}
+                          />
+                        ) : null}
                       </td>
                     </tr>
                   );

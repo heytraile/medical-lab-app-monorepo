@@ -16,6 +16,7 @@ import type {
   StaffUpsertEventPayload,
 } from "@drax-lis/contracts";
 import { assembleReleaseQueueGroups, type SpecimenContext } from "./release-queue.helpers";
+import { shouldApplyResultBatchUpdate } from "./result-sync.helpers";
 import { StaffProvisioningService } from "../lab-staff/staff-provisioning.service";
 
 type StoredEvent = {
@@ -143,6 +144,13 @@ export class SyncService {
       const results = (payload.results as Array<Record<string, unknown>>) ?? [];
       for (const r of results) {
         const id = String(r.id ?? `${payload.accessionNumber}-${r.testCode}`);
+        const existing = this.memoryResults.get(id);
+        if (!shouldApplyResultBatchUpdate(String(existing?.status ?? ""))) {
+          this.logger.warn(
+            `Skip update for released ${String(payload.accessionNumber)}/${String(r.testCode)} (${String(payload.analyzerId ?? "unknown")})`,
+          );
+          continue;
+        }
         this.memoryResults.set(id, {
           ...r,
           id,
@@ -507,6 +515,19 @@ export class SyncService {
       for (const r of results) {
         const edgeResultId = String(r.id ?? "");
         if (!edgeResultId) continue;
+
+        const { data: existing } = await client
+          .from("results")
+          .select("status")
+          .eq("edge_result_id", edgeResultId)
+          .maybeSingle();
+        if (!shouldApplyResultBatchUpdate(existing?.status)) {
+          this.logger.warn(
+            `Skip update for released ${accession}/${String(r.testCode)} (${analyzerId})`,
+          );
+          continue;
+        }
+
         const { error } = await client.from("results").upsert(
           {
             edge_result_id: edgeResultId,
