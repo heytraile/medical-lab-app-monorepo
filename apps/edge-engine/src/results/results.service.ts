@@ -5,6 +5,7 @@ import {
 } from "@nestjs/common";
 import type {
   ActorSnapshot,
+  ManualResultClear,
   ManualResultEntry,
   RecallAccessionRequest,
   ReleaseAccessionRequest,
@@ -479,6 +480,98 @@ export class ResultsService {
       ),
       manualLastEditedAt:
         result.manualLastEditedAt?.toISOString() ?? null,
+    };
+  }
+
+  async clearManualResult(body: ManualResultClear, actor: ActorSnapshot) {
+    const resultId = body.resultId.trim();
+    const result = await this.prisma.result.findUnique({
+      where: { id: resultId },
+    });
+    if (!result) {
+      throw new NotFoundException(`Result ${resultId} not found`);
+    }
+    if (result.analyzerId !== "manual") {
+      throw new BadRequestException(
+        "Only manually entered results can be cleared",
+      );
+    }
+
+    const accessionNumber = result.accessionNumber;
+    const status = result.status || "pending_review";
+    if (status === "released") {
+      throw new BadRequestException(
+        `Manual result for ${result.testCode} is already released and cannot be cleared`,
+      );
+    }
+    if (status === "pending_authorization") {
+      throw new BadRequestException(
+        `Manual result for ${result.testCode} is awaiting authorization. Recall from release queue or ask the authorizer to return to bench before clearing.`,
+      );
+    }
+    if (status !== "pending_review") {
+      throw new BadRequestException(
+        `Manual result for ${result.testCode} cannot be cleared in status ${status}`,
+      );
+    }
+
+    const releasedOnAccession = await this.prisma.result.findFirst({
+      where: { accessionNumber, status: "released" },
+      select: { id: true },
+    });
+    if (releasedOnAccession) {
+      throw new BadRequestException(
+        `${accessionNumber} has been released and is permanently read-only. Manual results cannot be cleared.`,
+      );
+    }
+
+    const submittedOnAccession = await this.prisma.result.findFirst({
+      where: { accessionNumber, status: "pending_authorization" },
+      select: { id: true },
+    });
+    if (submittedOnAccession) {
+      throw new BadRequestException(
+        `${accessionNumber} is awaiting authorization. Recall from release queue or ask the authorizer to return to bench before clearing manual results.`,
+      );
+    }
+
+    await this.prisma.result.delete({ where: { id: result.id } });
+
+    await this.sync.enqueue({
+      type: "result.deleted",
+      payload: {
+        resultIds: [result.id],
+        accessionNumber,
+        clearedBy: actor.userId,
+        clearedBySnapshot: actor,
+        clearedAt: new Date().toISOString(),
+      },
+    });
+
+    await this.audit.log({
+      eventType: "result.manual_cleared",
+      entityType: "result",
+      entityId: result.id,
+      actor,
+      payload: {
+        accessionNumber,
+        testCode: result.orderedTestCode ?? result.testCode,
+        resultComponentCode: result.resultComponentCode,
+        previous: {
+          value: result.value,
+          units: result.units,
+          flag: result.flag,
+          referenceLow: result.referenceLow,
+          referenceHigh: result.referenceHigh,
+        },
+      },
+    });
+
+    return {
+      id: result.id,
+      accessionNumber,
+      testCode: result.testCode,
+      cleared: true as const,
     };
   }
 

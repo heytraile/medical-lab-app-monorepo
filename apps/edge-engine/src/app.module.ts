@@ -16,6 +16,7 @@ import { AuditModule } from "./audit/audit.module";
 import { BackupModule } from "./backup/backup.module";
 import { AuthModule } from "./auth/auth.module";
 import { StaffModule } from "./staff/staff.module";
+import { MessagingModule } from "./messaging/messaging.module";
 import { isProductionHardened } from "./config/production-hardening";
 
 const hardened = isProductionHardened();
@@ -53,6 +54,7 @@ const hardenedProviders = hardened
     ResultsModule,
     PatientsModule,
     BackupModule,
+    MessagingModule,
     ...(hardened ? [] : [DemoModule]),
   ],
   providers: [...hardenedProviders],

@@ -18,6 +18,7 @@ export const ClinicalAuditEventTypeSchema = z.enum([
   "specimen.registered",
   "result.ingested",
   "result.manual_entered",
+  "result.manual_cleared",
   "result.submitted_for_release",
   "result.accession_released",
   "result.accession_recalled",
@@ -73,6 +74,11 @@ export const ManualResultEntrySchema = z.object({
   observedAt: z.string().datetime().optional(),
 });
 export type ManualResultEntry = z.infer<typeof ManualResultEntrySchema>;
+
+export const ManualResultClearSchema = z.object({
+  resultId: z.string().min(1),
+});
+export type ManualResultClear = z.infer<typeof ManualResultClearSchema>;
 
 export const ReleaseAccessionRequestSchema = z.object({
   accessionNumber: z.string().min(1),

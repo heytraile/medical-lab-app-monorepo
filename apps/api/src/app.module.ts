@@ -9,6 +9,7 @@ import { LabRequisitionsModule } from "./lab-requisitions/lab-requisitions.modul
 import { LabStaffModule } from "./lab-staff/lab-staff.module";
 import { AuthModule } from "./auth/auth.module";
 import { AuditModule } from "./audit/audit.module";
+import { MessagingCloudModule } from "./messaging/messaging-cloud.module";
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { AuditModule } from "./audit/audit.module";
     CatalogModule,
     LabRequisitionsModule,
     LabStaffModule,
+    MessagingCloudModule,
   ],
 })
 export class AppModule {}

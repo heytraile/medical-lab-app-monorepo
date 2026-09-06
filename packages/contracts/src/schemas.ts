@@ -238,9 +238,12 @@ export const OutboxEventTypeSchema = z.enum([
   "result.batch",
   "result.submitted",
   "result.recalled",
+  "result.deleted",
   "instrument.status",
   "patient.provisional_created",
   "staff.upsert",
+  "message.created",
+  "conversation.upsert",
 ]);
 export type OutboxEventType = z.infer<typeof OutboxEventTypeSchema>;
 

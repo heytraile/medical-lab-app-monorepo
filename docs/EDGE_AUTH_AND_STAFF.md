@@ -2,7 +2,7 @@
 
 **Who this is for:** lab owner, IT staff, and developers. Every acronym is explained here or in [GLOSSARY.md](./GLOSSARY.md).
 
-**Related docs:** [EDGE_SECURITY_AND_BACKUP.md](./EDGE_SECURITY_AND_BACKUP.md) (network/app/physical hardening), [ARCHITECTURE.md](./ARCHITECTURE.md) (Security / PHI), [LAB_MINI_PC_SETUP.md](./LAB_MINI_PC_SETUP.md) (first admin + first cloud device, step by step), [LOCAL_DEV.md](./LOCAL_DEV.md) (dev accounts), [AUDIT.md](./AUDIT.md) (audit log fields).
+**Related docs:** [EDGE_SECURITY_AND_BACKUP.md](./EDGE_SECURITY_AND_BACKUP.md) (network/app/physical hardening), [ARCHITECTURE.md](./ARCHITECTURE.md) (Security / PHI), [LAB_MINI_PC_SETUP.md](./LAB_MINI_PC_SETUP.md) (first admin + first cloud device, step by step), [LOCAL_DEV.md](./LOCAL_DEV.md) (dev accounts), [AUDIT.md](./AUDIT.md) (audit log fields), [STAFF_SYNC_CODE_GUIDE.md](./STAFF_SYNC_CODE_GUIDE.md) (read the provisioning TypeScript line-by-line — NestJS layers, Supabase `{ data, error }`, `updateAuthUser` vs `createUser`), [MESSAGING.md](./MESSAGING.md) (staff DMs + channels).
 
 ---
 

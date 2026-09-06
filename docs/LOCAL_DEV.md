@@ -335,6 +335,8 @@ Cloud API calls send the **Supabase JWT**, not the edge JWT. A cloud 401 no long
 Release queue: http://localhost:3100/release — admins and authorizers release cloud
 `pending_authorization` accessions (`POST /results/release-accession`).
 
+**Messages:** http://localhost:3100/messages — LAN DMs + channels over Socket.IO `/messaging` (edge JWT). Cloud Realtime inbox for admin/authorizer when using cloud mode. See [MESSAGING.md](./MESSAGING.md).
+
 ### Changing the schema
 
 The schema is version-controlled in [`supabase/migrations/`](../supabase/migrations). **Never

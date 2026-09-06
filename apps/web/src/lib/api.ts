@@ -21,6 +21,11 @@ import type {
   StaffMember,
   StaffMemberCreate,
   StaffMemberUpdate,
+  Conversation,
+  Message,
+  CreateDmRequest,
+  CreateChannelRequest,
+  CreateMessageRequest,
 } from "@drax-lis/contracts";
 import { getStoredDevice } from "./device";
 
@@ -35,6 +40,11 @@ export type {
   EdgeLoginResponse,
   EdgeStaffUser,
   LabDevice,
+  Conversation,
+  Message,
+  CreateDmRequest,
+  CreateChannelRequest,
+  CreateMessageRequest,
 };
 
 const EDGE_API_URL =
@@ -584,6 +594,17 @@ export const api = {
         auth: true,
       },
     ),
+  clearManualResult: (body: { resultId: string }) =>
+    request<{
+      id: string;
+      accessionNumber: string;
+      testCode: string;
+      cleared: true;
+    }>("/results/manual/clear", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    }),
   recallResults: (body: { accessionNumbers: string[]; reason?: string }) =>
     request<{ recalled: number; accessionNumbers: string[] }>(
       "/results/recall",
@@ -752,6 +773,62 @@ export const api = {
       method: "POST",
       baseUrl: CLOUD_API_URL,
       auth: true,
+    }),
+
+  /** Edge messaging (LAN) — all staff. */
+  messagingConversations: () =>
+    request<Conversation[]>("/messaging/conversations", { auth: true }),
+  messagingDirectory: () =>
+    request<
+      Array<{
+        id: string;
+        fullName: string;
+        email: string;
+        role: string;
+        cloudLoginAllowed: boolean;
+      }>
+    >("/messaging/directory", { auth: true }),
+  messagingCreateDm: (body: CreateDmRequest) =>
+    request<Conversation>("/messaging/dms", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    }),
+  messagingCreateChannel: (body: CreateChannelRequest) =>
+    request<Conversation>("/messaging/channels", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    }),
+  messagingMessages: (conversationId: string, limit = 100) =>
+    request<Message[]>(
+      `/messaging/messages?conversationId=${encodeURIComponent(conversationId)}&limit=${limit}`,
+      { auth: true },
+    ),
+  messagingSend: (body: CreateMessageRequest) =>
+    request<Message>("/messaging/messages", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
+    }),
+
+  /** Cloud messaging — admin/authorizer remote inbox. */
+  cloudMessagingConversations: () =>
+    request<Conversation[]>("/cloud/messaging/conversations", {
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  cloudMessagingMessages: (conversationId: string, limit = 100) =>
+    request<Message[]>(
+      `/cloud/messaging/messages?conversationId=${encodeURIComponent(conversationId)}&limit=${limit}`,
+      { baseUrl: CLOUD_API_URL, auth: true },
+    ),
+  cloudMessagingSend: (body: CreateMessageRequest) =>
+    request<Message>("/cloud/messaging/messages", {
+      method: "POST",
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+      body: JSON.stringify(body),
     }),
 };
 

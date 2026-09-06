@@ -3,6 +3,7 @@ import {
   RecallAccessionRequestSchema,
   ReleaseAccessionRequestSchema,
   SubmitResultsRequestSchema,
+  ManualResultClearSchema,
   ManualResultEntrySchema,
 } from "@drax-lis/contracts";
 import { ResultsService } from "./results.service";
@@ -36,6 +37,14 @@ export class ResultsController {
   enterManual(@Body() body: unknown, @CurrentUser() user: AuthUser) {
     const parsed = ManualResultEntrySchema.parse(body);
     return this.results.enterManualResult(parsed, toActorSnapshot(user));
+  }
+
+  @Post("manual/clear")
+  @UseGuards(EdgeAuthGuard)
+  @Roles("tech", "authorizer", "admin")
+  clearManual(@Body() body: unknown, @CurrentUser() user: AuthUser) {
+    const parsed = ManualResultClearSchema.parse(body);
+    return this.results.clearManualResult(parsed, toActorSnapshot(user));
   }
 
   @Post("recall")

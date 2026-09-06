@@ -18,6 +18,7 @@ import {
   Users,
   UserCog,
   Wifi,
+  MessageSquare,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { analyzerLabel } from "../lib/analyzers";
@@ -304,6 +305,14 @@ function SidebarBody({
             onNavigate={onNavigate}
           />
           <NavItem
+            to="/messages"
+            icon={MessageSquare}
+            label="Messages"
+            active={pathname === "/messages"}
+            collapsed={collapsed}
+            onNavigate={onNavigate}
+          />
+          <NavItem
             to="/release"
             icon={ClipboardCheck}
             label="Release queue"
@@ -574,7 +583,7 @@ function NavItem({
   title,
   onNavigate,
 }: {
-  to: "/bench" | "/accession" | "/labels" | "/orders" | "/sync" | "/release" | "/patients" | "/profile" | "/staff";
+  to: "/bench" | "/accession" | "/labels" | "/orders" | "/sync" | "/messages" | "/release" | "/patients" | "/profile" | "/staff";
   search?: { analyzer?: string; q?: string };
   icon: React.ComponentType<{ className?: string }>;
   label: string;

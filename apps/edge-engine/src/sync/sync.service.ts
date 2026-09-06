@@ -103,6 +103,21 @@ export class SyncService implements OnModuleInit {
               where: { id: row.id },
               data: { status: "acked", lastError: null },
             });
+            if (row.type === "message.created") {
+              try {
+                const payload = JSON.parse(row.payload) as {
+                  messageId?: string;
+                };
+                if (payload.messageId) {
+                  await this.prisma.message.updateMany({
+                    where: { id: payload.messageId },
+                    data: { synced: "synced" },
+                  });
+                }
+              } catch {
+                // ignore parse errors
+              }
+            }
           } else {
             await this.prisma.outboxEvent.update({
               where: { id: row.id },

@@ -447,8 +447,7 @@ function BenchPage() {
   let leafIndex = 0;
   let groupIndex = 0;
 
-  const benchTableScroll = (
-    <div className="overflow-x-auto">
+  const benchTable = (
       <table
         className={cn(
           "w-full text-left text-base",
@@ -580,7 +579,6 @@ function BenchPage() {
           )}
         </tbody>
       </table>
-    </div>
   );
 
   return (
@@ -705,17 +703,15 @@ function BenchPage() {
         /* Grey canvas: the gaps between patient blocks are this showing through. */
         <div
           className={cn(
-            "min-w-0 overflow-hidden rounded-xl border border-border bg-muted shadow-sm",
-            splitDocked && "flex min-h-0 flex-col",
+            "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-muted shadow-sm",
+            splitDocked
+              ? "flex-1"
+              : "max-h-[calc(100svh-11rem)]",
           )}
         >
-          {splitDocked ? (
-            <ScrollContainer className="min-h-0 flex-1">
-              {benchTableScroll}
-            </ScrollContainer>
-          ) : (
-            benchTableScroll
-          )}
+          <ScrollContainer className="min-h-0 flex-1" axes="both">
+            {benchTable}
+          </ScrollContainer>
         </div>
         )}
 

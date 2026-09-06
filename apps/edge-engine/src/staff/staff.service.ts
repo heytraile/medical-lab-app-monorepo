@@ -1,7 +1,10 @@
 import {
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
+  Optional,
+  forwardRef,
 } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import type {
@@ -13,6 +16,7 @@ import type {
 import { PrismaService } from "../prisma/prisma.service";
 import { SyncService } from "../sync/sync.service";
 import { hashPassword } from "../auth/password.util";
+import { MessagingService } from "../messaging/messaging.service";
 
 type StaffRow = {
   id: string;
@@ -36,6 +40,9 @@ export class StaffService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly sync: SyncService,
+    @Optional()
+    @Inject(forwardRef(() => MessagingService))
+    private readonly messaging?: MessagingService,
   ) {}
 
   async count(): Promise<number> {
@@ -74,6 +81,7 @@ export class StaffService {
     });
 
     await this.enqueueUpsert(row, input.password);
+    await this.messaging?.ensureStaffChannelMembership(row.id, row.role);
     return this.toPublic(row);
   }
 
@@ -102,6 +110,9 @@ export class StaffService {
 
     const row = await this.prisma.staff.update({ where: { id }, data });
     await this.enqueueUpsert(row, plaintextPassword);
+    if (patch.role !== undefined || patch.isActive === true) {
+      await this.messaging?.ensureStaffChannelMembership(row.id, row.role);
+    }
     return this.toPublic(row);
   }
 

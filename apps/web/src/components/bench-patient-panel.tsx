@@ -19,10 +19,8 @@ import {
   FlagChip,
   WorkflowStatusChip,
   flagBarColor,
-  flagRowClass,
   flagValueClass,
 } from "./result-status";
-import { useIsDesktop } from "../lib/use-media-query";
 import { ScrollContainer } from "./ui/scroll-container";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -105,7 +103,6 @@ export function BenchPatientPanel({
   embedded?: boolean;
   className?: string;
 }) {
-  const isDesktop = useIsDesktop();
   const { formatName } = usePatientNameOrder();
   const detailQ = useQuery({
     queryKey: ["patient", patientId],
@@ -458,7 +455,7 @@ export function BenchPatientPanel({
             <p className="py-6 text-center text-sm text-muted-foreground">
               No results for this patient in the current load.
             </p>
-          ) : !isDesktop ? (
+          ) : (
             <ul className="space-y-2">
               {sorted.map((r) => {
                 const ctx = {
@@ -467,114 +464,19 @@ export function BenchPatientPanel({
                   referenceHigh: r.referenceHigh,
                 };
                 return (
-                <li
-                  key={r.id}
-                  className="rounded-lg border border-border p-2.5"
-                  style={{
-                    boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag, ctx)}`,
-                  }}
-                >
-                  <div className="flex items-baseline justify-between gap-2 pl-1">
-                    <span className="text-base font-medium">{r.testCode}</span>
-                    <span className="shrink-0 text-lg font-semibold tabular-nums">
-                      <span className={flagValueClass(r.flag, ctx)}>{r.value}</span>
-                      {r.units ? (
-                        <span className="ml-1 text-sm font-medium text-muted-foreground">
-                          {r.units}
-                        </span>
-                      ) : null}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-1">
-                    <AlarmSign flag={r.flag} ctx={ctx} />
-                    <FlagChip
-                      flag={r.flag}
-                      value={r.value}
-                      referenceLow={r.referenceLow}
-                      referenceHigh={r.referenceHigh}
-                    />
-                    <WorkflowStatusChip status={r.status ?? "pending_review"} />
-                  </div>
-                  <p className="mt-1.5 pl-1 text-xs text-muted-foreground">
-                    <span className="font-mono">{r.accessionNumber}</span> ·{" "}
-                    {analyzerLabel(r.analyzerId)}
-                  </p>
-                  <p className="pl-1 text-sm font-medium tabular-nums text-foreground/85">
-                    {new Date(r.observedAt).toLocaleString()}
-                  </p>
-                  <div className="mt-1 pl-1">
-                    <ManualAttribution result={r} />
-                  </div>
-                  {canEditManualResult(r) &&
-                  editableAccessionNumbers.has(r.accessionNumber) ? (
-                    <div className="mt-2 pl-1">
-                      <ManualResultEntryButton
-                        accessionNumber={r.accessionNumber}
-                        testCode={r.orderedTestCode ?? r.testCode}
-                        testName={r.testName ?? r.testCode}
-                        resultComponentCode={
-                          r.resultComponentCode ?? undefined
-                        }
-                        existingResult={{
-                          value: r.value,
-                          units: r.units,
-                          flag: r.flag,
-                          referenceLow: r.referenceLow,
-                          referenceHigh: r.referenceHigh,
-                        }}
-                      />
-                    </div>
-                  ) : null}
-                </li>
-              );
-              })}
-            </ul>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[32rem] text-left text-sm">
-                <thead className="border-b border-border bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <tr>
-                    <th className="px-2 py-2 font-medium">Observed</th>
-                    <th className="px-2 py-2 font-medium">Test</th>
-                    <th className="px-2 py-2 font-medium">Value</th>
-                    <th className="px-2 py-2 font-medium">Flag</th>
-                    <th className="px-2 py-2 font-medium">Accession</th>
-                    <th className="px-2 py-2 font-medium">Status</th>
-                    <th className="px-2 py-2 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((r) => {
-                    const ctx = {
-                      value: r.value,
-                      referenceLow: r.referenceLow,
-                      referenceHigh: r.referenceHigh,
-                    };
-                    return (
-                    <tr
-                      key={r.id}
-                      className={cn(
-                        "border-t border-border/60",
-                        flagRowClass(r.flag, ctx),
-                      )}
-                    >
-                      <td className="px-2 py-2 align-middle whitespace-nowrap text-sm font-medium tabular-nums text-foreground/85">
-                        {new Date(r.observedAt).toLocaleString()}
-                      </td>
-                      <td className="px-2 py-2 align-middle">
-                        <div className="text-sm font-medium">{r.testCode}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {analyzerLabel(r.analyzerId)}
-                        </div>
-                        <ManualAttribution result={r} />
-                      </td>
-                      <td className="px-2 py-2 align-middle whitespace-nowrap">
-                        <span
-                          className={cn(
-                            "text-base font-semibold tabular-nums",
-                            flagValueClass(r.flag, ctx),
-                          )}
-                        >
+                  <li
+                    key={r.id}
+                    className="rounded-lg border border-border p-2.5"
+                    style={{
+                      boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag, ctx)}`,
+                    }}
+                  >
+                    <div className="flex items-baseline justify-between gap-2 pl-1">
+                      <span className="min-w-0 break-words text-base font-medium">
+                        {r.testCode}
+                      </span>
+                      <span className="shrink-0 text-lg font-semibold tabular-nums">
+                        <span className={flagValueClass(r.flag, ctx)}>
                           {r.value}
                         </span>
                         {r.units ? (
@@ -582,52 +484,59 @@ export function BenchPatientPanel({
                             {r.units}
                           </span>
                         ) : null}
-                      </td>
-                      <td className="px-2 py-2 align-middle">
-                        <span className="inline-flex items-center gap-1.5">
-                          <AlarmSign flag={r.flag} ctx={ctx} />
-                          <FlagChip
-                            flag={r.flag}
-                            value={r.value}
-                            referenceLow={r.referenceLow}
-                            referenceHigh={r.referenceHigh}
-                          />
-                        </span>
-                      </td>
-                      <td className="px-2 py-2 align-middle font-mono text-xs tracking-tight">
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-1">
+                      <AlarmSign flag={r.flag} ctx={ctx} />
+                      <FlagChip
+                        flag={r.flag}
+                        value={r.value}
+                        referenceLow={r.referenceLow}
+                        referenceHigh={r.referenceHigh}
+                      />
+                      <WorkflowStatusChip
+                        status={r.status ?? "pending_review"}
+                      />
+                    </div>
+                    <p className="mt-1.5 pl-1 text-sm leading-snug text-muted-foreground">
+                      <span className="font-mono text-xs tracking-tight text-foreground/80">
                         {r.accessionNumber}
-                      </td>
-                      <td className="px-2 py-2 align-middle">
-                        <WorkflowStatusChip
-                          status={r.status ?? "pending_review"}
+                      </span>
+                      <span aria-hidden="true"> · </span>
+                      {analyzerLabel(r.analyzerId)}
+                      <span aria-hidden="true"> · </span>
+                      <span className="font-medium tabular-nums text-foreground/85">
+                        {new Date(r.observedAt).toLocaleString()}
+                      </span>
+                    </p>
+                    <div className="mt-1 pl-1">
+                      <ManualAttribution result={r} />
+                    </div>
+                    {canEditManualResult(r) &&
+                    editableAccessionNumbers.has(r.accessionNumber) ? (
+                      <div className="mt-2 pl-1">
+                        <ManualResultEntryButton
+                          accessionNumber={r.accessionNumber}
+                          testCode={r.orderedTestCode ?? r.testCode}
+                          testName={r.testName ?? r.testCode}
+                          resultComponentCode={
+                            r.resultComponentCode ?? undefined
+                          }
+                          resultId={r.id}
+                          existingResult={{
+                            value: r.value,
+                            units: r.units,
+                            flag: r.flag,
+                            referenceLow: r.referenceLow,
+                            referenceHigh: r.referenceHigh,
+                          }}
                         />
-                      </td>
-                      <td className="px-2 py-2 align-middle">
-                        {canEditManualResult(r) &&
-                        editableAccessionNumbers.has(r.accessionNumber) ? (
-                          <ManualResultEntryButton
-                            accessionNumber={r.accessionNumber}
-                            testCode={r.orderedTestCode ?? r.testCode}
-                            testName={r.testName ?? r.testCode}
-                            resultComponentCode={
-                              r.resultComponentCode ?? undefined
-                            }
-                            existingResult={{
-                              value: r.value,
-                              units: r.units,
-                              flag: r.flag,
-                              referenceLow: r.referenceLow,
-                              referenceHigh: r.referenceHigh,
-                            }}
-                          />
-                        ) : null}
-                      </td>
-                    </tr>
-                  );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
           )}
 
           <p className="mt-2 text-[11px] text-muted-foreground">

@@ -192,6 +192,63 @@ model DeviceEnrollmentCode {
   @@index([expiresAt])
 }
 
+/// Staff messaging conversation (1:1 DM or named channel).
+model Conversation {
+  id        String   @id
+  /// dm | channel
+  kind      String
+  slug      String?
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  members   ConversationMember[]
+  messages  Message[]
+
+  @@unique([kind, slug])
+  @@index([kind])
+  @@index([updatedAt])
+}
+
+model ConversationMember {
+  id             String   @id @default(cuid())
+  conversationId String
+  staffId        String
+  /// member | admin
+  role           String   @default("member")
+  joinedAt       DateTime @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, staffId])
+  @@index([staffId])
+}
+
+model Message {
+  id              String   @id
+  conversationId  String
+  senderStaffId   String
+  body            String
+  createdAt       DateTime @default(now())
+  /// Monotonic per edge for stable display order when sync arrives out of order.
+  localSequence   Int
+  /// pending | synced | failed
+  synced          String   @default("pending")
+  /// edge | cloud
+  origin          String   @default("edge")
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, localSequence])
+  @@index([synced, createdAt])
+  @@index([createdAt])
+}
+
+/// Cursor for cloud→edge message pull.
+model MessagingSyncMeta {
+  id                 String   @id @default("singleton")
+  nextLocalSequence  Int      @default(1)
+  lastCloudPullAt    DateTime?
+  updatedAt          DateTime @updatedAt
+}
+
 /// Append-only clinical audit trail (WORM on edge).
 model AuditEvent {
   id           String   @id @default(cuid())

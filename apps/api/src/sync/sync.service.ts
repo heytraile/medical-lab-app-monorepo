@@ -14,6 +14,8 @@ import type {
   ReleaseQueueGroup,
   ReleaseAccessionResponse,
   StaffUpsertEventPayload,
+  ConversationUpsertEventPayload,
+  MessageCreatedEventPayload,
 } from "@drax-lis/contracts";
 import {
   assembleReleaseQueueGroups,
@@ -25,6 +27,7 @@ import {
   shouldApplyResultBatchUpdate,
 } from "./result-sync.helpers";
 import { StaffProvisioningService } from "../lab-staff/staff-provisioning.service";
+import { MessagingCloudService } from "../messaging/messaging-cloud.service";
 
 type StoredEvent = {
   eventId: string;
@@ -47,6 +50,7 @@ export class SyncService {
     private readonly supabase: SupabaseService,
     private readonly audit: AuditService,
     private readonly staffProvisioning: StaffProvisioningService,
+    private readonly messagingCloud: MessagingCloudService,
   ) {}
 
   async ingest(request: SyncEventsRequest): Promise<SyncEventsResponse> {
@@ -278,6 +282,22 @@ export class SyncService {
         if (patient?.id) {
           this.memoryPatients.set(String(patient.id), patient);
         }
+      }
+      return;
+    }
+
+    if (type === "result.deleted") {
+      const resultIds = (payload.resultIds as string[]) ?? [];
+      for (const id of resultIds) {
+        if (!id) continue;
+        const existing = this.memoryResults.get(id);
+        if (String(existing?.status ?? "") === "released") {
+          this.logger.warn(
+            `Skip delete for released memory result ${id}`,
+          );
+          continue;
+        }
+        this.memoryResults.delete(id);
       }
       return;
     }
@@ -800,6 +820,38 @@ export class SyncService {
       return;
     }
 
+    if (type === "result.deleted") {
+      const resultIds = ((payload.resultIds as string[]) ?? []).filter(Boolean);
+      if (!resultIds.length) return;
+
+      const { data: existingRows, error: selectError } = await client
+        .from("results")
+        .select("edge_result_id, status")
+        .in("edge_result_id", resultIds);
+      if (selectError) throw selectError;
+
+      const deletableIds = (existingRows ?? [])
+        .filter((row) => String(row.status ?? "") !== "released")
+        .map((row) => String(row.edge_result_id))
+        .filter(Boolean);
+      const skippedReleased = (existingRows ?? [])
+        .filter((row) => String(row.status ?? "") === "released")
+        .map((row) => String(row.edge_result_id));
+
+      for (const id of skippedReleased) {
+        this.logger.warn(`Skip delete for released cloud result ${id}`);
+      }
+
+      if (deletableIds.length) {
+        const { error } = await client
+          .from("results")
+          .delete()
+          .in("edge_result_id", deletableIds);
+        if (error) throw error;
+      }
+      return;
+    }
+
     if (type === "staff.upsert") {
       const staffPayload = payload as unknown as StaffUpsertEventPayload;
       await this.staffProvisioning.upsertFromEdge(staffPayload);
@@ -816,6 +868,23 @@ export class SyncService {
       });
       return;
     }
+
+    if (type === "conversation.upsert") {
+      const conversationPayload =
+        payload as unknown as ConversationUpsertEventPayload;
+      await this.messagingCloud.projectConversationUpsert(conversationPayload);
+      return;
+    }
+
+    if (type === "message.created") {
+      const messagePayload = payload as unknown as MessageCreatedEventPayload;
+      await this.messagingCloud.projectMessageCreated(messagePayload);
+      return;
+    }
+  }
+
+  pullMessagesSince(since: string) {
+    return this.messagingCloud.pullSince(since);
   }
 
   listMemory() {

@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { Menu, Search } from "lucide-react";
@@ -11,6 +11,7 @@ import {
 } from "../components/notification-center";
 import { NotificationProvider } from "../lib/notification-store";
 import { PatientNameOrderProvider } from "../lib/patient-name-order";
+import { cn } from "../lib/utils";
 
 export const Route = createFileRoute("/_lab")({
   component: LabLayout,
@@ -20,6 +21,9 @@ function LabLayout() {
   const { queryClient } = Route.useRouteContext();
   const [searchOpen, setSearchOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  /** Messenger owns the viewport — no outer page scroll / padding. */
+  const fillViewport = pathname === "/messages";
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -57,8 +61,20 @@ function LabLayout() {
                   <NotificationCenter />
                 </div>
               </header>
-              <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
-                <div className="mx-auto w-full max-w-none">
+              <div
+                className={cn(
+                  "min-h-0 flex-1",
+                  fillViewport
+                    ? "overflow-hidden p-0"
+                    : "overflow-y-auto p-4 sm:p-6 md:p-8",
+                )}
+              >
+                <div
+                  className={cn(
+                    "mx-auto w-full",
+                    fillViewport ? "flex h-full min-h-0 max-w-none flex-col" : "max-w-none",
+                  )}
+                >
                   <Outlet />
                 </div>
               </div>

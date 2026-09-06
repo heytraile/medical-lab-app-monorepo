@@ -9,9 +9,16 @@ import { ReportsService } from "../reports/reports.service";
 import { MailService } from "../reports/mail.service";
 import { LabStaffModule } from "../lab-staff/lab-staff.module";
 import { DevicesModule } from "../devices/devices.module";
+import { MessagingCloudModule } from "../messaging/messaging-cloud.module";
 
 @Module({
-  imports: [AuthModule, AuditModule, LabStaffModule, DevicesModule],
+  imports: [
+    AuthModule,
+    AuditModule,
+    LabStaffModule,
+    DevicesModule,
+    MessagingCloudModule,
+  ],
   controllers: [
     SyncController,
     CloudReadController,
