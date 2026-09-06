@@ -41,11 +41,13 @@ import { ConfirmAccessionActionDialog } from "../../components/confirm-accession
 import { useCatalog } from "../../lib/use-catalog";
 import { useAuth } from "../../lib/auth";
 import { useUnsavedWorkGuard } from "../../lib/use-unsaved-work-guard";
+import { useIsWide } from "../../lib/use-media-query";
 import { Button } from "../../components/ui/button";
 import { ScrollContainer } from "../../components/ui/scroll-container";
 import { Select } from "../../components/ui/select";
 import { cn } from "../../lib/utils";
 import type { SpecimenInfo } from "@drax-lis/contracts";
+import { AccessionMobileWizard } from "../../components/accessioning/accession-mobile-wizard";
 
 export const Route = createFileRoute("/_lab/accession")({
   component: AccessionPage,
@@ -392,6 +394,88 @@ function AccessionPage() {
 
   const showPatientReminder =
     !selected && !isRegistered && expandedTests.length > 0;
+
+  const isWide = useIsWide();
+
+  const mobileWizard = (
+    <AccessionMobileWizard
+      selected={selected}
+      onSelectPatient={setSelected}
+      onAccessionScan={(accession) => {
+        void navigate({ to: "/labels", search: { accession } });
+      }}
+      catalog={catalogQ.data}
+      selections={selections}
+      onSelectionsChange={setSelections}
+      expandedTests={expandedTests}
+      panelCount={panelCount}
+      individualCount={individualCount}
+      fasting={fasting}
+      specimenInfo={specimenInfo}
+      onSpecimenInfoChange={setSpecimenInfo}
+      currentUserId={auth.session?.user?.id ?? auth.profile?.id}
+      printLabel={printLabel}
+      onPrintLabelChange={setPrintLabel}
+      copies={copies}
+      onCopiesChange={setCopies}
+      signedIn={Boolean(auth.accessToken)}
+      isRegistered={isRegistered}
+      registeredSpecimens={registeredSpecimens}
+      primaryAccession={primaryAccession}
+      previewLabels={previewLabels}
+      previewPhase={previewPhase}
+      previewLoading={previewLoading}
+      previewWarning={previewWarning}
+      specimenGroupCount={specimenGroups.length}
+      mutation={mutation}
+      reprintPending={reprintMutation.isPending}
+      onReprint={() =>
+        reprintMutation.mutate(
+          registeredSpecimens.map((s) => s.accessionNumber),
+        )
+      }
+      onStartNew={startNewAccession}
+      onRequestStartOver={requestStartOver}
+      draftDirty={draftDirty}
+      pendingConfirmation={pendingConfirmation}
+    />
+  );
+
+  if (!isWide) {
+    return (
+      <>
+        {mobileWizard}
+        {mutation.isError && !confirmPayload && (
+          <p className="px-3 text-sm text-lab-danger">
+            {mutation.error instanceof ApiError
+              ? mutation.error.message
+              : "Accession failed — please try again."}
+          </p>
+        )}
+        {confirmPayload && (
+          <IdentityConfirmDialog
+            payload={confirmPayload}
+            busy={mutation.isPending}
+            onCancel={() => {
+              setConfirmPayload(null);
+              mutation.reset();
+            }}
+            onConfirm={confirmIdentity}
+          />
+        )}
+        <ConfirmAccessionActionDialog
+          open={discardOpen}
+          onOpenChange={(open) => {
+            if (!open) closeDiscardPrompt();
+          }}
+          title="Discard accession draft?"
+          description="You'll lose the current patient and test selections."
+          confirmLabel="Discard"
+          onConfirm={() => confirmDiscard()}
+        />
+      </>
+    );
+  }
 
   return (
     <AccessioningShell

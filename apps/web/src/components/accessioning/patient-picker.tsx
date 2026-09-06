@@ -119,7 +119,7 @@ export function PatientPicker({
     <div
       className={cn(
         fillHeight
-          ? "flex min-h-0 flex-1 flex-col gap-3"
+          ? "flex h-full min-h-0 flex-1 flex-col gap-3"
           : "space-y-3",
         className,
       )}

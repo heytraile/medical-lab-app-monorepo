@@ -247,8 +247,8 @@ function LabelsPage() {
       title="Labels"
       description="Reprint tube labels, verify accessions, and check printer alignment."
     >
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div className="order-2 space-y-4 rounded-xl border border-border bg-card p-5 shadow-sm lg:order-1">
+      <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
+        <div className="order-2 space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm lg:order-1 lg:p-5">
           <label className="block space-y-1.5">
             <span className="flex items-center gap-2 text-sm font-medium">
               <ScanLine className="size-4" />

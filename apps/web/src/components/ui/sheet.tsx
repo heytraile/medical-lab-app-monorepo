@@ -12,9 +12,15 @@ export const SheetDescription = RadixDialog.Description;
 type SheetSide = "left" | "bottom";
 
 const sideClasses: Record<SheetSide, string> = {
-  left: "inset-y-0 left-0 h-svh w-[min(20rem,85vw)] border-r data-[state=closed]:-translate-x-full",
-  bottom:
-    "inset-x-0 bottom-0 max-h-[85svh] w-full rounded-t-xl border-t data-[state=closed]:translate-y-full",
+  left: cn(
+    "inset-y-0 left-0 h-svh min-h-0 w-[min(20rem,85vw)] border-r",
+    "data-[state=open]:sheet-left-open data-[state=closed]:sheet-left-closed",
+  ),
+  // Tall sheet so patient/result detail gets room; height is definite for nested scroll.
+  bottom: cn(
+    "inset-x-0 bottom-0 h-[92svh] max-h-[92svh] min-h-0 w-full rounded-t-2xl border-t",
+    "data-[state=open]:sheet-bottom-open data-[state=closed]:sheet-bottom-closed",
+  ),
 };
 
 export const SheetContent = React.forwardRef<
@@ -26,11 +32,16 @@ export const SheetContent = React.forwardRef<
   }
 >(({ className, children, side = "left", label, ...props }, ref) => (
   <RadixDialog.Portal>
-    <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]" />
+    <RadixDialog.Overlay
+      className={cn(
+        "fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]",
+        "data-[state=open]:sheet-overlay-open data-[state=closed]:sheet-overlay-closed",
+      )}
+    />
     <RadixDialog.Content
       ref={ref}
       className={cn(
-        "fixed z-50 flex flex-col overflow-hidden border-border bg-card shadow-2xl outline-none transition-transform duration-200",
+        "fixed z-50 flex flex-col overflow-hidden border-border bg-card shadow-2xl outline-none",
         sideClasses[side],
         className,
       )}
@@ -51,7 +62,7 @@ export function SheetCloseButton({ className }: { className?: string }) {
       type="button"
       aria-label="Close"
       className={cn(
-        "grid size-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        "grid size-10 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
         className,
       )}
     >

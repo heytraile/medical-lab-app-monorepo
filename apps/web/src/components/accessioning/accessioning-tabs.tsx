@@ -10,7 +10,7 @@ export function AccessioningTabs() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   return (
-    <div className="inline-flex h-9 items-center rounded-lg bg-muted p-1 text-muted-foreground">
+    <div className="inline-flex h-10 items-center rounded-lg bg-muted p-1 text-muted-foreground lg:h-9">
       {TABS.map((tab) => {
         const active = pathname === tab.to;
         return (
@@ -18,7 +18,7 @@ export function AccessioningTabs() {
             key={tab.to}
             to={tab.to}
             className={cn(
-              "inline-flex items-center justify-center rounded-md px-3 py-1 text-sm font-medium transition-all",
+              "inline-flex h-full items-center justify-center rounded-md px-3 text-sm font-medium transition-all lg:py-1",
               active
                 ? "bg-card text-foreground shadow-sm"
                 : "hover:text-foreground",

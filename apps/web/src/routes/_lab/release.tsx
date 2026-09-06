@@ -9,6 +9,8 @@ import { ConfirmAccessionActionDialog } from "../../components/confirm-accession
 import { ReleaseQueueEmptyState } from "../../components/release-queue-empty-state";
 import { ReleaseQueueMasterDetail } from "../../components/release-queue-master-detail";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { useIsWide } from "../../lib/use-media-query";
+import { cn } from "../../lib/utils";
 
 export const Route = createFileRoute("/_lab/release")({
   component: ReleasePage,
@@ -52,6 +54,7 @@ function storeReleaseQueueTab(tab: ReleaseQueueTab) {
 function ReleasePage() {
   const auth = useAuth();
   const qc = useQueryClient();
+  const isWide = useIsWide();
   const allowed = canAuthorize(auth.role);
   const [activeTab, setActiveTabState] = useState<ReleaseQueueTab>(
     readStoredReleaseQueueTab,
@@ -235,36 +238,51 @@ function ReleasePage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Authorization
-          </p>
-          <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-            Release queue
-          </h2>
-          <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-            Sign off on submitted results, then send reports when you are ready.
-            Items stay on your list until you remove them.
-          </p>
+    <div
+      className={cn(
+        "mx-auto w-full",
+        isWide
+          ? "max-w-7xl space-y-6"
+          : "flex h-full min-h-0 max-w-none flex-col",
+      )}
+    >
+      {isWide ? (
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Authorization
+            </p>
+            <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+              Release queue
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
+              Sign off on submitted results, then send reports when you are ready.
+              Items stay on your list until you remove them.
+            </p>
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {auth.role ? (
+              <span>
+                Signed in as <Badge variant="muted">{auth.role}</Badge>
+              </span>
+            ) : (
+              <Link
+                to="/login"
+                className="text-accent underline-offset-2 hover:underline"
+              >
+                Sign in
+              </Link>
+            )}
+          </div>
         </div>
-        <div className="text-sm text-muted-foreground">
-          {auth.role ? (
-            <span>
-              Signed in as <Badge variant="muted">{auth.role}</Badge>
-            </span>
-          ) : (
-            <Link
-              to="/login"
-              className="text-accent underline-offset-2 hover:underline"
-            >
-              Sign in
-            </Link>
-          )}
-        </div>
-      </div>
+      ) : null}
 
+      <div
+        className={cn(
+          "space-y-3",
+          !isWide && "flex min-h-0 flex-1 flex-col space-y-2 p-3",
+        )}
+      >
       {!auth.accessToken && (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">
           Sign in required.{" "}
@@ -274,7 +292,7 @@ function ReleasePage() {
         </p>
       )}
 
-      {auth.accessToken && allowed && isAdmin(auth.role) && (
+      {auth.accessToken && allowed && isAdmin(auth.role) && isWide && (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
           You can sign off on results and manage who else can. Use{" "}
           <Link to="/staff" className="font-medium text-foreground underline-offset-2 hover:underline">
@@ -319,11 +337,12 @@ function ReleasePage() {
         <Tabs
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as ReleaseQueueTab)}
+          className={cn(!isWide && "flex min-h-0 flex-1 flex-col")}
         >
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
             <TabsList>
               <TabsTrigger value="authorization">
-                Authorization queue
+                {isWide ? "Authorization queue" : "Authorize"}
                 {authorizationGroups.length > 0 ? (
                   <Badge variant="muted" className="ml-2 text-[10px]">
                     {authorizationGroups.length}
@@ -331,7 +350,7 @@ function ReleasePage() {
                 ) : null}
               </TabsTrigger>
               <TabsTrigger value="ready">
-                Ready to send
+                {isWide ? "Ready to send" : "Ready"}
                 {readyGroups.length > 0 ? (
                   <Badge variant="muted" className="ml-2 text-[10px]">
                     {readyGroups.length}
@@ -353,15 +372,22 @@ function ReleasePage() {
             ) : null}
           </div>
 
-          <TabsContent value="authorization" className="mt-4">
+          <TabsContent
+            value="authorization"
+            className={cn("mt-4", !isWide && "mt-2 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden")}
+          >
             {renderGroupList(authorizationGroups, "authorization", "authorization")}
           </TabsContent>
 
-          <TabsContent value="ready" className="mt-4">
+          <TabsContent
+            value="ready"
+            className={cn("mt-4", !isWide && "mt-2 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden")}
+          >
             {renderGroupList(readyGroups, "ready", "ready")}
           </TabsContent>
         </Tabs>
       )}
+      </div>
 
       <ConfirmAccessionActionDialog
         open={clearDialogOpen}

@@ -585,12 +585,15 @@ function BenchPage() {
     <div
       className={cn(
         "mx-auto w-full",
-        splitDocked
-          ? "flex min-h-0 flex-col gap-5 lg:h-[calc(100svh-7rem)]"
-          : "space-y-5",
-        split ? "max-w-none" : "max-w-[min(100%,90rem)]",
+        isWide
+          ? splitDocked
+            ? "flex min-h-0 flex-col gap-5 lg:h-[calc(100svh-7rem)]"
+            : "space-y-5"
+          : "flex h-full min-h-0 flex-col gap-2 p-3",
+        split && isWide ? "max-w-none" : isWide ? "max-w-[min(100%,90rem)]" : "max-w-none",
       )}
     >
+      {isWide ? (
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -615,8 +618,17 @@ function BenchPage() {
               } · ${filtered.length} of ${data.length} results`}
         </span>
       </div>
+      ) : (
+        <div className="flex shrink-0 items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">
+            {isFetching
+              ? "Refreshing…"
+              : `${groupSummaries.size} patient${groupSummaries.size === 1 ? "" : "s"}`}
+          </p>
+        </div>
+      )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <Tabs value={tab} onValueChange={(v) => setTab(v as TabFilter)}>
           <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
@@ -671,7 +683,8 @@ function BenchPage() {
           "gap-4",
           split &&
             "grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.9fr)] xl:items-stretch",
-          splitDocked && "min-h-0 flex-1",
+          (splitDocked || !isWide) && "min-h-0 flex-1",
+          !isWide && "flex flex-col",
         )}
       >
         {!isDesktop ? (
@@ -682,6 +695,8 @@ function BenchPage() {
                 : "No results for this view. Try clearing your filters."}
             </p>
           ) : (
+            <ScrollContainer className="min-h-0 flex-1">
+            <div className="space-y-3 p-1 pb-4">
             <BenchMobileList
               rows={modelRows}
               groupSummaries={groupSummaries}
@@ -698,6 +713,8 @@ function BenchPage() {
                 setFocusedResultId(target?.original.id ?? null);
               }}
             />
+            </div>
+            </ScrollContainer>
           )
         ) : (
         /* Grey canvas: the gaps between patient blocks are this showing through. */

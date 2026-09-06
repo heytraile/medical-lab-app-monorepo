@@ -200,7 +200,7 @@ function OrdersLookupPage() {
             wrapperClassName="flex-1"
             leftSlot={<ScanLine className="size-4 text-muted-foreground" />}
           />
-          <Button type="submit" variant="secondary">
+          <Button type="submit" variant="secondary" size="lg" className="min-h-10 shrink-0 lg:h-9 lg:min-h-0 lg:px-3 lg:text-sm">
             Look up
           </Button>
         </form>
@@ -209,7 +209,7 @@ function OrdersLookupPage() {
           <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {deferredFilter ? "Matching accessions" : "Recent accessions"}
           </p>
-            <ScrollContainer className="max-h-64 rounded-md border border-border">
+            <ScrollContainer className="max-h-[min(50svh,20rem)] rounded-md border border-border lg:max-h-64">
               <ul className="divide-y divide-border">
                 {specimensQ.isLoading && (
                   <li className="px-3 py-2 text-sm text-muted-foreground">
@@ -233,7 +233,7 @@ function OrdersLookupPage() {
                         type="button"
                         aria-current={isSelected ? "true" : undefined}
                         className={cn(
-                          "flex w-full flex-col items-start gap-1 border-l-2 px-3 py-2.5 text-left text-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-2",
+                          "flex w-full flex-col items-start gap-1 border-l-2 px-3 py-3 text-left text-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-2 lg:py-2.5",
                           isSelected
                             ? "border-l-accent bg-accent/10"
                             : "border-l-transparent hover:bg-muted",

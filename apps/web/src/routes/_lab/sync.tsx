@@ -4,6 +4,7 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { api, ApiError } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
+import { useIsWide } from "../../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab/sync")({
   component: SyncPage,
@@ -16,6 +17,7 @@ function formatCount(n: number | undefined): string {
 
 function SyncPage() {
   const qc = useQueryClient();
+  const isWide = useIsWide();
   const { data, isLoading, error } = useQuery({
     queryKey: ["syncStatus"],
     queryFn: () => api.syncStatus(),
@@ -35,29 +37,39 @@ function SyncPage() {
     (data?.pending ?? 0) > 0 || (data?.failed ?? 0) > 0;
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5">
+    <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          Connectivity
-        </p>
-        <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-          Connection
-        </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          These numbers count <strong>sync messages</strong> on this lab
-          computer (a send queue to the central system). They are{" "}
-          <strong>not</strong> a count of patients, tests, or rows in the cloud
-          database.
-        </p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          If work looks stuck after you submit results, try{" "}
-          <strong>Send now</strong>.
-        </p>
+        {isWide ? (
+          <>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Connectivity
+            </p>
+            <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
+              Connection
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              These numbers count <strong>sync messages</strong> on this lab
+              computer (a send queue to the central system). They are{" "}
+              <strong>not</strong> a count of patients, tests, or rows in the cloud
+              database.
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              If work looks stuck after you submit results, try{" "}
+              <strong>Send now</strong>.
+            </p>
+          </>
+        ) : (
+          <p className="text-sm text-muted-foreground">
+            Sync queue on this lab PC. Tap <strong>Send now</strong> if work looks
+            stuck.
+          </p>
+        )}
         <div className="mt-3">
           <Button
             type="button"
             variant="outline"
-            size="sm"
+            size={isWide ? "sm" : "lg"}
+            className={cn(!isWide && "min-h-11 w-full")}
             disabled={drainM.isPending}
             onClick={() => drainM.mutate()}
           >

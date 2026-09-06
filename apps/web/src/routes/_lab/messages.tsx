@@ -261,9 +261,9 @@ function MessagesPage() {
   const showThreadOnMobile = Boolean(selectedId);
 
   return (
-    <div className="flex h-full min-h-0 items-stretch justify-center bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-muted/40 via-background to-background px-3 pt-3 sm:px-4 sm:pt-4 md:px-5 lg:px-6">
-      {/* Explicit shorter height leaves clear air under the card */}
-      <div className="mx-auto flex h-[calc(100%-1.75rem)] w-full max-w-6xl min-h-0 flex-col sm:h-[calc(100%-2.25rem)] md:h-[calc(100%-2.75rem)] lg:h-[calc(100%-3.25rem)]">
+    <div className="flex h-full min-h-0 items-stretch justify-center bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-muted/40 via-background to-background px-2 pt-2 sm:px-4 sm:pt-4 md:px-5 lg:px-6">
+      {/* Card fills remaining space above bottom nav */}
+      <div className="mx-auto flex h-full w-full max-w-6xl min-h-0 flex-col pb-2 sm:pb-3">
         <div className="flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-border/80 bg-card shadow-lg shadow-black/5 ring-1 ring-black/5 dark:shadow-black/40 dark:ring-white/5">
           {/* Conversation list */}
           <aside

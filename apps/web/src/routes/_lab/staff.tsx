@@ -30,6 +30,7 @@ import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { FormErrorSummary, FormField } from "../../components/forms/form-field";
 import { cn } from "../../lib/utils";
+import { useIsWide } from "../../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab/staff")({
   component: StaffPage,
@@ -38,6 +39,7 @@ export const Route = createFileRoute("/_lab/staff")({
 function StaffPage() {
   const auth = useAuth();
   const qc = useQueryClient();
+  const isWide = useIsWide();
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deviceCodeStaff, setDeviceCodeStaff] = useState<StaffMember | null>(
@@ -85,9 +87,9 @@ function StaffPage() {
   const rows = staffQ.data ?? (usingPlaceholder ? PLACEHOLDER_STAFF : []);
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
+    <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3 lg:gap-4">
+        <div className={cn(!isWide && "hidden")}>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Admin
           </p>
@@ -116,7 +118,12 @@ function StaffPage() {
           </p>
         </div>
         {!isCloudMode && (
-          <Button type="button" onClick={() => setRegisterOpen(true)}>
+          <Button
+            type="button"
+            size={isWide ? "default" : "lg"}
+            className={cn(!isWide && "min-h-10 w-full sm:w-auto")}
+            onClick={() => setRegisterOpen(true)}
+          >
             Add staff
           </Button>
         )}
@@ -129,6 +136,99 @@ function StaffPage() {
         </p>
       )}
 
+      {!isWide ? (
+        <ul className="space-y-2">
+          {staffQ.isLoading && (
+            <li className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+              Loading staff…
+            </li>
+          )}
+          {!staffQ.isLoading && rows.length === 0 && (
+            <li className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+              No staff registered yet.
+            </li>
+          )}
+          {rows.map((member) => (
+            <li
+              key={member.id}
+              className="rounded-xl border border-border bg-card p-4 shadow-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-medium">{member.fullName}</p>
+                  <p className="truncate text-sm text-muted-foreground">
+                    {member.email}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  <StaffRoleBadge role={member.role} />
+                  <StaffJobTitleBadge jobTitle={member.jobTitle} />
+                  <Badge variant={member.isActive ? "ok" : "muted"}>
+                    {member.isActive ? "Active" : "Inactive"}
+                  </Badge>
+                </div>
+              </div>
+              {!usingPlaceholder ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="min-h-10 flex-1"
+                    onClick={() => setEditingId(member.id)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="min-h-10 flex-1"
+                    disabled={toggleActive.isPending}
+                    onClick={() => toggleActive.mutate(member)}
+                  >
+                    {member.isActive ? "Deactivate" : "Activate"}
+                  </Button>
+                  {!isCloudMode &&
+                  (member.role === "admin" ||
+                    member.role === "authorizer") ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="lg"
+                      className="min-h-10 w-full"
+                      onClick={() => setDeviceCodeStaff(member)}
+                    >
+                      Issue cloud device
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+              {editingId === member.id ? (
+                <div className="mt-3 border-t border-border pt-3">
+                  <StaffRow
+                    member={member}
+                    readOnly={usingPlaceholder}
+                    editing
+                    layout="card"
+                    onEdit={() => setEditingId(member.id)}
+                    onCancelEdit={() => setEditingId(null)}
+                    onSaved={() => {
+                      setEditingId(null);
+                      void qc.invalidateQueries({ queryKey: ["staff"] });
+                      void qc.invalidateQueries({
+                        queryKey: ["staff-collectors"],
+                      });
+                    }}
+                    onToggleActive={() => toggleActive.mutate(member)}
+                    togglePending={toggleActive.isPending}
+                  />
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : (
       <div className="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <table className="w-full text-sm">
           <thead>
@@ -187,6 +287,7 @@ function StaffPage() {
           </tbody>
         </table>
       </div>
+      )}
 
       <RegisterStaffDialog
         open={registerOpen}
@@ -213,6 +314,7 @@ function StaffRow({
   onToggleActive,
   togglePending,
   onIssueDevice,
+  layout = "row",
 }: {
   member: StaffMember;
   readOnly?: boolean;
@@ -223,6 +325,8 @@ function StaffRow({
   onToggleActive: () => void;
   togglePending: boolean;
   onIssueDevice?: () => void;
+  /** card = form-only block for mobile list (no <tr>). */
+  layout?: "row" | "card";
 }) {
   const {
     register,
@@ -267,9 +371,7 @@ function StaffRow({
       : null;
 
   if (editing) {
-    return (
-      <tr className="border-b border-border">
-        <td className="px-4 py-3" colSpan={6}>
+    const form = (
           <form
             className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto] sm:items-start"
             noValidate
@@ -322,14 +424,16 @@ function StaffRow({
             <div className="flex flex-wrap gap-2 sm:pt-6">
               <Button
                 type="submit"
-                size="sm"
+                size={layout === "card" ? "lg" : "sm"}
+                className={layout === "card" ? "min-h-10" : undefined}
                 disabled={saveMutation.isPending || isSubmitting}
               >
                 Save
               </Button>
               <Button
                 type="button"
-                size="sm"
+                size={layout === "card" ? "lg" : "sm"}
+                className={layout === "card" ? "min-h-10" : undefined}
                 variant="secondary"
                 onClick={onCancelEdit}
               >
@@ -341,6 +445,12 @@ function StaffRow({
               <FormErrorSummary message={serverError} className="mt-2" />
             </div>
           </form>
+    );
+    if (layout === "card") return form;
+    return (
+      <tr className="border-b border-border">
+        <td className="px-4 py-3" colSpan={6}>
+          {form}
         </td>
       </tr>
     );

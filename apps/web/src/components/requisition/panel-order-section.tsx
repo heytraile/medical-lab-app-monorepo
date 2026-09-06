@@ -34,12 +34,12 @@ export function PanelOrderSection({
 
   return (
     <section className={cn("flex h-full min-h-0 flex-col", className)}>
-      <p className="mb-2 text-base font-semibold">Test profiles & panels</p>
+      <p className="mb-2 shrink-0 text-base font-semibold">Test profiles & panels</p>
       <ClearableInput
         value={panelSearch}
         onChange={(e) => setPanelSearch(e.target.value)}
         placeholder="Search panels…"
-        wrapperClassName="mb-3"
+        wrapperClassName="mb-3 shrink-0"
         className="h-10"
       />
       <ScrollContainer className="min-h-0 flex-1">

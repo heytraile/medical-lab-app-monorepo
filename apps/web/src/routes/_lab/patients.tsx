@@ -9,7 +9,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { ClearableInput } from "../../components/ui/clearable-input";
 import { cn } from "../../lib/utils";
-import { useIsDesktop } from "../../lib/use-media-query";
+import { useIsDesktop, useIsWide } from "../../lib/use-media-query";
 
 type PatientsSearch = {
   register?: boolean;
@@ -35,6 +35,7 @@ function PatientsPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const isDesktop = useIsDesktop();
+  const isWide = useIsWide();
 
   useEffect(() => {
     if (openRegister) setRegisterOpen(true);
@@ -48,13 +49,13 @@ function PatientsPage() {
   const rows = patientsQ.data ?? [];
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
+    <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3 lg:gap-4">
+        <div className={cn(!isWide && "hidden")}>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Registry
           </p>
-          <h2 className="font-display text-2xl font-semibold sm:text-3xl tracking-tight">
+          <h2 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
             Patients
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -62,13 +63,18 @@ function PatientsPage() {
             accessioning and bench review.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
           <span className="text-xs text-muted-foreground">
             {patientsQ.isFetching
               ? "Refreshing…"
               : `${rows.length} patient${rows.length === 1 ? "" : "s"}`}
           </span>
-          <Button type="button" onClick={() => setRegisterOpen(true)}>
+          <Button
+            type="button"
+            size={isWide ? "default" : "lg"}
+            className={cn(!isWide && "min-h-10 flex-1 sm:flex-none")}
+            onClick={() => setRegisterOpen(true)}
+          >
             Register patient
           </Button>
         </div>
@@ -123,19 +129,22 @@ function PatientsPage() {
               key={p.id}
               type="button"
               onClick={() => setSelectedId(p.id)}
-              className="w-full rounded-xl border border-border bg-card p-3 text-left shadow-sm transition-colors hover:bg-muted/35"
+              className={cn(
+                "w-full rounded-xl border border-border bg-card p-3.5 text-left shadow-sm transition-colors hover:bg-muted/35",
+                selectedId === p.id && "ring-1 ring-inset ring-accent/40",
+              )}
             >
               <div className="flex items-start justify-between gap-2">
-                <span className="min-w-0 truncate font-medium">
+                <span className="min-w-0 truncate text-base font-medium">
                   {p.displayName}
                 </span>
                 <StatusBadges patient={p} />
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="mt-1.5 text-xs text-muted-foreground">
                 <span className="font-mono">{p.mrn}</span> ·{" "}
                 {p.dateOfBirth ?? "—"} · {p.sex ?? "—"}
               </p>
-              <div className="mt-1 flex flex-wrap gap-1">
+              <div className="mt-1.5 flex flex-wrap gap-1">
                 {p.identityOrigin === "local_provisional" && (
                   <Badge variant="warn" className="px-1 py-0 text-[10px]">
                     Provisional

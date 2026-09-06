@@ -11,6 +11,7 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { FormErrorSummary, FormField } from "../../components/forms/form-field";
+import { useIsWide } from "../../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab/profile")({
   component: ProfilePage,
@@ -18,6 +19,7 @@ export const Route = createFileRoute("/_lab/profile")({
 
 function ProfilePage() {
   const auth = useAuth();
+  const isWide = useIsWide();
   const signedIn = Boolean(auth.accessToken);
   const canEditName = Boolean(auth.session?.user?.id) && !auth.isDevSession;
 
@@ -90,7 +92,8 @@ function ProfilePage() {
     auth.profile?.email ?? auth.session?.user?.email ?? "—";
 
   return (
-    <div className="mx-auto w-full max-w-lg space-y-6">
+    <div className="mx-auto w-full max-w-lg space-y-4 lg:space-y-6">
+      {isWide ? (
       <div>
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Account
@@ -102,8 +105,9 @@ function ProfilePage() {
           Your staff identity for Bench, registration, and release.
         </p>
       </div>
+      ) : null}
 
-      <div className="space-y-4 rounded-xl border border-border bg-card p-5">
+      <div className="space-y-4 rounded-xl border border-border bg-card p-4 lg:p-5">
         <div className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Display name
@@ -180,7 +184,12 @@ function ProfilePage() {
               {...register("fullName")}
             />
           </FormField>
-          <Button type="submit" disabled={isSubmitting}>
+          <Button
+            type="submit"
+            size={isWide ? "default" : "lg"}
+            className={!isWide ? "min-h-11 w-full" : undefined}
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Saving…" : "Save name"}
           </Button>
           {message && (

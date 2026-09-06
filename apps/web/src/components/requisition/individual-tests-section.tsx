@@ -73,10 +73,10 @@ export function IndividualTestsSection({
   }
 
   return (
-    <section className={cn("flex min-h-0 flex-col", className)}>
-      <p className="mb-2 text-base font-semibold">Individual tests</p>
+    <section className={cn("flex h-full min-h-0 flex-col", className)}>
+      <p className="mb-2 shrink-0 text-base font-semibold">Individual tests</p>
 
-      <ScrollContainer className="mb-3 max-h-24">
+      <ScrollContainer className="mb-3 max-h-24 shrink-0">
         <div className="flex flex-wrap gap-1.5">
         <CategoryPill
           label="All"
@@ -100,7 +100,7 @@ export function IndividualTestsSection({
         value={testSearch}
         onChange={(e) => setTestSearch(e.target.value)}
         placeholder={`Search ${activeCategoryLabel}…`}
-        wrapperClassName="mb-3"
+        wrapperClassName="mb-3 shrink-0"
         className="h-10"
       />
 

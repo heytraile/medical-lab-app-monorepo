@@ -4,6 +4,8 @@ import { ReleaseQueueDetailPanel } from "./release-queue-detail-panel";
 import { ReleaseQueueListItem } from "./release-queue-list-item";
 import { ConfirmAccessionActionDialog } from "./confirm-accession-action-dialog";
 import { ScrollContainer } from "./ui/scroll-container";
+import { Sheet, SheetContent } from "./ui/sheet";
+import { useIsWide } from "../lib/use-media-query";
 import { cn } from "../lib/utils";
 
 type Props = {
@@ -31,6 +33,7 @@ export function ReleaseQueueMasterDetail({
   onDismissFromQueue,
   className,
 }: Props) {
+  const isWide = useIsWide();
   const [selectedAccession, setSelectedAccession] = useState<string | null>(
     null,
   );
@@ -80,58 +83,87 @@ export function ReleaseQueueMasterDetail({
   const selectedGroup =
     groups.find((g) => g.accessionNumber === selectedAccession) ?? null;
 
+  const list = (
+    <ScrollContainer
+      className={cn(
+        "min-h-0 rounded-xl border border-border bg-muted/10",
+        isWide ? "h-full" : "h-full flex-1",
+      )}
+    >
+      <ul className="space-y-2 p-2">
+        {groups.map((group) => (
+          <ReleaseQueueListItem
+            key={`${group.queuePhase}-${group.accessionNumber}`}
+            group={group}
+            selected={selectedAccession === group.accessionNumber}
+            onSelect={() => setSelectedAccession(group.accessionNumber)}
+            canRelease={canRelease}
+            releasingAccession={releasingAccession}
+            onReleaseAccession={onReleaseAccession}
+            returningAccession={returningAccession}
+            onReturnToBench={() =>
+              setReturnDialogAccession(group.accessionNumber)
+            }
+            dismissingAccession={dismissingAccession}
+            onDismissFromQueue={() =>
+              setDismissDialogAccession(group.accessionNumber)
+            }
+            actionPending={actionPending}
+          />
+        ))}
+      </ul>
+    </ScrollContainer>
+  );
+
   return (
     <>
-      <div
-        className={cn(
-          "grid min-h-[28rem] grid-cols-1 gap-4 lg:min-h-[32rem] lg:grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:items-stretch",
-          className,
-        )}
-      >
-        <ScrollContainer className="min-h-0 max-h-[50vh] rounded-xl border border-border bg-muted/10 lg:max-h-none">
-          <ul className="space-y-2 p-2">
-            {groups.map((group) => (
-              <ReleaseQueueListItem
-                key={`${group.queuePhase}-${group.accessionNumber}`}
-                group={group}
-                selected={selectedAccession === group.accessionNumber}
-                onSelect={() => setSelectedAccession(group.accessionNumber)}
-                canRelease={canRelease}
-                releasingAccession={releasingAccession}
-                onReleaseAccession={onReleaseAccession}
-                returningAccession={returningAccession}
-                onReturnToBench={() =>
-                  setReturnDialogAccession(group.accessionNumber)
-                }
-                dismissingAccession={dismissingAccession}
-                onDismissFromQueue={() =>
-                  setDismissDialogAccession(group.accessionNumber)
-                }
-                actionPending={actionPending}
-              />
-            ))}
-          </ul>
-        </ScrollContainer>
-
-        <div className="flex min-h-[16rem] min-w-0 flex-col lg:min-h-0">
-          {selectedGroup ? (
-            <ReleaseQueueDetailPanel
-              group={selectedGroup}
-              className="min-h-0 flex-1"
-            />
-          ) : (
-            <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center shadow-sm">
-              <p className="text-sm font-medium text-foreground">
-                Select a patient
-              </p>
-              <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                Choose a name from the list to see their test results and
-                sign-off details.
-              </p>
-            </div>
+      {isWide ? (
+        <div
+          className={cn(
+            "grid min-h-0 flex-1 grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] items-stretch gap-4",
+            className,
           )}
+        >
+          {list}
+          <div className="flex min-h-0 min-w-0 flex-col">
+            {selectedGroup ? (
+              <ReleaseQueueDetailPanel
+                group={selectedGroup}
+                className="min-h-0 flex-1"
+              />
+            ) : (
+              <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center shadow-sm">
+                <p className="text-sm font-medium text-foreground">
+                  Select a patient
+                </p>
+                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
+                  Choose a name from the list to see their test results and
+                  sign-off details.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
+          {list}
+          <Sheet
+            open={Boolean(selectedGroup)}
+            onOpenChange={(open) => {
+              if (!open) setSelectedAccession(null);
+            }}
+          >
+            <SheetContent side="bottom" label="Release details" className="p-0">
+              {selectedGroup ? (
+                <ReleaseQueueDetailPanel
+                  group={selectedGroup}
+                  embedded
+                />
+              ) : null}
+            </SheetContent>
+          </Sheet>
+        </div>
+      )}
 
       <ConfirmAccessionActionDialog
         open={returnDialogAccession !== null}
