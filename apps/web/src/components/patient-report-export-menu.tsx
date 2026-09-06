@@ -36,6 +36,7 @@ import { cn } from "../lib/utils";
 type Props = {
   patientId: string;
   patientLabel?: string;
+  accessionNumber?: string;
   /** When false, hide export (e.g. bench has no released results for this patient). */
   releaseEligible?: boolean;
   variant?: "default" | "outline" | "ghost";
@@ -46,6 +47,7 @@ type Props = {
 export function PatientReportExportMenu({
   patientId,
   patientLabel,
+  accessionNumber,
   releaseEligible = true,
   variant = "outline",
   size = "sm",
@@ -73,26 +75,30 @@ export function PatientReportExportMenu({
 
   const signedIn = Boolean(auth.accessToken);
 
-  // Gates visibility of the export controls: they should only ever appear
-  // once an authorizer has released at least one result for this patient.
-  // Reuses the same cloud report endpoint the export itself calls, so
-  // there's a single source of truth for "released" rather than a second
-  // edge-side notion that could drift.
   const reportSummaryQ = useQuery({
-    queryKey: ["patient-report-summary", patientId],
-    queryFn: () => api.patientReport(patientId),
+    queryKey: ["patient-report-summary", patientId, accessionNumber],
+    queryFn: () => api.patientReport(patientId, accessionNumber),
     enabled: signedIn && releaseEligible && Boolean(patientId),
     staleTime: 15_000,
     retry: false,
   });
   const hasReleasedResults = (reportSummaryQ.data?.summary.resultCount ?? 0) > 0;
+  const cloudSyncMessage = !signedIn
+    ? null
+    : reportSummaryQ.isLoading
+      ? "Checking cloud for the released report…"
+      : reportSummaryQ.isError
+        ? "Released on the bench, but the cloud report is not ready yet. Try again in a moment."
+        : hasReleasedResults
+          ? null
+          : "Released on the bench. Waiting for the cloud copy before PDF or email can be generated.";
 
   async function runExport(mode: ReportPageSize | "json") {
     if (!signedIn) return;
     setError(null);
     setLoading(mode);
     try {
-      const payload = await api.patientReport(patientId);
+      const payload = await api.patientReport(patientId, accessionNumber);
       assertReportHasResults(payload);
       if (mode === "json") {
         downloadPatientReportJson(payload);
@@ -123,11 +129,12 @@ export function PatientReportExportMenu({
     setLoading("email");
     try {
       const parsed = EmailPatientReportFormSchema.parse(values);
-      const payload = await api.patientReport(patientId);
+      const payload = await api.patientReport(patientId, accessionNumber);
       assertReportHasResults(payload);
       await api.emailPatientReport(patientId, {
         to: parsed.to,
         recipientType: emailRecipientType,
+        accessionNumber,
       });
       setOpen(false);
       setEmailRecipientType(null);
@@ -167,14 +174,7 @@ export function PatientReportExportMenu({
     );
   }
 
-  // While we don't yet know the release status, or we know there's nothing
-  // released, keep the export options out of view entirely — not just
-  // disabled — rather than showing a control that will only error on click.
-  if (
-    !releaseEligible ||
-    reportSummaryQ.isLoading ||
-    !hasReleasedResults
-  ) {
+  if (!releaseEligible) {
     return null;
   }
 
@@ -197,7 +197,9 @@ export function PatientReportExportMenu({
           size={size}
           className={cn("gap-1", className)}
           aria-label={
-            patientLabel
+            accessionNumber
+              ? `Export released report for accession ${accessionNumber}`
+              : patientLabel
               ? `Export report for ${patientLabel}`
               : "Export patient report"
           }
@@ -217,34 +219,41 @@ export function PatientReportExportMenu({
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 p-1">
         <p className="px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Released results only
+          {accessionNumber
+            ? `Released · ${accessionNumber}`
+            : "All released accessions"}
         </p>
+        {cloudSyncMessage ? (
+          <p className="mx-2 mb-2 rounded-md bg-amber-500/10 px-2 py-1.5 text-xs text-amber-900 dark:text-amber-200">
+            {cloudSyncMessage}
+          </p>
+        ) : null}
         <ExportOption
           icon={FileText}
           label="PDF — Letter (8.5×11)"
           busy={loading === "letter"}
-          disabled={loading !== null}
+          disabled={loading !== null || !hasReleasedResults}
           onClick={() => void runExport("letter")}
         />
         <ExportOption
           icon={FileText}
           label="PDF — Legal (8.5×14)"
           busy={loading === "legal"}
-          disabled={loading !== null}
+          disabled={loading !== null || !hasReleasedResults}
           onClick={() => void runExport("legal")}
         />
         <ExportOption
           icon={FileJson}
           label="Download data file"
           busy={loading === "json"}
-          disabled={loading !== null}
+          disabled={loading !== null || !hasReleasedResults}
           onClick={() => void runExport("json")}
         />
         <ExportOption
           icon={Mail}
           label="Email to doctor"
           busy={loading === "email" && emailRecipientType === "doctor"}
-          disabled={loading !== null}
+          disabled={loading !== null || !hasReleasedResults}
           onClick={() => {
             setEmailRecipientType("doctor");
             emailForm.reset({ to: "" });
@@ -255,7 +264,7 @@ export function PatientReportExportMenu({
           icon={Mail}
           label="Email to patient"
           busy={loading === "email" && emailRecipientType === "patient"}
-          disabled={loading !== null}
+          disabled={loading !== null || !hasReleasedResults}
           onClick={() => {
             setEmailRecipientType("patient");
             emailForm.reset({ to: "" });

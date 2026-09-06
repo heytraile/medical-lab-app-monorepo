@@ -30,7 +30,7 @@ Every mutating action stores an **actor snapshot** (JSON) at event time:
 
 Snapshots are denormalized so renaming a user later does not rewrite history.
 
-Result and specimen rows also store snapshots on submit/release/register columns (`submitted_by_snapshot`, `released_by_snapshot`, `registered_by_snapshot`) for fast display without joining audit.
+Result and specimen rows also store snapshots on submit/release/register columns (`submitted_by_snapshot`, `released_by_snapshot`, `registered_by_snapshot`) for fast display without joining audit. Manual rows additionally project immutable entry attribution and the latest edit attribution; the append-only audit log remains the full edit history.
 
 ---
 
@@ -44,8 +44,8 @@ Result and specimen rows also store snapshots on submit/release/register columns
 | `result.accession_recalled` | Tech recalls submission → back to `pending_review` |
 | `result.accession_rejected` | Authorizer returns accession to bench → `pending_review` |
 | `result.accession_released` | Authorizer releases whole accession → all pending results → `released` |
-| `result.released` | Per-result release (legacy API; UI uses accession release) |
-| `result.value_updated` | Post-ingest correction (future) |
+| `result.manual_entered` | Authenticated tech creates a manual result; records the entry actor/time separately from clinical observation time |
+| `result.value_updated` | Authenticated tech edits a manual result on Bench; records previous/current value, units, flag, reference range, actor, and edit time |
 | `report.exported` | PDF/JSON download (future hook) |
 | `report.emailed` | Report emailed to doctor or patient (`recipientType`, sender reference in audit) |
 | `review_request.created` | Tech notifies authorizer (alert only) |

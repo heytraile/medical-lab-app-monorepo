@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, ApiError } from "../../lib/api";
 import { canAuthorize, isAdmin, useAuth } from "../../lib/auth";
 import { Badge } from "../../components/ui/badge";
@@ -17,6 +17,22 @@ export const Route = createFileRoute("/_lab/release")({
 const RELEASE_QUEUE_TAB_KEY = "release-queue-tab";
 
 type ReleaseQueueTab = "authorization" | "ready";
+
+async function mirrorReleasedAccession(accessionNumber: string) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await api.markAccessionReleased(accessionNumber);
+      return;
+    } catch (error) {
+      lastError = error;
+      if (attempt < 2) {
+        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastError;
+}
 
 function readStoredReleaseQueueTab(): ReleaseQueueTab {
   if (typeof window === "undefined") return "authorization";
@@ -56,6 +72,8 @@ function ReleasePage() {
   const [dismissingAccession, setDismissingAccession] = useState<string | null>(
     null,
   );
+  const [mirrorWarning, setMirrorWarning] = useState<string | null>(null);
+  const mirrorAttempts = useRef(new Set<string>());
 
   const queueQ = useQuery({
     queryKey: ["release-queue"],
@@ -70,15 +88,20 @@ function ReleasePage() {
     mutationFn: async (accessionNumber: string) => {
       const released = await api.releaseAccession(accessionNumber);
       try {
-        await api.markAccessionReleased(accessionNumber);
+        await mirrorReleasedAccession(accessionNumber);
+        return { released, mirrorFailed: false, accessionNumber };
       } catch {
-        // Cloud release succeeded; edge mirror may fail if edge is down
+        return { released, mirrorFailed: true, accessionNumber };
       }
-      return released;
     },
     onMutate: (accessionNumber) => setReleasingAccession(accessionNumber),
     onSettled: () => setReleasingAccession(null),
-    onSuccess: () => {
+    onSuccess: ({ mirrorFailed, accessionNumber }) => {
+      setMirrorWarning(
+        mirrorFailed
+          ? `${accessionNumber} was released in cloud, but the bench mirror has not confirmed yet. The system will retry; do not resubmit or recall it.`
+          : null,
+      );
       setActiveTab("ready");
       void qc.invalidateQueries({ queryKey: ["release-queue"] });
       void qc.invalidateQueries({ queryKey: ["cloud-results"] });
@@ -148,12 +171,41 @@ function ReleasePage() {
     [groups],
   );
 
+  // Reconcile cloud-authoritative released accessions back to edge whenever an
+  // authorizer opens the Ready tab. The edge endpoint is idempotent.
+  useEffect(() => {
+    if (!auth.accessToken) return;
+    for (const group of readyGroups) {
+      if (mirrorAttempts.current.has(group.accessionNumber)) continue;
+      mirrorAttempts.current.add(group.accessionNumber);
+      void mirrorReleasedAccession(group.accessionNumber)
+        .then(() => {
+          void qc.invalidateQueries({ queryKey: ["results"] });
+        })
+        .catch(() => {
+          setMirrorWarning(
+            `${group.accessionNumber} is released in cloud, but the bench mirror is still pending. It will retry when this page is reopened.`,
+          );
+        });
+    }
+  }, [auth.accessToken, qc, readyGroups]);
+
   function renderGroupList(
     tabGroups: typeof groups,
     emptyVariant: "authorization" | "ready",
     tabKey: string,
   ) {
-    if (queueQ.isLoading) {
+    if (!auth.hasCloudSession) {
+      return (
+        <p className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-8 text-center text-sm text-amber-950 dark:text-amber-100">
+          {allowed
+            ? "The release queue could not connect to the cloud copy. Sign out and sign in again as an authorizer or admin, then reopen this page."
+            : "The release queue is only available to sign-off staff with a cloud session. Sign in as an authorizer or admin."}
+        </p>
+      );
+    }
+
+    if (queueQ.isLoading || !queueQ.isFetched) {
       return (
         <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
           Loading release queue…
@@ -337,6 +389,12 @@ function ReleasePage() {
           {releaseM.error instanceof ApiError
             ? releaseM.error.message
             : "Release failed"}
+        </p>
+      )}
+
+      {mirrorWarning && (
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+          {mirrorWarning}
         </p>
       )}
 

@@ -1,12 +1,18 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { readFile } from "fs/promises";
 import { join } from "path";
+import {
+  getCatalogItem,
+  instrumentToCatalogCodes,
+  normalizeCode,
+  type AnalyzerId,
+} from "@drax-lis/catalog";
 import { PrismaService } from "../prisma/prisma.service";
 import { PatientsSeedService } from "../patients/patients-seed.service";
 import { displayName, normalizeMrn } from "../patients/patient-normalize";
 
 type DemoResult = {
-  analyzerId: string;
+  analyzerId: AnalyzerId;
   testCode: string;
   testName?: string;
   value: string;
@@ -34,25 +40,38 @@ export class DemoSeedService {
   ) {}
 
   async seedBench() {
-    const patientSeed = await this.patientsSeed.seed();
     const cases = await this.loadFixture();
-    const demoAccessions = cases.map((c) => c.accessionNumber);
+    this.validateFixture(cases);
 
+    const patientSeed = await this.patientsSeed.seed();
+    const demoAccessions = cases.map((c) => c.accessionNumber);
     const purgedOrphans = await this.purgePatientlessPending();
 
-    // Drop piled simulator duplicates for demo accessions before re-seed.
-    // Keep released rows if any; delete everything else on these accessions.
+    const releasedRows = await this.prisma.result.findMany({
+      where: {
+        accessionNumber: { in: demoAccessions },
+        status: "released",
+      },
+      select: { accessionNumber: true },
+      distinct: ["accessionNumber"],
+    });
+    const releasedAccessions = new Set(
+      releasedRows.map((row) => row.accessionNumber),
+    );
+
+    // Deterministically repair only fixture-owned accessions. Released rows
+    // retain their IDs and audit history; stale nonreleased duplicates do not.
     const deleted = await this.prisma.result.deleteMany({
       where: {
         accessionNumber: { in: demoAccessions },
         status: { not: "released" },
       },
     });
-    // Also prune other accession duplicate keys
     const extraDupes = await this.dedupeNonDemoResults();
 
     let specimens = 0;
     let results = 0;
+    let releasedAccessionsPreserved = 0;
     const skipped: string[] = [];
 
     for (const demo of cases) {
@@ -79,6 +98,7 @@ export class DemoSeedService {
 
       const accessionNumber = demo.accessionNumber;
       const barcode = accessionNumber;
+      const hasReleasedResults = releasedAccessions.has(accessionNumber);
 
       await this.prisma.specimen.upsert({
         where: { accessionNumber },
@@ -90,25 +110,46 @@ export class DemoSeedService {
           orderedTestsJson: JSON.stringify(demo.orderedTests ?? []),
           status: "registered",
         },
-        update: {
-          barcode,
-          patientId: patient.id,
-          patientJson: JSON.stringify(patientPayload),
-          orderedTestsJson: JSON.stringify(demo.orderedTests ?? []),
-          status: "registered",
-        },
+        update: hasReleasedResults
+          ? {
+              barcode,
+              patientId: patient.id,
+              patientJson: JSON.stringify(patientPayload),
+              orderedTestsJson: JSON.stringify(demo.orderedTests ?? []),
+            }
+          : {
+              barcode,
+              patientId: patient.id,
+              patientJson: JSON.stringify(patientPayload),
+              orderedTestsJson: JSON.stringify(demo.orderedTests ?? []),
+              status: "registered",
+            },
       });
       specimens += 1;
 
+      if (hasReleasedResults) {
+        releasedAccessionsPreserved += 1;
+        this.logger.log(
+          `Demo bench: preserved released accession ${accessionNumber}`,
+        );
+        continue;
+      }
+
       const observedAt = new Date();
       for (const r of demo.results) {
+        const catalogTestCode = this.resolveResultCatalogCode(demo, r);
+        const instrumentTestCode = normalizeCode(r.testCode);
         await this.prisma.result.create({
           data: {
             accessionNumber,
             barcode,
             analyzerId: r.analyzerId,
-            testCode: r.testCode,
-            orderedTestCode: r.testCode,
+            testCode: catalogTestCode,
+            orderedTestCode: catalogTestCode,
+            instrumentTestCode:
+              instrumentTestCode === catalogTestCode
+                ? null
+                : instrumentTestCode,
             testName: r.testName ?? null,
             value: r.value,
             units: r.units ?? null,
@@ -135,15 +176,12 @@ export class DemoSeedService {
       purgedOrphanResults: purgedOrphans.results,
       purgedOrphanSpecimens: purgedOrphans.specimens,
       clearedPendingOnDemoAccessions: deleted.count,
+      releasedAccessionsPreserved,
       dedupedOther: extraDupes,
       skipped,
     };
   }
 
-  /**
-   * Remove leftover bridge/smoke/sim results that were never registered to a patient.
-   * Keeps released rows; keeps all patient-linked specimens.
-   */
   private async purgePatientlessPending(): Promise<{
     results: number;
     specimens: number;
@@ -152,61 +190,60 @@ export class DemoSeedService {
       where: { patientId: null },
       select: { accessionNumber: true },
     });
-    const patientlessAccessions = orphanSpecimens.map((s) => s.accessionNumber);
-
-    const allSpecimens = await this.prisma.specimen.findMany({
+    const patientlessAccessions = orphanSpecimens.map(
+      (specimen) => specimen.accessionNumber,
+    );
+    const knownSpecimens = await this.prisma.specimen.findMany({
       select: { accessionNumber: true },
     });
-    const knownAccessions = new Set(allSpecimens.map((s) => s.accessionNumber));
-
+    const knownAccessions = new Set(
+      knownSpecimens.map((specimen) => specimen.accessionNumber),
+    );
     const pending = await this.prisma.result.findMany({
       where: { status: { not: "released" } },
       select: { id: true, accessionNumber: true },
     });
-
     const orphanResultIds = pending
       .filter(
-        (r) =>
-          patientlessAccessions.includes(r.accessionNumber) ||
-          !knownAccessions.has(r.accessionNumber),
+        (result) =>
+          patientlessAccessions.includes(result.accessionNumber) ||
+          !knownAccessions.has(result.accessionNumber),
       )
-      .map((r) => r.id);
+      .map((result) => result.id);
 
-    let resultsDeleted = 0;
-    if (orphanResultIds.length) {
-      const res = await this.prisma.result.deleteMany({
-        where: { id: { in: orphanResultIds } },
-      });
-      resultsDeleted = res.count;
-    }
+    const resultsDeleted = orphanResultIds.length
+      ? (
+          await this.prisma.result.deleteMany({
+            where: { id: { in: orphanResultIds } },
+          })
+        ).count
+      : 0;
 
-    let specimensDeleted = 0;
-    if (patientlessAccessions.length) {
-      const remaining = await this.prisma.result.findMany({
-        where: { accessionNumber: { in: patientlessAccessions } },
-        select: { accessionNumber: true },
-        distinct: ["accessionNumber"],
-      });
-      const keep = new Set(remaining.map((r) => r.accessionNumber));
-      const toDelete = patientlessAccessions.filter((a) => !keep.has(a));
-      if (toDelete.length) {
-        const res = await this.prisma.specimen.deleteMany({
-          where: { accessionNumber: { in: toDelete }, patientId: null },
-        });
-        specimensDeleted = res.count;
-      }
-    }
-
-    this.logger.log(
-      `Purged patientless pending: ${resultsDeleted} results, ${specimensDeleted} specimens`,
+    const remaining = patientlessAccessions.length
+      ? await this.prisma.result.findMany({
+          where: { accessionNumber: { in: patientlessAccessions } },
+          select: { accessionNumber: true },
+          distinct: ["accessionNumber"],
+        })
+      : [];
+    const keep = new Set(remaining.map((result) => result.accessionNumber));
+    const removableSpecimens = patientlessAccessions.filter(
+      (accession) => !keep.has(accession),
     );
+    const specimensDeleted = removableSpecimens.length
+      ? (
+          await this.prisma.specimen.deleteMany({
+            where: {
+              accessionNumber: { in: removableSpecimens },
+              patientId: null,
+            },
+          })
+        ).count
+      : 0;
+
     return { results: resultsDeleted, specimens: specimensDeleted };
   }
 
-  /**
-   * For non-demo accessions, keep only the latest row per
-   * (accessionNumber, testCode, analyzerId); delete older pending duplicates.
-   */
   private async dedupeNonDemoResults(): Promise<number> {
     const pending = await this.prisma.result.findMany({
       where: { status: { not: "released" } },
@@ -216,26 +253,66 @@ export class DemoSeedService {
         accessionNumber: true,
         testCode: true,
         analyzerId: true,
-        observedAt: true,
       },
     });
-
     const keep = new Set<string>();
     const remove: string[] = [];
     for (const row of pending) {
       const key = `${row.accessionNumber}|${row.testCode}|${row.analyzerId}`;
-      if (keep.has(key)) {
-        remove.push(row.id);
-      } else {
-        keep.add(key);
+      if (keep.has(key)) remove.push(row.id);
+      else keep.add(key);
+    }
+    if (!remove.length) return 0;
+    return (
+      await this.prisma.result.deleteMany({
+        where: { id: { in: remove } },
+      })
+    ).count;
+  }
+
+  private validateFixture(cases: DemoCase[]): void {
+    for (const demo of cases) {
+      const orderedCodes = new Set(
+        (demo.orderedTests ?? []).map((test) => {
+          const code = normalizeCode(test.code);
+          if (!getCatalogItem(code)) {
+            throw new Error(
+              `Unknown demo ordered test code "${test.code}" on ${demo.accessionNumber}`,
+            );
+          }
+          return code;
+        }),
+      );
+
+      for (const result of demo.results) {
+        const resultCode = this.resolveResultCatalogCode(demo, result);
+        if (!orderedCodes.has(resultCode)) {
+          throw new Error(
+            `Demo result code "${result.testCode}" is not ordered on ${demo.accessionNumber}`,
+          );
+        }
       }
     }
+  }
 
-    if (!remove.length) return 0;
-    const res = await this.prisma.result.deleteMany({
-      where: { id: { in: remove } },
-    });
-    return res.count;
+  private resolveResultCatalogCode(
+    demo: DemoCase,
+    result: DemoResult,
+  ): string {
+    const rawCode = normalizeCode(result.testCode);
+    const orderedCodes = new Set(
+      (demo.orderedTests ?? []).map((test) => normalizeCode(test.code)),
+    );
+    if (getCatalogItem(rawCode) && orderedCodes.has(rawCode)) return rawCode;
+
+    const mapped = instrumentToCatalogCodes(result.analyzerId, rawCode).find(
+      (catalogCode) => orderedCodes.has(normalizeCode(catalogCode)),
+    );
+    if (mapped) return normalizeCode(mapped);
+
+    throw new Error(
+      `Unknown or unordered demo result code "${result.testCode}" on ${demo.accessionNumber}`,
+    );
   }
 
   private async loadFixture(): Promise<DemoCase[]> {

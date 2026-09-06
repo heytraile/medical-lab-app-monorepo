@@ -1,4 +1,5 @@
 import type {
+  ActorSnapshot,
   CatalogResponse,
   DeviceEnrollmentCodeCreate,
   DeviceEnrollmentCodeResponse,
@@ -55,12 +56,24 @@ export const isCloudMode =
 
 const API_URL = isCloudMode ? CLOUD_API_URL : EDGE_API_URL;
 
+function extractApiErrorMessage(body: unknown): string | null {
+  if (!body || typeof body !== "object") return null;
+  const message = (body as { message?: unknown }).message;
+  if (typeof message === "string" && message.trim()) return message;
+  if (Array.isArray(message) && message.length > 0) {
+    const first = message[0];
+    if (typeof first === "string" && first.trim()) return first;
+  }
+  return null;
+}
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
 
   constructor(status: number, statusText: string, path: string, body: unknown) {
-    super(`${status} ${statusText} for ${path}`);
+    const serverMessage = extractApiErrorMessage(body);
+    super(serverMessage ?? `${status} ${statusText} for ${path}`);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
@@ -226,6 +239,12 @@ export type BenchResult = {
   flag: string;
   status?: string;
   observedAt: string;
+  manualEnteredBy?: string | null;
+  manualEnteredBySnapshot?: ActorSnapshot | string | null;
+  manualEnteredAt?: string | null;
+  manualLastEditedBy?: string | null;
+  manualLastEditedBySnapshot?: ActorSnapshot | string | null;
+  manualLastEditedAt?: string | null;
   /** False when result catalog code was not on the accession order. */
   expectedOnOrder?: boolean;
   patient?: BenchPatientSummary | null;
@@ -491,12 +510,6 @@ export const api = {
       `/cloud/specimens?accession=${encodeURIComponent(accession.trim())}`,
       { baseUrl: CLOUD_API_URL, auth: true },
     ),
-  releaseResult: (id: string) =>
-    request<CloudResult>(`/results/${id}/release`, {
-      method: "POST",
-      baseUrl: CLOUD_API_URL,
-      auth: true,
-    }),
   releaseAccession: (accessionNumber: string) =>
     request<{ accessionNumber: string; releasedCount: number; resultIds: string[] }>(
       "/results/release-accession",
@@ -526,9 +539,13 @@ export const api = {
         auth: true,
       },
     ),
-  patientReport: (edgePatientId: string) =>
+  patientReport: (edgePatientId: string, accessionNumber?: string) =>
     request<PatientReportPayload>(
-      `/cloud/patients/${encodeURIComponent(edgePatientId)}/report`,
+      `/cloud/patients/${encodeURIComponent(edgePatientId)}/report${
+        accessionNumber
+          ? `?accessionNumber=${encodeURIComponent(accessionNumber)}`
+          : ""
+      }`,
       {
         baseUrl: CLOUD_API_URL,
         auth: true,
@@ -597,6 +614,7 @@ export const api = {
       recipientType: "doctor" | "patient";
       pageSize?: "letter" | "legal";
       message?: string;
+      accessionNumber?: string;
     },
   ) =>
     request<{ ok: boolean }>(

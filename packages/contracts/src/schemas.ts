@@ -223,6 +223,12 @@ export const CanonicalResultSchema = z.object({
   status: ClinicalResultStatusSchema.default("pending_review"),
   observedAt: z.string().datetime(),
   rawMessageId: z.string().optional(),
+  manualEnteredBy: z.string().optional().nullable(),
+  manualEnteredBySnapshot: z.record(z.unknown()).optional().nullable(),
+  manualEnteredAt: z.string().datetime().optional().nullable(),
+  manualLastEditedBy: z.string().optional().nullable(),
+  manualLastEditedBySnapshot: z.record(z.unknown()).optional().nullable(),
+  manualLastEditedAt: z.string().datetime().optional().nullable(),
 });
 export type CanonicalResult = z.infer<typeof CanonicalResultSchema>;
 

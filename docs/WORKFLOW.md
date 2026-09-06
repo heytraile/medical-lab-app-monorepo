@@ -105,7 +105,9 @@ When a patient is opened on Bench:
 2. **Awaiting manual result** lists every required manual component that does not yet have a result row.
 3. The tech taps **Enter result**, types the observed value (numeric or qualitative), optional units/flag, and saves.
 4. The result is stored with `analyzerId: manual` and status `pending_review` — same submit → authorize → release path as machine results.
-5. **Editing manual results:** In **All results**, each manual row shows **Edit result** only while the accession is on the bench (`pending_review`) — before submit for release. Once submitted (`pending_authorization`), manual results are locked until the tech **Recall from release queue** or the authorizer **Return to bench** (both reset to `pending_review`). After authorizer release (`released`), manual results can never be edited again — the edge API rejects updates and the Bench UI hides the edit action. Instrument retransmits are also skipped once a row is released.
+5. **Editing manual results:** In **All results**, each manual row shows **Edit result** only while the entire accession is on the bench (`pending_review`) — before submit for release. Any submitted row locks all manual creation/editing on that accession until **Recall from release queue** or **Return to bench**. Any released row makes the accession permanently read-only. The edge API enforces the same accession-wide rule as the UI.
+6. Manual rows show the authenticated staff member and entry time, plus the latest editor/time when edited. `observedAt` remains the clinical observation time and is never reused as an audit timestamp.
+7. A released accession acknowledged as incomplete stays locked: missing components display **Not resulted before release** and the accession is labeled **Released incomplete**.
 
 Mixed accessions are normal: e.g. **CREATININE** from Mindray plus **ESR** and **GROUP_RH** entered manually. A hybrid test can show its automated portion as complete while a named visual component remains pending.
 
@@ -134,16 +136,16 @@ Accession shows **Manual** / **Send-out** badges on individual tests and panel m
    - **Incomplete order** warning — lists manual/hybrid components missing when the tech submitted
 6. Authorizer releases → all pending results on that accession move to `released`; audit: `result.accession_released` with result IDs. The accession **stays in the release queue** on the **Ready to send** tab (clinical release ≠ leaving the queue).
 7. **Ready to send** tab — released accessions remain until dismissed:
-   - **Send report** menu — same PDF (Letter/Legal), JSON download, and email to doctor/patient as Bench patient panel (`PatientReportExportMenu`)
+   - **Send report** menu — PDF (Letter/Legal), JSON download, and email for that released accession only
    - **Remove from queue** — hides the accession from Ready to send; results stay `released`
    - **Clear queue** — dismiss all released rows at once (confirmation required)
 8. Dismissal is tracked on cloud `specimens.release_queue_dismissed_at` — it does not undo release. Recall/return to bench resets dismiss so a re-submitted accession can re-enter the queue normally.
 
-**After release:** recall/return is not available — use amend/correct workflow (future). Bench mirrors cloud release on edge (`POST /results/mark-released` after authorizer release): the group shows a **Released** badge, submit/recall are hidden, and the **Released** tab lists completed accessions. Authorizers can send reports from **Ready to send** without opening Bench.
+**After release:** recall/return is not available — use amend/correct workflow (future). Cloud release is authoritative and `released` is terminal: sync, re-submit, demo seeding, and analyzer retransmits cannot downgrade or overwrite a released row. Bench mirrors cloud release on edge (`POST /results/mark-released`) with retries; if the edge is temporarily unavailable, Release shows a synchronization warning rather than silently presenting contradictory state.
 
-**Report scope:** export/email is **patient-scoped** (all released results for that patient), same as Bench — not limited to a single accession row.
+**Report scope:** Bench and Release queue actions are **accession-scoped** and include only released results from the selected accession. The Patients screen may produce a cumulative patient report across all released accessions. Pending results never enter either report.
 
-**Storage vs authorization:** the cloud database stores **one row per analyte** (WBC, HGB, etc.) because analyzers emit per-test results. **Authorization is per accession** — one sign-off covers every test on that request form. **Recall and return are also per accession.**
+**Storage vs authorization:** the cloud database stores **one row per analyte** (WBC, HGB, etc.) because analyzers emit per-test results. **Authorization, submit, recall, return, and Bench workflow controls are per accession** — one accession's state never authorizes or mutates another accession belonging to the same patient.
 
 Groups sort with critical/STAT flags first, then newest submit time.
 

@@ -94,6 +94,13 @@ model Result {
   releasedBySnapshot  String?
   observedAt      DateTime
   rawMessageId    String?
+  /// Authenticated staff attribution for manually entered results.
+  manualEnteredBy String?
+  manualEnteredBySnapshot String?
+  manualEnteredAt DateTime?
+  manualLastEditedBy String?
+  manualLastEditedBySnapshot String?
+  manualLastEditedAt DateTime?
   createdAt       DateTime @default(now())
   specimen        Specimen? @relation(fields: [accessionNumber], references: [accessionNumber])
   rawMessage      RawMessage? @relation(fields: [rawMessageId], references: [id])

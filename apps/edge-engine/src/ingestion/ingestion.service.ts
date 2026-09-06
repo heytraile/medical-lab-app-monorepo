@@ -77,6 +77,34 @@ export class IngestionService {
     const barcode = message.barcode ?? `UNK-${raw.id.slice(0, 8)}`;
     const accessionNumber = barcode;
 
+    const releasedOnAccession = await this.prisma.result.findFirst({
+      where: { accessionNumber, status: "released" },
+      select: { id: true },
+    });
+    if (releasedOnAccession) {
+      this.logger.warn(
+        `Ignored ${input.analyzerId} retransmit for released accession ${accessionNumber}`,
+      );
+      await this.sync.enqueue({
+        type: "result.received",
+        payload: {
+          rawMessageId: raw.id,
+          analyzerId: input.analyzerId,
+          accessionNumber,
+          barcode,
+          results: [],
+          ignoredReason: "accession_released",
+        },
+      });
+      return {
+        rawMessageId: raw.id,
+        accessionNumber,
+        barcode,
+        results: [],
+        ignoredReason: "accession_released",
+      };
+    }
+
     const existingSpecimen = await this.prisma.specimen.findUnique({
       where: { accessionNumber },
     });

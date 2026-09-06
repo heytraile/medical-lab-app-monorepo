@@ -2,7 +2,7 @@
   {
     "mrn": "MRN-7001",
     "accessionNumber": "DHDEMO0001",
-    "orderedTests": [{ "code": "WBC", "name": "White Blood Cells" }, { "code": "HGB", "name": "Hemoglobin" }],
+    "orderedTests": [{ "code": "WBC_DIFF", "name": "WBC / Diff" }, { "code": "HB", "name": "Hb" }],
     "results": [
       {
         "analyzerId": "sysmex_xs1000i",
@@ -31,7 +31,7 @@
   {
     "mrn": "MRN-7002",
     "accessionNumber": "DHDEMO0002",
-    "orderedTests": [{ "code": "GLU", "name": "Glucose" }, { "code": "CREA", "name": "Creatinine" }],
+    "orderedTests": [{ "code": "GLUCOSE_RAND", "name": "GLUCOSE - RAND" }, { "code": "CREATININE", "name": "CREATININE" }],
     "results": [
       {
         "analyzerId": "mindray_bs240",
@@ -78,7 +78,7 @@
   {
     "mrn": "MRN-1001",
     "accessionNumber": "DHDEMO0004",
-    "orderedTests": [{ "code": "Na", "name": "Sodium" }, { "code": "K", "name": "Potassium" }],
+    "orderedTests": [{ "code": "ELECTROLYTES", "name": "ELECTROLYTES" }],
     "results": [
       {
         "analyzerId": "diamond_prolyte",
@@ -107,7 +107,7 @@
   {
     "mrn": "MRN-7006",
     "accessionNumber": "DHDEMO0005",
-    "orderedTests": [{ "code": "PLT", "name": "Platelets" }],
+    "orderedTests": [{ "code": "PLATELETS", "name": "PLATELETS" }],
     "results": [
       {
         "analyzerId": "sysmex_xs1000i",
@@ -125,12 +125,12 @@
   {
     "mrn": "MRN-7010",
     "accessionNumber": "DHDEMO0006",
-    "orderedTests": [{ "code": "ALT", "name": "Alanine Aminotransferase" }],
+    "orderedTests": [{ "code": "ALT_SGPT", "name": "ALT/SGPT" }],
     "results": [
       {
         "analyzerId": "mindray_bs240",
         "testCode": "ALT",
-        "testName": "Alanine Aminotransferase",
+        "testName": "ALT/SGPT",
         "value": "28",
         "units": "U/L",
         "flag": "normal",

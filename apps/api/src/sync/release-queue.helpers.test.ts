@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   assembleReleaseQueueGroups,
+  mergeReleaseQueueGroups,
   worstFlag,
 } from "./release-queue.helpers.js";
 
@@ -140,6 +141,42 @@ describe("assembleReleaseQueueGroups", () => {
     assert.equal(groups[0]?.releasedBy?.fullName, "Dr. Smith");
   });
 
+  it("projects manual entry and edit provenance for authorizers", () => {
+    const groups = assembleReleaseQueueGroups(
+      [
+        {
+          id: "manual-1",
+          accession_number: "ACC-1",
+          analyzer_id: "manual",
+          test_code: "ESR",
+          value: "18",
+          flag: "normal",
+          observed_at: "2026-01-01T11:00:00.000Z",
+          manual_entered_by_snapshot: {
+            userId: "tech-1",
+            role: "tech",
+            fullName: "Lab Tech",
+          },
+          manual_entered_at: "2026-01-01T11:01:00.000Z",
+          manual_last_edited_by_snapshot: {
+            userId: "tech-2",
+            role: "tech",
+            fullName: "Second Tech",
+          },
+          manual_last_edited_at: "2026-01-01T11:05:00.000Z",
+        },
+      ],
+      specimenByAccession,
+      "pending_authorization",
+    );
+
+    assert.equal(groups[0]?.results[0]?.manualEnteredBy?.fullName, "Lab Tech");
+    assert.equal(
+      groups[0]?.results[0]?.manualLastEditedBy?.fullName,
+      "Second Tech",
+    );
+  });
+
   it("includes released accessions without a cloud specimen row", () => {
     const groups = assembleReleaseQueueGroups(
       [
@@ -261,5 +298,29 @@ describe("assembleReleaseQueueGroups", () => {
     assert.equal(groups[0]?.results[0]?.flag, "normal");
     assert.equal(groups[0]?.results[1]?.flag, "high");
     assert.equal(groups[0]?.worstFlag, "high");
+  });
+});
+
+describe("mergeReleaseQueueGroups", () => {
+  it("keeps a released accession on Ready to send even if leftover pending rows exist", () => {
+    const pending = [
+      {
+        accessionNumber: "DHDEMO0007",
+        queuePhase: "pending_authorization" as const,
+      },
+    ];
+    const released = [
+      {
+        accessionNumber: "DHDEMO0007",
+        queuePhase: "released" as const,
+      },
+    ];
+    const merged = mergeReleaseQueueGroups(
+      pending as never,
+      released as never,
+    );
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0]?.queuePhase, "released");
+    assert.equal(merged[0]?.accessionNumber, "DHDEMO0007");
   });
 });

@@ -17,6 +17,7 @@ import {
 } from "./result-status";
 import { cn } from "../lib/utils";
 import { usePatientNameOrder } from "../lib/patient-name-order";
+import { summarizeResultStatuses } from "../lib/result-workflow";
 import { NotifyAuthorizerButton } from "./notify-authorizer-button";
 import { RecallFromReleaseButton } from "./recall-from-release-button";
 import { SubmitForReleaseButton } from "./submit-for-release-button";
@@ -85,22 +86,14 @@ export function summarizeGroup(
   const missingExpectedCount = Object.values(
     missingExpectedByAccession,
   ).reduce((total, rows) => total + rows.length, 0);
+  const workflow = summarizeResultStatuses(results);
   return {
     key,
     patient: results.find((r) => r.patient)?.patient ?? null,
     fallbackLabel: results[0]?.accessionNumber ?? "Unknown specimen",
     testCount: results.length,
     accessionCount: accessions.size,
-    pendingCount: results.filter(
-      (r) => (r.status ?? "pending_review") === "pending_review",
-    ).length,
-    submittedCount: results.filter(
-      (r) => r.status === "pending_authorization",
-    ).length,
-    releasedCount: results.filter((r) => r.status === "released").length,
-    allReleased:
-      results.length > 0 &&
-      results.every((r) => r.status === "released"),
+    ...workflow,
     worstFlag: worst,
     latestObservedAt: latest,
     hasAlarm: isAlarmFlag(worst),
@@ -159,11 +152,14 @@ export function BenchGroupRow({
       ? summary.accessionNumbers[0]
       : `${summary.accessionCount} accessions`;
 
-  const workflowStatus = summary.allReleased
-    ? "released"
-    : summary.submittedCount > 0 && summary.pendingCount === 0
-      ? "pending_authorization"
-      : null;
+  const singleAccession = summary.accessionCount === 1;
+  const workflowStatus = singleAccession
+    ? summary.allReleased
+      ? "released"
+      : summary.submittedCount > 0 && summary.pendingCount === 0
+        ? "pending_authorization"
+        : null
+    : null;
 
   const cellClass = "px-3 py-3.5 align-middle";
 
@@ -281,9 +277,14 @@ export function BenchGroupRow({
                   Quarantined
                 </Badge>
               )}
-              {summary.missingExpectedCount > 0 && (
-                <Badge variant="warn" className="px-1 py-0 text-[10px]">
+              {summary.missingExpectedCount > 0 && !summary.allReleased && (
+                <Badge variant="warn" className="px-1 py-0 text-xs">
                   {summary.missingExpectedCount} manual pending
+                </Badge>
+              )}
+              {summary.allReleased && summary.missingExpectedCount > 0 && (
+                <Badge variant="warn" className="px-1 py-0 text-xs">
+                  Released incomplete
                 </Badge>
               )}
             </div>
@@ -321,7 +322,7 @@ export function BenchGroupRow({
 
       {/* Test */}
       <td className={cellClass}>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-sm text-muted-foreground">
           {summary.testCount} {summary.testCount === 1 ? "test" : "tests"}
           {summary.pendingCount > 0 && ` · ${summary.pendingCount} pending`}
         </span>
@@ -368,10 +369,16 @@ export function BenchGroupRow({
         >
           {workflowStatus ? (
             <WorkflowStatusChip status={workflowStatus} />
+          ) : !singleAccession ? (
+            <Badge variant="muted">Manage per accession</Badge>
           ) : null}
           <div className="flex flex-wrap items-center gap-1.5">
-            <SubmitForReleaseButton summary={summary} />
-            <RecallFromReleaseButton summary={summary} />
+            {singleAccession ? (
+              <>
+                <SubmitForReleaseButton summary={summary} />
+                <RecallFromReleaseButton summary={summary} />
+              </>
+            ) : null}
             <NotifyAuthorizerButton summary={summary} />
           </div>
         </div>

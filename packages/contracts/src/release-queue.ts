@@ -19,6 +19,10 @@ export const ReleaseQueueResultSchema = z.object({
   flag: z.string(),
   observedAt: z.string(),
   analyzerId: z.string(),
+  manualEnteredBy: ActorSnapshotSchema.nullable().optional(),
+  manualEnteredAt: z.string().nullable().optional(),
+  manualLastEditedBy: ActorSnapshotSchema.nullable().optional(),
+  manualLastEditedAt: z.string().nullable().optional(),
 });
 export type ReleaseQueueResult = z.infer<typeof ReleaseQueueResultSchema>;
 

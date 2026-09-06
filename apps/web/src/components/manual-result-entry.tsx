@@ -110,7 +110,9 @@ export function ManualResultEntryDialog({
         <DialogHeader>
           <DialogTitle>{isEdit ? "Edit manual result" : "Enter manual result"}</DialogTitle>
           <DialogDescription>
-            <span className="font-mono">{testCode}</span> — {testName}
+            <span className="text-base font-medium">
+              <span className="font-mono">{testCode}</span> — {testName}
+            </span>
             {resultComponentName &&
             resultComponentName !== "Manual result" ? (
               <>
@@ -135,7 +137,7 @@ export function ManualResultEntryDialog({
           }}
         >
           <div className="space-y-1.5">
-            <label htmlFor="manual-value" className="text-xs font-medium">
+            <label htmlFor="manual-value" className="text-sm font-medium">
               Value
             </label>
             <Input
@@ -149,7 +151,7 @@ export function ManualResultEntryDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="manual-units" className="text-xs font-medium">
+            <label htmlFor="manual-units" className="text-sm font-medium">
               Units (optional)
             </label>
             <Input
@@ -162,7 +164,7 @@ export function ManualResultEntryDialog({
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="manual-flag" className="text-xs font-medium">
+            <label htmlFor="manual-flag" className="text-sm font-medium">
               Flag
             </label>
             <Select
@@ -176,7 +178,7 @@ export function ManualResultEntryDialog({
 
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1.5">
-              <label htmlFor="manual-ref-low" className="text-xs font-medium">
+              <label htmlFor="manual-ref-low" className="text-sm font-medium">
                 Ref low (optional)
               </label>
               <Input
@@ -189,7 +191,7 @@ export function ManualResultEntryDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <label htmlFor="manual-ref-high" className="text-xs font-medium">
+              <label htmlFor="manual-ref-high" className="text-sm font-medium">
                 Ref high (optional)
               </label>
               <Input

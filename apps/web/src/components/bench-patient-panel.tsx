@@ -32,8 +32,15 @@ import { RecallFromReleaseButton } from "./recall-from-release-button";
 import { summarizeGroup } from "./bench-group-row";
 import { ManualResultEntryButton } from "./manual-result-entry";
 import { cn } from "../lib/utils";
-import { canEditManualResult } from "../lib/manual-results";
+import {
+  canEditManualResult,
+  manualAccessionAccess,
+} from "../lib/manual-results";
 import { usePatientNameOrder } from "../lib/patient-name-order";
+import {
+  actorName,
+  formatAttributionTime,
+} from "../lib/result-attribution";
 
 function Field({
   label,
@@ -62,6 +69,24 @@ function fulfillmentBadgeLabel(code: string): string | null {
   if (workflow === "send_out") return "Send-out";
   if (workflow === "hybrid") return "Hybrid";
   return null;
+}
+
+function ManualAttribution({ result }: { result: BenchResult }) {
+  if (result.analyzerId !== "manual") return null;
+  return (
+    <div className="text-xs text-muted-foreground">
+      <p>
+        Entered by {actorName(result.manualEnteredBySnapshot)} ·{" "}
+        {formatAttributionTime(result.manualEnteredAt)}
+      </p>
+      {result.manualLastEditedAt ? (
+        <p>
+          Last edited by {actorName(result.manualLastEditedBySnapshot)} ·{" "}
+          {formatAttributionTime(result.manualLastEditedAt)}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 export function BenchPatientPanel({
@@ -122,10 +147,41 @@ export function BenchPatientPanel({
       new Date(b.observedAt).getTime() - new Date(a.observedAt).getTime(),
   );
 
-  const submitSummary = summarizeGroup(
-    patientId,
-    results,
-    specimensQ.data ?? [],
+  const accessionSummaryByNumber = useMemo(() => {
+    const accessionNumbers = new Set([
+      ...orderedByAccession.map((row) => row.accessionNumber),
+      ...results.map((result) => result.accessionNumber),
+    ]);
+    return new Map(
+      [...accessionNumbers].map((number) => {
+        const accessionResults = results.filter(
+          (result) => result.accessionNumber === number,
+        );
+        return [
+          number,
+          summarizeGroup(
+            `acc:${number}`,
+            accessionResults,
+            specimensQ.data ?? [],
+            accessionResults,
+          ),
+        ];
+      }),
+    );
+  }, [orderedByAccession, results, specimensQ.data]);
+  const editableAccessionNumbers = useMemo(
+    () =>
+      new Set(
+        [...new Set(results.map((result) => result.accessionNumber))].filter(
+          (accessionNumber) =>
+            manualAccessionAccess(
+              results.filter(
+                (result) => result.accessionNumber === accessionNumber,
+              ),
+            ) === "editable",
+        ),
+      ),
+    [results],
   );
 
   const pendingManualByAccession = useMemo(() => {
@@ -141,6 +197,11 @@ export function BenchPatientPanel({
         return {
           accessionNumber: row.accessionNumber,
           pending,
+          access: manualAccessionAccess(
+            results.filter(
+              (result) => result.accessionNumber === row.accessionNumber,
+            ),
+          ),
         };
       })
       .filter((row) => row.pending.length > 0);
@@ -169,13 +230,6 @@ export function BenchPatientPanel({
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <PatientReportExportMenu
-            patientId={patientId}
-            patientLabel={displayName}
-            releaseEligible={submitSummary.releasedCount > 0}
-            variant="outline"
-            size="sm"
-          />
           <Button
             type="button"
             variant="ghost"
@@ -258,10 +312,6 @@ export function BenchPatientPanel({
             </div>
           )}
 
-          <div className="mt-3 space-y-2">
-            <SubmitForReleaseButton summary={submitSummary} fullWidth />
-            <RecallFromReleaseButton summary={submitSummary} fullWidth />
-          </div>
       </div>
 
         {orderedByAccession.length > 0 && (
@@ -270,24 +320,28 @@ export function BenchPatientPanel({
               Ordered tests
             </p>
             <ul className="space-y-3">
-              {orderedByAccession.map((row) => (
+              {orderedByAccession.map((row) => {
+                const accessionSummary = accessionSummaryByNumber.get(
+                  row.accessionNumber,
+                );
+                return (
                 <li key={row.accessionNumber}>
                   <Link
                     to="/orders"
                     search={{ accession: row.accessionNumber }}
-                    className="font-mono text-xs text-primary hover:underline"
+                    className="font-mono text-sm text-primary hover:underline"
                   >
                     {row.accessionNumber}
                   </Link>
-                  <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                  <ul className="mt-1 space-y-0.5 text-sm text-muted-foreground">
                     {row.tests.map((t) => {
                       const badge = fulfillmentBadgeLabel(t.code);
                       return (
                       <li key={`${row.accessionNumber}-${t.code}`}>
-                        <span className="font-mono text-[10px]">{t.code}</span>{" "}
+                        <span className="font-mono text-xs">{t.code}</span>{" "}
                         {t.name ?? t.code}
                         {badge ? (
-                          <Badge variant="muted" className="ml-1.5 px-1 py-0 text-[9px]">
+                          <Badge variant="muted" className="ml-1.5 px-1 py-0 text-[10px]">
                             {badge}
                           </Badge>
                         ) : null}
@@ -295,8 +349,28 @@ export function BenchPatientPanel({
                     );
                     })}
                   </ul>
+                  {accessionSummary ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {accessionSummary.allReleased &&
+                      accessionSummary.missingExpectedCount > 0 ? (
+                        <Badge variant="warn">Released incomplete</Badge>
+                      ) : (
+                        <SubmitForReleaseButton summary={accessionSummary} />
+                      )}
+                      <RecallFromReleaseButton summary={accessionSummary} />
+                      <PatientReportExportMenu
+                        patientId={patientId}
+                        patientLabel={displayName}
+                        accessionNumber={row.accessionNumber}
+                        releaseEligible={accessionSummary.allReleased}
+                        variant="outline"
+                        size="sm"
+                      />
+                    </div>
+                  ) : null}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           </div>
         )}
@@ -312,7 +386,7 @@ export function BenchPatientPanel({
                   <Link
                     to="/orders"
                     search={{ accession: row.accessionNumber }}
-                    className="font-mono text-xs text-primary hover:underline"
+                    className="font-mono text-sm text-primary hover:underline"
                   >
                     {row.accessionNumber}
                   </Link>
@@ -322,8 +396,8 @@ export function BenchPatientPanel({
                         key={`${row.accessionNumber}-${t.orderedTestCode}-${t.componentCode}`}
                         className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-500/25 bg-amber-500/5 px-2 py-1.5"
                       >
-                        <div className="min-w-0 text-xs">
-                          <span className="font-mono text-[10px]">
+                        <div className="min-w-0 text-sm">
+                          <span className="font-mono text-xs">
                             {t.orderedTestCode}
                           </span>{" "}
                           <span className="text-foreground">
@@ -334,7 +408,7 @@ export function BenchPatientPanel({
                           </span>
                           <Badge
                             variant="warn"
-                            className="ml-1.5 px-1 py-0 text-[9px]"
+                            className="ml-1.5 px-1 py-0 text-[10px]"
                           >
                             {t.workflow === "send_out"
                               ? "Send-out"
@@ -343,13 +417,23 @@ export function BenchPatientPanel({
                                 : "Manual"}
                           </Badge>
                         </div>
-                        <ManualResultEntryButton
-                          accessionNumber={row.accessionNumber}
-                          testCode={t.orderedTestCode}
-                          testName={t.orderedTestName}
-                          resultComponentCode={t.componentCode}
-                          resultComponentName={t.componentName}
-                        />
+                        {row.access === "editable" ? (
+                          <ManualResultEntryButton
+                            accessionNumber={row.accessionNumber}
+                            testCode={t.orderedTestCode}
+                            testName={t.orderedTestName}
+                            resultComponentCode={t.componentCode}
+                            resultComponentName={t.componentName}
+                          />
+                        ) : (
+                          <Badge
+                            variant={row.access === "released" ? "muted" : "warn"}
+                          >
+                            {row.access === "released"
+                              ? "Not resulted before release"
+                              : "Locked while awaiting authorization"}
+                          </Badge>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -391,7 +475,7 @@ export function BenchPatientPanel({
                   }}
                 >
                   <div className="flex items-baseline justify-between gap-2 pl-1">
-                    <span className="font-medium">{r.testCode}</span>
+                    <span className="text-base font-medium">{r.testCode}</span>
                     <span className="shrink-0 text-lg font-semibold tabular-nums">
                       <span className={flagValueClass(r.flag, ctx)}>{r.value}</span>
                       {r.units ? (
@@ -411,14 +495,18 @@ export function BenchPatientPanel({
                     />
                     <WorkflowStatusChip status={r.status ?? "pending_review"} />
                   </div>
-                  <p className="mt-1.5 pl-1 text-[10px] text-muted-foreground">
+                  <p className="mt-1.5 pl-1 text-xs text-muted-foreground">
                     <span className="font-mono">{r.accessionNumber}</span> ·{" "}
                     {analyzerLabel(r.analyzerId)}
                   </p>
                   <p className="pl-1 text-sm font-medium tabular-nums text-foreground/85">
                     {new Date(r.observedAt).toLocaleString()}
                   </p>
-                  {canEditManualResult(r) ? (
+                  <div className="mt-1 pl-1">
+                    <ManualAttribution result={r} />
+                  </div>
+                  {canEditManualResult(r) &&
+                  editableAccessionNumbers.has(r.accessionNumber) ? (
                     <div className="mt-2 pl-1">
                       <ManualResultEntryButton
                         accessionNumber={r.accessionNumber}
@@ -443,7 +531,7 @@ export function BenchPatientPanel({
             </ul>
           ) : (
             <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full min-w-[32rem] text-left text-xs">
+              <table className="w-full min-w-[32rem] text-left text-sm">
                 <thead className="border-b border-border bg-muted/40 text-[10px] uppercase tracking-wider text-muted-foreground">
                   <tr>
                     <th className="px-2 py-2 font-medium">Observed</th>
@@ -470,26 +558,27 @@ export function BenchPatientPanel({
                         flagRowClass(r.flag, ctx),
                       )}
                     >
-                      <td className="px-2 py-2 align-middle whitespace-nowrap text-xs font-medium tabular-nums text-foreground/85">
+                      <td className="px-2 py-2 align-middle whitespace-nowrap text-sm font-medium tabular-nums text-foreground/85">
                         {new Date(r.observedAt).toLocaleString()}
                       </td>
                       <td className="px-2 py-2 align-middle">
-                        <div className="font-medium">{r.testCode}</div>
-                        <div className="text-[10px] text-muted-foreground">
+                        <div className="text-sm font-medium">{r.testCode}</div>
+                        <div className="text-xs text-muted-foreground">
                           {analyzerLabel(r.analyzerId)}
                         </div>
+                        <ManualAttribution result={r} />
                       </td>
                       <td className="px-2 py-2 align-middle whitespace-nowrap">
                         <span
                           className={cn(
-                            "text-sm font-semibold tabular-nums",
+                            "text-base font-semibold tabular-nums",
                             flagValueClass(r.flag, ctx),
                           )}
                         >
                           {r.value}
                         </span>
                         {r.units ? (
-                          <span className="ml-1 text-xs font-medium text-muted-foreground">
+                          <span className="ml-1 text-sm font-medium text-muted-foreground">
                             {r.units}
                           </span>
                         ) : null}
@@ -505,7 +594,7 @@ export function BenchPatientPanel({
                           />
                         </span>
                       </td>
-                      <td className="px-2 py-2 align-middle font-mono text-[10px] tracking-tight">
+                      <td className="px-2 py-2 align-middle font-mono text-xs tracking-tight">
                         {r.accessionNumber}
                       </td>
                       <td className="px-2 py-2 align-middle">
@@ -514,7 +603,8 @@ export function BenchPatientPanel({
                         />
                       </td>
                       <td className="px-2 py-2 align-middle">
-                        {canEditManualResult(r) ? (
+                        {canEditManualResult(r) &&
+                        editableAccessionNumbers.has(r.accessionNumber) ? (
                           <ManualResultEntryButton
                             accessionNumber={r.accessionNumber}
                             testCode={r.orderedTestCode ?? r.testCode}

@@ -19,7 +19,6 @@ export const ClinicalAuditEventTypeSchema = z.enum([
   "result.ingested",
   "result.manual_entered",
   "result.submitted_for_release",
-  "result.released",
   "result.accession_released",
   "result.accession_recalled",
   "result.accession_rejected",
@@ -117,6 +116,7 @@ export const EmailPatientReportRequestSchema = z.object({
   recipientType: ReportEmailRecipientTypeSchema,
   pageSize: z.enum(["letter", "legal"]).optional(),
   message: z.string().max(2000).optional(),
+  accessionNumber: z.string().trim().min(1).optional(),
 });
 export type EmailPatientReportRequest = z.infer<
   typeof EmailPatientReportRequestSchema

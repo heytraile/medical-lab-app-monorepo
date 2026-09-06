@@ -57,6 +57,10 @@ type ResultRow = {
   submitted_by_snapshot?: unknown;
   released_at?: string | null;
   released_by_snapshot?: unknown;
+  manual_entered_by_snapshot?: unknown;
+  manual_entered_at?: string | null;
+  manual_last_edited_by_snapshot?: unknown;
+  manual_last_edited_at?: string | null;
 };
 
 export type SpecimenContext = {
@@ -210,6 +214,18 @@ export function assembleReleaseQueueGroups(
         flag: displayFlag,
         observedAt: String(r.observed_at),
         analyzerId: String(r.analyzer_id ?? "unknown"),
+        manualEnteredBy: parseActorSnapshot(
+          r.manual_entered_by_snapshot,
+        ),
+        manualEnteredAt: r.manual_entered_at
+          ? String(r.manual_entered_at)
+          : null,
+        manualLastEditedBy: parseActorSnapshot(
+          r.manual_last_edited_by_snapshot,
+        ),
+        manualLastEditedAt: r.manual_last_edited_at
+          ? String(r.manual_last_edited_at)
+          : null,
       })),
       missingExpectedResults: missingParsed,
       submittedIncomplete: missingParsed.length > 0,
@@ -230,6 +246,22 @@ export function assembleReleaseQueueGroups(
   });
 
   return groups;
+}
+
+/** Released wins: an accession must not stay on Authorization once it is Ready. */
+export function mergeReleaseQueueGroups(
+  pending: ReleaseQueueGroup[],
+  released: ReleaseQueueGroup[],
+): ReleaseQueueGroup[] {
+  const releasedAccessions = new Set(
+    released.map((group) => group.accessionNumber),
+  );
+  return [
+    ...pending.filter(
+      (group) => !releasedAccessions.has(group.accessionNumber),
+    ),
+    ...released,
+  ];
 }
 
 export function actorDisplayName(actor: ActorSnapshot | null): string {

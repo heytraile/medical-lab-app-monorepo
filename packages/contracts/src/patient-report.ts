@@ -1,6 +1,11 @@
 import { z } from "zod";
 import { ResultFlagSchema } from "./schemas";
 
+export const PatientReportQuerySchema = z.object({
+  accessionNumber: z.string().trim().min(1).optional(),
+});
+export type PatientReportQuery = z.infer<typeof PatientReportQuerySchema>;
+
 export const LabReportBrandingSchema = z.object({
   name: z.string(),
   logoUrl: z.string().url().optional().nullable(),

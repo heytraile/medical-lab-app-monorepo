@@ -57,6 +57,15 @@ Whenever something important happens on the lab computer, a small “message” 
 
 The cloud uses these messages to keep its copy of patients, accessions, and results in step with what happened at the bench. Until a “submit for release” message reaches the cloud, the authorizer will not see that work on the Release queue.
 
+### Which copy wins
+
+- The edge is authoritative for analyzer/manual entry and the tech's submit or recall before authorization.
+- The cloud is authoritative for authorizer release and report eligibility.
+- `released` is terminal. An older edge message may not change a cloud-released result's status or clinical value.
+- After cloud release, the app retries the idempotent edge mirror until Bench also shows the accession as released. A mirror delay is surfaced as a warning.
+- Workflow transitions are accession-scoped. A released accession and a newer pending accession for the same patient remain separate.
+- Manual entry and latest-edit actor snapshots/timestamps travel with `result.batch` and `result.submitted`. Cloud projections may display them to authorizers, but sync never applies value or attribution changes to an already released cloud row.
+
 ---
 
 ## Local mode (developing on your own machine)

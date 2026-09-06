@@ -11,6 +11,7 @@ import {
 import {
   DismissReleaseQueueAccessionRequestSchema,
   EmailPatientReportRequestSchema,
+  PatientReportQuerySchema,
   type DeviceSnapshot,
 } from "@drax-lis/contracts";
 import { SyncService } from "./sync.service";
@@ -103,8 +104,15 @@ export class CloudReadController {
   }
 
   @Get("patients/:edgePatientId/report")
-  patientReport(@Param("edgePatientId") edgePatientId: string) {
-    return this.reports.buildPatientReport(edgePatientId);
+  patientReport(
+    @Param("edgePatientId") edgePatientId: string,
+    @Query() query: unknown,
+  ) {
+    const parsed = PatientReportQuerySchema.parse(query);
+    return this.reports.buildPatientReport(
+      edgePatientId,
+      parsed.accessionNumber,
+    );
   }
 
   @Post("patients/:edgePatientId/report/email")
@@ -116,7 +124,10 @@ export class CloudReadController {
     @CurrentDevice() device: DeviceSnapshot | undefined,
   ) {
     const parsed = EmailPatientReportRequestSchema.parse(body);
-    const payload = await this.reports.buildPatientReport(edgePatientId);
+    const payload = await this.reports.buildPatientReport(
+      edgePatientId,
+      parsed.accessionNumber,
+    );
     if (payload.summary.resultCount === 0) {
       throw new BadRequestException(
         "No released results for this patient — release results first",
@@ -158,6 +169,7 @@ export class CloudReadController {
         senderReference,
         senderName,
         senderJobTitle: user.jobTitle ?? null,
+        accessionNumber: parsed.accessionNumber ?? null,
       },
     });
 

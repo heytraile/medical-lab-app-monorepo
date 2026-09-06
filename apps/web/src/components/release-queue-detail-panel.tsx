@@ -127,8 +127,8 @@ export function ReleaseQueueDetailPanel({ group, className }: Props) {
 
         {!isPending && group.patient.edgePatientId ? (
           <p className="text-xs text-muted-foreground">
-            Send report (from the list) includes all released results for this
-            patient, not only the tests shown here.
+            Send report (from the list) includes released results for this
+            accession only.
           </p>
         ) : null}
       </div>
@@ -227,7 +227,25 @@ export function ReleaseQueueDetailPanel({ group, className }: Props) {
                     <FlagChip flag={r.flag} />
                   </td>
                   <td className="px-2 py-2 text-xs text-muted-foreground">
-                    {analyzerLabel(r.analyzerId)}
+                    <p>{analyzerLabel(r.analyzerId)}</p>
+                    {r.analyzerId === "manual" ? (
+                      <>
+                        <p>
+                          Entered by{" "}
+                          {actorLabel(r.manualEnteredBy) ??
+                            "Entry attribution unavailable"}{" "}
+                          · {formatWhen(r.manualEnteredAt)}
+                        </p>
+                        {r.manualLastEditedAt ? (
+                          <p>
+                            Last edited by{" "}
+                            {actorLabel(r.manualLastEditedBy) ??
+                              "Edit attribution unavailable"}{" "}
+                            · {formatWhen(r.manualLastEditedAt)}
+                          </p>
+                        ) : null}
+                      </>
+                    ) : null}
                   </td>
                 </tr>
               ))}

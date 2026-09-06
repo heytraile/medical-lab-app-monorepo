@@ -59,15 +59,28 @@ export class ReportsService {
     private readonly sync: SyncService,
   ) {}
 
-  async buildPatientReport(edgePatientId: string): Promise<PatientReportPayload> {
+  async buildPatientReport(
+    edgePatientId: string,
+    accessionNumber?: string,
+  ): Promise<PatientReportPayload> {
     const generatedAt = new Date().toISOString();
     const lab = await this.loadLabBranding();
 
     if (this.supabase.enabled && this.supabase.client) {
-      return this.buildFromSupabase(edgePatientId, generatedAt, lab);
+      return this.buildFromSupabase(
+        edgePatientId,
+        generatedAt,
+        lab,
+        accessionNumber,
+      );
     }
 
-    return this.buildFromMemory(edgePatientId, generatedAt, lab);
+    return this.buildFromMemory(
+      edgePatientId,
+      generatedAt,
+      lab,
+      accessionNumber,
+    );
   }
 
   private async loadLabBranding(): Promise<LabReportBranding> {
@@ -111,6 +124,7 @@ export class ReportsService {
     edgePatientId: string,
     generatedAt: string,
     lab: LabReportBranding,
+    accessionNumber?: string,
   ): Promise<PatientReportPayload> {
     const client = this.supabase.client!;
 
@@ -132,17 +146,30 @@ export class ReportsService {
       .filter(Boolean)
       .join(" ");
 
-    const { data: specimens, error: specErr } = await client
+    let specimensQuery = client
       .from("specimens")
       .select(
         "accession_number, barcode, specimen_type, registered_at, ordered_tests",
       )
-      .eq("patient_id", p.id)
-      .order("registered_at", { ascending: false });
+      .eq("patient_id", p.id);
+
+    if (accessionNumber) {
+      specimensQuery = specimensQuery.eq("accession_number", accessionNumber);
+    }
+
+    const { data: specimens, error: specErr } = await specimensQuery.order(
+      "registered_at",
+      { ascending: false },
+    );
 
     if (specErr) throw specErr;
 
     const specRows = (specimens ?? []) as CloudSpecimenRow[];
+    if (accessionNumber && specRows.length === 0) {
+      throw new NotFoundException(
+        `Accession ${accessionNumber} not found for patient ${edgePatientId}`,
+      );
+    }
     const accessionNumbers = specRows.map((s) => s.accession_number);
 
     let resultRows: CloudResultRow[] = [];
@@ -179,18 +206,35 @@ export class ReportsService {
     edgePatientId: string,
     generatedAt: string,
     lab: LabReportBranding,
+    accessionNumber?: string,
   ): PatientReportPayload {
     const snapshot = this.sync.getMemoryPatientReportData(edgePatientId);
     if (!snapshot) {
       throw new NotFoundException(`Patient ${edgePatientId} not found in cloud`);
     }
 
+    const specimens = accessionNumber
+      ? snapshot.specimens.filter(
+          (specimen) => specimen.accession_number === accessionNumber,
+        )
+      : snapshot.specimens;
+    if (accessionNumber && specimens.length === 0) {
+      throw new NotFoundException(
+        `Accession ${accessionNumber} not found for patient ${edgePatientId}`,
+      );
+    }
+    const includedAccessions = new Set(
+      specimens.map((specimen) => specimen.accession_number),
+    );
+
     return this.assemblePayload({
       generatedAt,
       lab,
       patient: snapshot.patient,
-      specimens: snapshot.specimens,
-      results: snapshot.results,
+      specimens,
+      results: snapshot.results.filter((result) =>
+        includedAccessions.has(result.accession_number),
+      ),
     });
   }
 

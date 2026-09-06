@@ -27,6 +27,10 @@ import { analyzerLabel } from "../../lib/analyzers";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 import { PatientNameOrderSelect } from "../../components/patient-name-order-select";
 import { patientSortKey } from "../../lib/patient-name";
+import {
+  actorName,
+  formatAttributionTime,
+} from "../../lib/result-attribution";
 import { BenchPatientPanel } from "../../components/bench-patient-panel";
 import { BenchMobileList } from "../../components/bench-mobile-list";
 import { Sheet, SheetContent } from "../../components/ui/sheet";
@@ -193,14 +197,17 @@ function BenchPage() {
       else byKey.set(key, [r]);
     }
     const out = new Map<string, BenchGroupSummary>();
-    for (const [key, rows] of byKey) {
+    for (const key of byKey.keys()) {
+      const fullGroupResults = data.filter(
+        (result) => groupKeyFor(result) === key,
+      );
       out.set(
         key,
         summarizeGroup(
           key,
-          rows,
+          fullGroupResults,
           specimensQ.data ?? [],
-          data.filter((result) => groupKeyFor(result) === key),
+          fullGroupResults,
         ),
       );
     }
@@ -293,7 +300,7 @@ function BenchPage() {
           <SortHeader label="Accession" column={column} />
         ),
         cell: (info) => (
-          <span className="font-mono text-xs tracking-tight">
+          <span className="font-mono text-sm tracking-tight">
             {info.getValue()}
           </span>
         ),
@@ -315,15 +322,21 @@ function BenchPage() {
           const label = row.testName?.trim() || info.getValue();
           return (
             <span className="inline-flex flex-col gap-0.5">
-              <span className="font-medium">{label}</span>
+              <span className="text-base font-medium">{label}</span>
+              {row.analyzerId === "manual" ? (
+                <span className="text-xs text-muted-foreground">
+                  Entered by {actorName(row.manualEnteredBySnapshot)} ·{" "}
+                  {formatAttributionTime(row.manualEnteredAt)}
+                </span>
+              ) : null}
               {row.expectedOnOrder === false ? (
-                <span className="w-fit rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+                <span className="w-fit rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
                   Not ordered
                 </span>
               ) : null}
               {row.instrumentTestCode &&
               row.instrumentTestCode !== row.testCode ? (
-                <span className="font-mono text-[10px] text-muted-foreground">
+                <span className="font-mono text-xs text-muted-foreground">
                   {row.instrumentTestCode}
                 </span>
               ) : null}
@@ -343,7 +356,7 @@ function BenchPage() {
           return (
           <span
             className={cn(
-              "text-base font-semibold tabular-nums",
+              "text-lg font-semibold tabular-nums",
               flagValueClass(row.flag, ctx),
             )}
           >
@@ -357,7 +370,7 @@ function BenchPage() {
         // A value is meaningless without its unit, so the unit tracks the
         // value's prominence rather than fading into the muted column text.
         cell: (info) => (
-          <span className="text-sm font-medium text-muted-foreground">
+          <span className="text-base font-medium text-muted-foreground">
             {info.getValue() ?? "—"}
           </span>
         ),
@@ -438,7 +451,7 @@ function BenchPage() {
     <div className="overflow-x-auto">
       <table
         className={cn(
-          "w-full text-left text-sm",
+          "w-full text-left text-base",
           split ? "min-w-[52rem]" : "min-w-[960px]",
         )}
       >

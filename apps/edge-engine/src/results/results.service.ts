@@ -23,6 +23,15 @@ import { SyncService } from "../sync/sync.service";
 import { AuditService } from "../audit/audit.service";
 import { displayName } from "../patients/patient-normalize";
 
+function parseSnapshot(raw: string | null): ActorSnapshot | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as ActorSnapshot;
+  } catch {
+    return null;
+  }
+}
+
 export type BenchPatientSummary = {
   id: string;
   mrn: string;
@@ -84,14 +93,14 @@ export class ResultsService {
     body: SubmitResultsRequest,
     actor: ActorSnapshot,
   ) {
-    const accessionNumbers = await this.resolveAccessions(body);
-    if (accessionNumbers.length === 0) {
+    const requestedAccessionNumbers = await this.resolveAccessions(body);
+    if (requestedAccessionNumbers.length === 0) {
       throw new BadRequestException("No accession numbers to submit");
     }
 
     const allAccessionResults = await this.prisma.result.findMany({
       where: {
-        accessionNumber: { in: accessionNumbers },
+        accessionNumber: { in: requestedAccessionNumbers },
       },
     });
     const candidates = allAccessionResults.filter((result) =>
@@ -103,6 +112,11 @@ export class ResultsService {
         "No pending results found for those accessions",
       );
     }
+    // Never mutate specimen submission metadata for released-only accessions
+    // that happened to be included in a patient-level request.
+    const accessionNumbers = [
+      ...new Set(candidates.map((result) => result.accessionNumber)),
+    ];
 
     const specimens = await this.prisma.specimen.findMany({
       where: { accessionNumber: { in: accessionNumbers } },
@@ -290,6 +304,8 @@ export class ResultsService {
       ? orderedTestName
       : `${orderedTestName} — ${component.name}`;
     const observedAt = body.observedAt ? new Date(body.observedAt) : new Date();
+    const actionAt = new Date();
+    const actorJson = JSON.stringify(actor);
     const flag = body.flag ?? "unknown";
 
     const existing = await this.prisma.result.findFirst({
@@ -301,6 +317,16 @@ export class ResultsService {
       },
       orderBy: { observedAt: "desc" },
     });
+
+    const releasedOnAccession = await this.prisma.result.findFirst({
+      where: { accessionNumber, status: "released" },
+      select: { id: true },
+    });
+    if (releasedOnAccession) {
+      throw new BadRequestException(
+        `${accessionNumber} has been released and is permanently read-only. Manual results cannot be entered or edited.`,
+      );
+    }
 
     const submittedOnAccession = await this.prisma.result.findFirst({
       where: { accessionNumber, status: "pending_authorization" },
@@ -337,6 +363,9 @@ export class ResultsService {
           referenceHigh: body.referenceHigh ?? null,
           flag,
           status: existing.status || "pending_review",
+          manualLastEditedBy: actor.userId,
+          manualLastEditedBySnapshot: actorJson,
+          manualLastEditedAt: actionAt,
         },
       });
     } else {
@@ -356,6 +385,9 @@ export class ResultsService {
           flag,
           status: "pending_review",
           observedAt,
+          manualEnteredBy: actor.userId,
+          manualEnteredBySnapshot: actorJson,
+          manualEnteredAt: actionAt,
         },
       });
     }
@@ -380,13 +412,24 @@ export class ResultsService {
             flag: result.flag,
             status: result.status,
             observedAt: result.observedAt.toISOString(),
+            manualEnteredBy: result.manualEnteredBy,
+            manualEnteredBySnapshot: parseSnapshot(
+              result.manualEnteredBySnapshot,
+            ),
+            manualEnteredAt: result.manualEnteredAt?.toISOString() ?? null,
+            manualLastEditedBy: result.manualLastEditedBy,
+            manualLastEditedBySnapshot: parseSnapshot(
+              result.manualLastEditedBySnapshot,
+            ),
+            manualLastEditedAt:
+              result.manualLastEditedAt?.toISOString() ?? null,
           },
         ],
       },
     });
 
     await this.audit.log({
-      eventType: "result.manual_entered",
+      eventType: existing ? "result.value_updated" : "result.manual_entered",
       entityType: "result",
       entityId: result.id,
       actor,
@@ -394,10 +437,24 @@ export class ResultsService {
         accessionNumber,
         testCode: orderedTestCode,
         resultComponentCode,
-        value: result.value,
-        units: result.units,
-        flag: result.flag,
-        updated: Boolean(existing),
+        previous: existing
+          ? {
+              value: existing.value,
+              units: existing.units,
+              flag: existing.flag,
+              referenceLow: existing.referenceLow,
+              referenceHigh: existing.referenceHigh,
+            }
+          : null,
+        current: {
+          value: result.value,
+          units: result.units,
+          flag: result.flag,
+          referenceLow: result.referenceLow,
+          referenceHigh: result.referenceHigh,
+        },
+        enteredAt: result.manualEnteredAt?.toISOString() ?? null,
+        editedAt: result.manualLastEditedAt?.toISOString() ?? null,
       },
     });
 
@@ -413,6 +470,15 @@ export class ResultsService {
       flag: result.flag,
       status: result.status,
       observedAt: result.observedAt.toISOString(),
+      manualEnteredBy: result.manualEnteredBy,
+      manualEnteredBySnapshot: parseSnapshot(result.manualEnteredBySnapshot),
+      manualEnteredAt: result.manualEnteredAt?.toISOString() ?? null,
+      manualLastEditedBy: result.manualLastEditedBy,
+      manualLastEditedBySnapshot: parseSnapshot(
+        result.manualLastEditedBySnapshot,
+      ),
+      manualLastEditedAt:
+        result.manualLastEditedAt?.toISOString() ?? null,
     };
   }
 
@@ -508,8 +574,19 @@ export class ResultsService {
     });
 
     if (candidates.length === 0) {
+      const released = await this.prisma.result.findMany({
+        where: { accessionNumber: accession, status: "released" },
+        select: { id: true },
+      });
+      if (released.length > 0) {
+        return {
+          accessionNumber: accession,
+          releasedCount: 0,
+          resultIds: released.map((result) => result.id),
+        };
+      }
       throw new NotFoundException(
-        "No pending authorization results found for accession",
+        "No pending authorization or released results found for accession",
       );
     }
 
@@ -567,6 +644,12 @@ export class ResultsService {
     flag: string;
     status: string;
     observedAt: Date;
+    manualEnteredBy: string | null;
+    manualEnteredBySnapshot: string | null;
+    manualEnteredAt: Date | null;
+    manualLastEditedBy: string | null;
+    manualLastEditedBySnapshot: string | null;
+    manualLastEditedAt: Date | null;
   }) {
     return {
       id: r.id,
@@ -584,6 +667,14 @@ export class ResultsService {
       accessionNumber: r.accessionNumber,
       barcode: r.barcode,
       analyzerId: r.analyzerId,
+      manualEnteredBy: r.manualEnteredBy,
+      manualEnteredBySnapshot: parseSnapshot(r.manualEnteredBySnapshot),
+      manualEnteredAt: r.manualEnteredAt?.toISOString() ?? null,
+      manualLastEditedBy: r.manualLastEditedBy,
+      manualLastEditedBySnapshot: parseSnapshot(
+        r.manualLastEditedBySnapshot,
+      ),
+      manualLastEditedAt: r.manualLastEditedAt?.toISOString() ?? null,
     };
   }
 

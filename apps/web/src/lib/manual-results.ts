@@ -8,3 +8,17 @@ export function canEditManualResult(r: {
     (r.status ?? "pending_review") === "pending_review"
   );
 }
+
+export type ManualAccessionAccess = "editable" | "submitted" | "released";
+
+export function manualAccessionAccess(
+  results: Array<{ status?: string | null }>,
+): ManualAccessionAccess {
+  if (results.some((result) => result.status === "released")) {
+    return "released";
+  }
+  if (results.some((result) => result.status === "pending_authorization")) {
+    return "submitted";
+  }
+  return "editable";
+}

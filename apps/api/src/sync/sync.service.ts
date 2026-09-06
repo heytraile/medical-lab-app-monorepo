@@ -15,8 +15,15 @@ import type {
   ReleaseAccessionResponse,
   StaffUpsertEventPayload,
 } from "@drax-lis/contracts";
-import { assembleReleaseQueueGroups, type SpecimenContext } from "./release-queue.helpers";
-import { shouldApplyResultBatchUpdate } from "./result-sync.helpers";
+import {
+  assembleReleaseQueueGroups,
+  mergeReleaseQueueGroups,
+  type SpecimenContext,
+} from "./release-queue.helpers";
+import {
+  preserveManualEntryAttribution,
+  shouldApplyResultBatchUpdate,
+} from "./result-sync.helpers";
 import { StaffProvisioningService } from "../lab-staff/staff-provisioning.service";
 
 type StoredEvent = {
@@ -160,6 +167,25 @@ export class SyncService {
           ordered_test_code: r.orderedTestCode ?? r.testCode,
           result_component_code: r.resultComponentCode ?? null,
           status: r.status ?? "pending_review",
+          manual_entered_by:
+            existing?.manual_entered_by ??
+            existing?.manualEnteredBy ??
+            r.manualEnteredBy ??
+            null,
+          manual_entered_by_snapshot:
+            existing?.manual_entered_by_snapshot ??
+            existing?.manualEnteredBySnapshot ??
+            r.manualEnteredBySnapshot ??
+            null,
+          manual_entered_at:
+            existing?.manual_entered_at ??
+            existing?.manualEnteredAt ??
+            r.manualEnteredAt ??
+            null,
+          manual_last_edited_by: r.manualLastEditedBy ?? null,
+          manual_last_edited_by_snapshot:
+            r.manualLastEditedBySnapshot ?? null,
+          manual_last_edited_at: r.manualLastEditedAt ?? null,
         });
       }
       return;
@@ -179,6 +205,12 @@ export class SyncService {
           r.accessionNumber ?? accessionNumbers[0] ?? "",
         );
         const existing = this.memoryResults.get(id);
+        if (!shouldApplyResultBatchUpdate(String(existing?.status ?? ""))) {
+          this.logger.warn(
+            `Skip submit downgrade for released ${accession}/${String(r.testCode ?? "unknown")}`,
+          );
+          continue;
+        }
         const base = existing ?? {
           id,
           accession_number: accession,
@@ -194,6 +226,13 @@ export class SyncService {
           reference_high: r.referenceHigh,
           flag: r.flag ?? "unknown",
           observed_at: r.observedAt ?? submittedAt,
+          manual_entered_by: r.manualEnteredBy ?? null,
+          manual_entered_by_snapshot: r.manualEnteredBySnapshot ?? null,
+          manual_entered_at: r.manualEnteredAt ?? null,
+          manual_last_edited_by: r.manualLastEditedBy ?? null,
+          manual_last_edited_by_snapshot:
+            r.manualLastEditedBySnapshot ?? null,
+          manual_last_edited_at: r.manualLastEditedAt ?? null,
         };
         this.memoryResults.set(id, {
           ...base,
@@ -518,7 +557,9 @@ export class SyncService {
 
         const { data: existing } = await client
           .from("results")
-          .select("status")
+          .select(
+            "status, manual_entered_by, manual_entered_by_snapshot, manual_entered_at",
+          )
           .eq("edge_result_id", edgeResultId)
           .maybeSingle();
         if (!shouldApplyResultBatchUpdate(existing?.status)) {
@@ -549,6 +590,16 @@ export class SyncService {
               typeof r.referenceHigh === "number" ? r.referenceHigh : null,
             flag: String(r.flag ?? "unknown"),
             status: String(r.status ?? "pending_review"),
+            ...preserveManualEntryAttribution(existing, r),
+            manual_last_edited_by:
+              (r.manualLastEditedBy as string | null) ?? null,
+            manual_last_edited_by_snapshot:
+              (r.manualLastEditedBySnapshot as Record<
+                string,
+                unknown
+              > | null) ?? null,
+            manual_last_edited_at:
+              (r.manualLastEditedAt as string | null) ?? null,
             observed_at: String(
               r.observedAt ?? new Date().toISOString(),
             ),
@@ -572,6 +623,8 @@ export class SyncService {
       );
       const edgeResults =
         (payload.results as Array<Record<string, unknown>>) ?? [];
+      const projectedResultIds: string[] = [];
+      const skippedReleasedResultIds: string[] = [];
 
       for (const r of edgeResults) {
         const edgeResultId = String(r.id ?? "");
@@ -581,6 +634,20 @@ export class SyncService {
         );
         const barcode = String(r.barcode ?? accession);
         const analyzerId = String(r.analyzerId ?? "unknown");
+        const { data: existing } = await client
+          .from("results")
+          .select(
+            "status, manual_entered_by, manual_entered_by_snapshot, manual_entered_at",
+          )
+          .eq("edge_result_id", edgeResultId)
+          .maybeSingle();
+        if (!shouldApplyResultBatchUpdate(existing?.status)) {
+          skippedReleasedResultIds.push(edgeResultId);
+          this.logger.warn(
+            `Skip submit downgrade for released ${accession}/${String(r.testCode ?? "unknown")}`,
+          );
+          continue;
+        }
         const row = {
           edge_result_id: edgeResultId,
           accession_number: accession,
@@ -605,12 +672,23 @@ export class SyncService {
           submitted_by: submittedBy,
           submitted_by_snapshot: submittedBySnapshot,
           submitted_at: submittedAt,
+          ...preserveManualEntryAttribution(existing, r),
+          manual_last_edited_by:
+            (r.manualLastEditedBy as string | null) ?? null,
+          manual_last_edited_by_snapshot:
+            (r.manualLastEditedBySnapshot as Record<
+              string,
+              unknown
+            > | null) ?? null,
+          manual_last_edited_at:
+            (r.manualLastEditedAt as string | null) ?? null,
           updated_at: new Date().toISOString(),
         };
         const { error } = await client
           .from("results")
           .upsert(row, { onConflict: "edge_result_id" });
         if (error) throw error;
+        projectedResultIds.push(edgeResultId);
       }
 
       if (accessionNumbers.length && edgeResults.length === 0) {
@@ -654,9 +732,6 @@ export class SyncService {
       }
 
       const actor = submittedBySnapshot as ActorSnapshot | null;
-      const resultIds = edgeResults
-        .map((r) => String(r.id ?? ""))
-        .filter(Boolean);
       await this.audit.log({
         eventType: "result.submitted_for_release",
         entityType: "accession",
@@ -664,8 +739,12 @@ export class SyncService {
         actor,
         payload: {
           accessionNumbers,
-          resultIds,
-          resultCount: edgeResults.length || accessionNumbers.length,
+          resultIds: projectedResultIds,
+          resultCount:
+            edgeResults.length > 0
+              ? projectedResultIds.length
+              : accessionNumbers.length,
+          skippedReleasedResultIds,
           missingExpectedByAccession,
           incompleteAcknowledged: payload.incompleteAcknowledged === true,
         },
@@ -920,24 +999,29 @@ export class SyncService {
     const edgeUrl = this.edgeApiUrl();
     if (!edgeUrl) return;
 
+    let released: Array<Record<string, unknown>>;
     try {
       const response = await fetch(`${edgeUrl}/results`, {
         signal: AbortSignal.timeout(5_000),
       });
       if (!response.ok) {
-        this.logger.warn(
-          `Edge release reconcile skipped: GET /results returned ${response.status}`,
-        );
-        return;
+        throw new Error(`GET /results returned ${response.status}`);
       }
-
       const edgeResults = (await response.json()) as Array<
         Record<string, unknown>
       >;
-      const released = edgeResults.filter(
+      released = edgeResults.filter(
         (row) => String(row.status ?? "") === "released",
       );
-      if (released.length === 0) return;
+    } catch (err) {
+      this.logger.warn(
+        `Edge release reconcile skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return;
+    }
+    if (released.length === 0) return;
+
+    try {
 
       const client = this.supabase.client;
       const byAccession = new Map<string, Array<Record<string, unknown>>>();
@@ -984,6 +1068,12 @@ export class SyncService {
         for (const row of rows) {
           const edgeResultId = String(row.id ?? "");
           if (!edgeResultId) continue;
+          const { data: existingResult } = await client
+            .from("results")
+            .select("status")
+            .eq("edge_result_id", edgeResultId)
+            .maybeSingle();
+          if (existingResult?.status === "released") continue;
 
           let releasedBySnapshot: unknown = row.releasedBySnapshot ?? null;
           if (typeof releasedBySnapshot === "string") {
@@ -1022,6 +1112,18 @@ export class SyncService {
               released_at: releasedAt,
               released_by: row.releasedBy ? String(row.releasedBy) : null,
               released_by_snapshot: releasedBySnapshot,
+              manual_entered_by:
+                (row.manualEnteredBy as string | null) ?? null,
+              manual_entered_by_snapshot:
+                row.manualEnteredBySnapshot ?? null,
+              manual_entered_at:
+                (row.manualEnteredAt as string | null) ?? null,
+              manual_last_edited_by:
+                (row.manualLastEditedBy as string | null) ?? null,
+              manual_last_edited_by_snapshot:
+                row.manualLastEditedBySnapshot ?? null,
+              manual_last_edited_at:
+                (row.manualLastEditedAt as string | null) ?? null,
               observed_at: row.observedAt
                 ? new Date(String(row.observedAt)).toISOString()
                 : new Date().toISOString(),
@@ -1031,30 +1133,51 @@ export class SyncService {
           );
           if (error) throw error;
         }
+
+        const firstReleased = rows[0]!;
+        let releasedBySnapshot: unknown =
+          firstReleased.releasedBySnapshot ?? null;
+        if (typeof releasedBySnapshot === "string") {
+          try {
+            releasedBySnapshot = JSON.parse(releasedBySnapshot);
+          } catch {
+            releasedBySnapshot = null;
+          }
+        }
+        const releasedAt = firstReleased.releasedAt
+          ? new Date(String(firstReleased.releasedAt)).toISOString()
+          : new Date().toISOString();
+        const { error: promoteError } = await client
+          .from("results")
+          .update({
+            status: "released",
+            released_at: releasedAt,
+            released_by: firstReleased.releasedBy
+              ? String(firstReleased.releasedBy)
+              : null,
+            released_by_snapshot: releasedBySnapshot,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("accession_number", accession)
+          .eq("status", "pending_authorization");
+        if (promoteError) throw promoteError;
       }
 
       this.logger.log(
         `Reconciled ${released.length} edge released result(s) into cloud`,
       );
     } catch (err) {
-      this.logger.warn(
-        `Edge release reconcile skipped: ${err instanceof Error ? err.message : String(err)}`,
+      this.logger.error(
+        `Edge release reconcile failed: ${err instanceof Error ? err.message : String(err)}`,
       );
+      throw err;
     }
   }
 
   async listReleaseQueue(): Promise<ReleaseQueueGroup[]> {
     const pending = await this.listPendingAuthorizationQueueGroups();
     const released = await this.listReleasedReadyToSendQueueGroups();
-    const pendingAccessions = new Set(
-      pending.map((group) => group.accessionNumber),
-    );
-    return [
-      ...pending,
-      ...released.filter(
-        (group) => !pendingAccessions.has(group.accessionNumber),
-      ),
-    ];
+    return mergeReleaseQueueGroups(pending, released);
   }
 
   private async listPendingAuthorizationQueueGroups(): Promise<ReleaseQueueGroup[]> {
@@ -1063,7 +1186,7 @@ export class SyncService {
       const { data: results, error: resErr } = await client
         .from("results")
         .select(
-          "id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot",
+          "id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, manual_entered_by_snapshot, manual_entered_at, manual_last_edited_by_snapshot, manual_last_edited_at",
         )
         .eq("status", "pending_authorization")
         .order("submitted_at", { ascending: false })
@@ -1132,6 +1255,17 @@ export class SyncService {
           | null
           | undefined,
         submitted_by_snapshot: r.submitted_by_snapshot ?? r.submittedBySnapshot,
+        manual_entered_by_snapshot:
+          r.manual_entered_by_snapshot ?? r.manualEnteredBySnapshot,
+        manual_entered_at: (r.manual_entered_at ?? r.manualEnteredAt) as
+          | string
+          | null
+          | undefined,
+        manual_last_edited_by_snapshot:
+          r.manual_last_edited_by_snapshot ?? r.manualLastEditedBySnapshot,
+        manual_last_edited_at: (
+          r.manual_last_edited_at ?? r.manualLastEditedAt
+        ) as string | null | undefined,
       }));
 
     return assembleReleaseQueueGroups(
@@ -1149,7 +1283,7 @@ export class SyncService {
       const { data: results, error: resErr } = await client
         .from("results")
         .select(
-          "id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, released_at, released_by_snapshot",
+          "id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, released_at, released_by_snapshot, manual_entered_by_snapshot, manual_entered_at, manual_last_edited_by_snapshot, manual_last_edited_at",
         )
         .eq("status", "released")
         .order("released_at", { ascending: false })
@@ -1245,6 +1379,17 @@ export class SyncService {
         submitted_by_snapshot: r.submitted_by_snapshot ?? r.submittedBySnapshot,
         released_at: (r.released_at ?? r.releasedAt) as string | null | undefined,
         released_by_snapshot: r.released_by_snapshot ?? r.releasedBySnapshot,
+        manual_entered_by_snapshot:
+          r.manual_entered_by_snapshot ?? r.manualEnteredBySnapshot,
+        manual_entered_at: (r.manual_entered_at ?? r.manualEnteredAt) as
+          | string
+          | null
+          | undefined,
+        manual_last_edited_by_snapshot:
+          r.manual_last_edited_by_snapshot ?? r.manualLastEditedBySnapshot,
+        manual_last_edited_at: (
+          r.manual_last_edited_at ?? r.manualLastEditedAt
+        ) as string | null | undefined,
       }));
 
     return assembleReleaseQueueGroups(
@@ -1368,53 +1513,6 @@ export class SyncService {
     }
 
     return { dismissedCount };
-  }
-
-  async releaseResult(opts: {
-    id: string;
-    releasedBy: string;
-    releasedBySnapshot?: import("@drax-lis/contracts").ActorSnapshot;
-  }) {
-    const now = new Date().toISOString();
-    if (this.supabase.enabled && this.supabase.client) {
-      const { data, error } = await this.supabase.client
-        .from("results")
-        .update({
-          status: "released",
-          released_by: opts.releasedBy,
-          released_at: now,
-          released_by_snapshot: opts.releasedBySnapshot ?? null,
-          updated_at: now,
-        })
-        .eq("id", opts.id)
-        .eq("status", "pending_authorization")
-        .select("*")
-        .maybeSingle();
-      if (error) throw error;
-      if (!data) {
-        throw new NotFoundException(
-          "Result not found or already released",
-        );
-      }
-      return data;
-    }
-
-    const found = Array.from(this.memoryResults.entries()).find(
-      ([, v]) =>
-        String(v.id) === opts.id && v.status === "pending_authorization",
-    );
-    if (!found) {
-      throw new NotFoundException("Result not found or already released");
-    }
-    const [key, val] = found;
-    const updated = {
-      ...val,
-      status: "released",
-      released_by: opts.releasedBy,
-      released_at: now,
-    };
-    this.memoryResults.set(key, updated);
-    return updated;
   }
 
   async releaseAccession(opts: {

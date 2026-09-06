@@ -127,6 +127,7 @@ export function ReleaseQueueListItem({
             <PatientReportExportMenu
               patientId={patientId}
               patientLabel={patientName}
+              accessionNumber={group.accessionNumber}
               releaseEligible
               variant="default"
               size="sm"

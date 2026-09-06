@@ -5,6 +5,10 @@ import type { BenchResult } from "../lib/api";
 import { analyzerLabel } from "../lib/analyzers";
 import { cn } from "../lib/utils";
 import { usePatientNameOrder } from "../lib/patient-name-order";
+import {
+  actorName,
+  formatAttributionTime,
+} from "../lib/result-attribution";
 import { NotifyAuthorizerButton } from "./notify-authorizer-button";
 import { SubmitForReleaseButton } from "./submit-for-release-button";
 import { RecallFromReleaseButton } from "./recall-from-release-button";
@@ -164,9 +168,14 @@ export function BenchMobileList({
                       Quarantined
                     </Badge>
                   )}
-                  {summary.missingExpectedCount > 0 && (
+                  {summary.missingExpectedCount > 0 && !summary.allReleased && (
                     <Badge variant="warn" className="px-1 py-0 text-[10px]">
                       {summary.missingExpectedCount} manual pending
+                    </Badge>
+                  )}
+                  {summary.allReleased && summary.missingExpectedCount > 0 && (
+                    <Badge variant="warn" className="px-1 py-0 text-[10px]">
+                      Released incomplete
                     </Badge>
                   )}
                   {summary.worstFlag && summary.worstFlag !== "normal" && (
@@ -195,8 +204,16 @@ export function BenchMobileList({
                   onKeyDown={(e) => e.stopPropagation()}
                   role="presentation"
                 >
-                  <SubmitForReleaseButton summary={summary} fullWidth />
-                  <RecallFromReleaseButton summary={summary} fullWidth />
+                  {summary.accessionCount === 1 ? (
+                    <>
+                      <SubmitForReleaseButton summary={summary} fullWidth />
+                      <RecallFromReleaseButton summary={summary} fullWidth />
+                    </>
+                  ) : (
+                    <Badge variant="muted">
+                      Open patient to manage each accession
+                    </Badge>
+                  )}
                   <NotifyAuthorizerButton
                     summary={summary}
                     fullWidth
@@ -256,7 +273,7 @@ function ResultCard({
       style={{ boxShadow: `inset 3px 0 0 0 ${flagBarColor(result.flag, ctx)}` }}
     >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="pl-1 font-medium">
+        <span className="pl-1 text-base font-medium">
           {result.testName?.trim() || result.testCode}
         </span>
         <span
@@ -276,7 +293,7 @@ function ResultCard({
 
       <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-1">
         {result.expectedOnOrder === false ? (
-          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
+          <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
             Not ordered
           </span>
         ) : null}
@@ -290,13 +307,27 @@ function ResultCard({
         <WorkflowStatusChip status={result.status} />
       </div>
 
-      <p className="mt-2 pl-1 text-[11px] text-muted-foreground">
+      <p className="mt-2 pl-1 text-xs text-muted-foreground">
         <span className="font-mono">{result.accessionNumber}</span> ·{" "}
         {analyzerLabel(result.analyzerId)}
       </p>
       <p className="pl-1 text-sm font-medium tabular-nums text-foreground/85">
         {new Date(result.observedAt).toLocaleString()}
       </p>
+      {result.analyzerId === "manual" ? (
+        <div className="pl-1 text-xs text-muted-foreground">
+          <p>
+            Entered by {actorName(result.manualEnteredBySnapshot)} ·{" "}
+            {formatAttributionTime(result.manualEnteredAt)}
+          </p>
+          {result.manualLastEditedAt ? (
+            <p>
+              Last edited by {actorName(result.manualLastEditedBySnapshot)} ·{" "}
+              {formatAttributionTime(result.manualLastEditedAt)}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </article>
   );
 }

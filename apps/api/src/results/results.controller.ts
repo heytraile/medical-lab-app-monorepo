@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  Param,
   Post,
   UseGuards,
 } from "@nestjs/common";
@@ -58,30 +57,4 @@ export class ResultsController {
     return released;
   }
 
-  @Post(":id/release")
-  @Roles("authorizer", "admin")
-  async release(
-    @Param("id") id: string,
-    @CurrentUser() user: AuthUser,
-    @CurrentDevice() device: DeviceSnapshot | undefined,
-  ) {
-    const actor = toActorSnapshot(user);
-    const row = await this.sync.releaseResult({
-      id,
-      releasedBy: user.id,
-      releasedBySnapshot: actor,
-    });
-    await this.audit.log({
-      eventType: "result.released",
-      entityType: "result",
-      entityId: id,
-      actor,
-      device: device ?? null,
-      payload: {
-        accessionNumber: row.accession_number,
-        testCode: row.test_code,
-      },
-    });
-    return row;
-  }
 }

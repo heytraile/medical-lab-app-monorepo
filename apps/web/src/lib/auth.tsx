@@ -419,8 +419,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const cloudAccessToken = useMemo(() => {
     if (session?.access_token) return session.access_token;
     if (isCloudMode && devRole) return `dev:${devRole}`;
+    // Edge SPA: release queue and reports call the cloud API. When Supabase
+    // sign-in did not attach after edge login (common in local dev), fall back
+    // to the same dev bearer the cloud API accepts outside production.
+    if (
+      !isCloudMode &&
+      import.meta.env.DEV &&
+      edgeSession &&
+      (edgeSession.user.role === "authorizer" ||
+        edgeSession.user.role === "admin")
+    ) {
+      return `dev:${edgeSession.user.role}`;
+    }
     return null;
-  }, [session, devRole]);
+  }, [session, devRole, edgeSession]);
 
   const hasCloudSession = Boolean(cloudAccessToken);
 

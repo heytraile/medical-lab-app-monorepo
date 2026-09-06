@@ -31,24 +31,32 @@ export class LabDeviceGuard implements CanActivate {
     if (!req.user) {
       throw new UnauthorizedException("Not authenticated");
     }
-    if (!deviceId || !deviceToken) {
+
+    const isLocalDev = process.env.NODE_ENV !== "production";
+
+    if (deviceId && deviceToken) {
+      const device = await this.devices.validateDeviceToken(
+        deviceId,
+        deviceToken,
+        req.user.id,
+      );
+      if (device) {
+        req.device = device;
+        return true;
+      }
+      if (!isLocalDev) {
+        throw new UnauthorizedException(
+          "Device not recognized or revoked — re-enroll this browser",
+        );
+      }
+    } else if (!isLocalDev) {
       throw new UnauthorizedException(
         "This browser is not enrolled as a lab device — enter your lab enrollment code",
       );
     }
 
-    const device = await this.devices.validateDeviceToken(
-      deviceId,
-      deviceToken,
-      req.user.id,
-    );
-    if (!device) {
-      throw new UnauthorizedException(
-        "Device not recognized or revoked — re-enroll this browser",
-      );
-    }
-
-    req.device = device;
+    // Local dev: authorizers/admins can release and dismiss without enrolling a browser.
+    req.device = undefined;
     return true;
   }
 }

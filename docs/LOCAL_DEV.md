@@ -221,6 +221,10 @@ curl -X POST http://localhost:3101/demo/bench
 
 - Purges **patientless** pending results/specimens (old bridge/smoke/unregistered analyzer barcodes that show as “—” on Bench)
 - Clears duplicate pending results (from simulator retransmits) and reseeds one clean row per demo test
+- Preserves any already released demo accession and removes stale pending duplicates instead of recreating pending work beside an authorized result
+- Validates request-form catalog codes and stores raw analyzer codes separately, matching production ingestion (for example `ALT` → `ALT_SGPT`)
+
+Manual-result provenance is never fabricated for old demo rows. After pulling the attribution migration, reset local Supabase and edge demo clinical data, then enter manual values while signed in so the displayed staff/time is genuine. Production migrations only add nullable columns; historical rows show **Entry attribution unavailable**.
 
 After that, ongoing simulator traffic **updates** the same `(accession, test)` instead of stacking clones. Unregistered analyzer barcodes still appear as “—” until you register the specimen to a patient; re-run demo cleanup to remove that local noise.
 
@@ -326,7 +330,7 @@ Two sessions can exist at once:
 
 Cloud API calls send the **Supabase JWT**, not the edge JWT. A cloud 401 no longer wipes your edge login (so the sidebar stays signed in).
 
-**Release / sign-off from the edge tab:** after signing in as admin or authorizer, the release queue **loads** once the Supabase session is established. **Release** actions (`POST /results/release-accession`) still require a **lab device** enrollment in dev if you hit `LabDeviceGuard` errors — issue a code from **Staff → Issue cloud device** on the edge app, or test release from a `VITE_LIS_MODE=cloud` tab with enrollment.
+**Release / sign-off from the edge tab:** after signing in as admin or authorizer, the release queue **loads** once the Supabase session is established. **Release** (`POST /results/release-accession`) works in local dev without lab device enrollment — production still requires enrolling the browser via **Staff → Issue cloud device**.
 
 Release queue: http://localhost:3100/release — admins and authorizers release cloud
 `pending_authorization` accessions (`POST /results/release-accession`).
