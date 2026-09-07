@@ -14,14 +14,15 @@ import { HardenedAuthGuard, HardenedRequiredAuthGuard } from "../auth/hardened-a
 @Controller("specimens")
 @UseGuards(HardenedAuthGuard)
 export class SpecimensController {
+  /** List/register specimens; list includes orderedSelections for History panels. */
   constructor(private readonly specimens: SpecimensService) {}
 
   @Get()
-  list(@Query("accession") accession?: string) {
+  list(@Query("accession") accession?: string, @Query("q") q?: string) {
     if (accession?.trim()) {
       return this.specimens.findByAccession(accession.trim());
     }
-    return this.specimens.list();
+    return this.specimens.list({ q: q?.trim() || undefined });
   }
 
   @Post()
@@ -44,6 +45,8 @@ export class SpecimensController {
       copies?: number;
       specimenType?: string;
       collectedAt?: string;
+      collectedByStaffId?: string;
+      collectedBy?: string;
     },
     @OptionalUser() user?: AuthUser,
   ) {

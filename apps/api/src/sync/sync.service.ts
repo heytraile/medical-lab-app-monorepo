@@ -140,6 +140,39 @@ export class SyncService {
       if (id) this.memoryPatients.set(id, { ...payload, id });
       return;
     }
+    if (type === "patient.merged") {
+      const survivorId = String(payload.survivorPatientId ?? "");
+      const loserId = String(payload.loserPatientId ?? "");
+      if (loserId) {
+        const existing = this.memoryPatients.get(loserId) ?? {};
+        this.memoryPatients.set(loserId, {
+          ...existing,
+          id: loserId,
+          status: "quarantined",
+          mrn: payload.loserMrn ?? existing.mrn,
+        });
+      }
+      if (survivorId) {
+        const existing = this.memoryPatients.get(survivorId) ?? {};
+        this.memoryPatients.set(survivorId, {
+          ...existing,
+          id: survivorId,
+          status: "active",
+          mrn: payload.survivorMrn ?? existing.mrn,
+        });
+      }
+      const accessions = (payload.accessionNumbers as string[]) ?? [];
+      for (const accession of accessions) {
+        const specimen = this.memorySpecimens.get(accession);
+        if (specimen && survivorId) {
+          this.memorySpecimens.set(accession, {
+            ...specimen,
+            patientId: survivorId,
+          });
+        }
+      }
+      return;
+    }
     if (type === "specimen.registered") {
       const accession = String(payload.accessionNumber ?? "");
       if (accession) {
@@ -535,6 +568,61 @@ export class SyncService {
         onConflict: "edge_patient_id",
       });
       if (error) throw error;
+      return;
+    }
+
+    if (type === "patient.merged") {
+      const survivorEdgeId = String(payload.survivorPatientId ?? "");
+      const loserEdgeId = String(payload.loserPatientId ?? "");
+      if (!survivorEdgeId || !loserEdgeId) return;
+
+      const { data: survivorRow, error: survivorErr } = await client
+        .from("patients")
+        .select("id")
+        .eq("edge_patient_id", survivorEdgeId)
+        .maybeSingle();
+      if (survivorErr) throw survivorErr;
+
+      const { data: loserRow, error: loserErr } = await client
+        .from("patients")
+        .select("id")
+        .eq("edge_patient_id", loserEdgeId)
+        .maybeSingle();
+      if (loserErr) throw loserErr;
+
+      if (loserRow?.id) {
+        const { error } = await client
+          .from("patients")
+          .update({
+            status: "quarantined",
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", loserRow.id);
+        if (error) throw error;
+      }
+
+      if (survivorRow?.id && loserRow?.id) {
+        const { error: specErr } = await client
+          .from("specimens")
+          .update({
+            patient_id: survivorRow.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("patient_id", loserRow.id);
+        if (specErr) throw specErr;
+
+        const { error: reqErr } = await client
+          .from("requisitions")
+          .update({
+            patient_id: survivorRow.id,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("patient_id", loserRow.id);
+        // requisitions table may be absent in older envs — ignore missing relation
+        if (reqErr && !/relation|does not exist|PGRST/i.test(reqErr.message)) {
+          throw reqErr;
+        }
+      }
       return;
     }
 

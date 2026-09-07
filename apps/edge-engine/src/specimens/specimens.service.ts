@@ -4,6 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
+import { randomUUID } from "node:crypto";
 import type { Prisma } from "@prisma/client";
 import type { ActorSnapshot } from "@drax-lis/contracts";
 import { PrismaService } from "../prisma/prisma.service";
@@ -11,6 +12,7 @@ import { PrinterService } from "../printer/printer.service";
 import { SyncService } from "../sync/sync.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { displayName } from "../patients/patient-normalize";
+import { PatientsService } from "../patients/patients.service";
 
 type IdentityConfirmation = {
   decision: "distinct_people" | "possible_duplicate_acknowledged";
@@ -19,18 +21,29 @@ type IdentityConfirmation = {
   confirmedBy?: string;
 };
 
+type CollectorInput = {
+  collectedByStaffId?: string;
+  collectedBy?: string;
+};
+
+type OrderSelectionInput = {
+  kind: "panel" | "test";
+  code: string;
+};
+
 type RegisterInput = {
   accessionNumber?: string;
   barcode?: string;
   patientId: string;
   identityConfirmation?: IdentityConfirmation;
   orderedTests?: Array<{ code: string; name?: string }>;
+  selections?: OrderSelectionInput[];
   requisitionId?: string;
   printLabel?: boolean;
   copies?: number;
   specimenType?: string;
   collectedAt?: string;
-};
+} & CollectorInput;
 
 type BatchRegisterInput = {
   patientId: string;
@@ -39,11 +52,12 @@ type BatchRegisterInput = {
   printLabel?: boolean;
   copies?: number;
   collectedAt?: string;
+  selections?: OrderSelectionInput[];
   specimens: Array<{
     specimenType: string;
     orderedTests: Array<{ code: string; name?: string }>;
   }>;
-};
+} & CollectorInput;
 
 type ResolvedRegistration = {
   patient: Awaited<ReturnType<PrismaService["patient"]["findUnique"]>> & object;
@@ -60,6 +74,9 @@ type ResolvedRegistration = {
     syncStatus: string;
   };
   patientName: string;
+  queuePossibleDuplicate: boolean;
+  suspectGroupId: string | null;
+  groupPatientIds: string[];
 };
 
 type CreatedSpecimen = {
@@ -76,18 +93,215 @@ export class SpecimensService {
     private readonly printer: PrinterService,
     private readonly sync: SyncService,
     private readonly realtime: RealtimeGateway,
+    private readonly patients: PatientsService,
   ) {}
 
-  list() {
-    return this.prisma.specimen.findMany({
-      orderBy: { registeredAt: "desc" },
-      take: 100,
-    });
+  list(opts?: { q?: string }) {
+    return this.listEnriched(opts);
   }
 
   findByAccession(accessionNumber: string) {
-    return this.prisma.specimen.findUnique({
-      where: { accessionNumber },
+    return this.prisma.specimen
+      .findUnique({
+        where: { accessionNumber },
+      })
+      .then((row) => (row ? this.toListItem(row) : null));
+  }
+
+  private async listEnriched(opts?: { q?: string }) {
+    const q = opts?.q?.trim().toLowerCase();
+    const rows = await this.prisma.specimen.findMany({
+      orderBy: { registeredAt: "desc" },
+      take: q ? 400 : 200,
+    });
+    const mapped = rows.map((row) => this.toListItem(row));
+    if (!q) return mapped;
+    return mapped.filter((row) => this.matchesQuery(row, q)).slice(0, 200);
+  }
+
+  private matchesQuery(
+    row: ReturnType<SpecimensService["toListItem"]>,
+    q: string,
+  ): boolean {
+    if (row.accessionNumber.toLowerCase().includes(q)) return true;
+    if (row.barcode.toLowerCase().includes(q)) return true;
+    if (row.patientDisplayName.toLowerCase().includes(q)) return true;
+    if (row.patientMrn?.toLowerCase().includes(q)) return true;
+    try {
+      const p = row.patientJson
+        ? (JSON.parse(row.patientJson) as {
+            firstName?: string;
+            lastName?: string;
+            middleName?: string;
+          })
+        : null;
+      if (p?.firstName?.toLowerCase().includes(q)) return true;
+      if (p?.lastName?.toLowerCase().includes(q)) return true;
+      if (p?.middleName?.toLowerCase().includes(q)) return true;
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }
+
+  private toListItem(row: {
+    id: string;
+    accessionNumber: string;
+    barcode: string;
+    patientId: string | null;
+    patientJson: string | null;
+    identityConfirmationJson: string | null;
+    specimenType: string;
+    orderedTestsJson: string;
+    requisitionId: string | null;
+    registrationBatchId: string | null;
+    orderedSelectionsJson?: string | null;
+    status: string;
+    collectedAt: Date | null;
+    collectedByStaffId: string | null;
+    collectedBySnapshot: string | null;
+    registeredAt: Date;
+    registeredBy: string | null;
+    registeredBySnapshot: string | null;
+  }) {
+    let patientDisplayName = "—";
+    let patientMrn: string | null = null;
+    let orderedTests: Array<{ code: string; name?: string }> = [];
+    try {
+      if (row.patientJson) {
+        const p = JSON.parse(row.patientJson) as {
+          firstName?: string;
+          middleName?: string | null;
+          lastName?: string;
+          mrn?: string;
+        };
+        const name = [p.firstName, p.middleName, p.lastName]
+          .filter((part) => Boolean(part && String(part).trim()))
+          .join(" ");
+        patientDisplayName = name || p.mrn?.trim() || "—";
+        patientMrn = p.mrn?.trim() || null;
+      }
+    } catch {
+      /* ignore */
+    }
+    try {
+      const parsed = JSON.parse(row.orderedTestsJson) as Array<{
+        code?: string;
+        name?: string;
+      }>;
+      orderedTests = parsed
+        .filter((t) => Boolean(t?.code))
+        .map((t) => ({
+          code: String(t.code),
+          name: t.name?.trim() || undefined,
+        }));
+    } catch {
+      orderedTests = [];
+    }
+
+    let orderedSelections: OrderSelectionInput[] = [];
+    try {
+      const parsed = JSON.parse(row.orderedSelectionsJson || "[]") as Array<{
+        kind?: string;
+        code?: string;
+      }>;
+      orderedSelections = parsed
+        .filter(
+          (s) =>
+            (s.kind === "panel" || s.kind === "test") && Boolean(s.code?.trim()),
+        )
+        .map((s) => ({
+          kind: s.kind as "panel" | "test",
+          code: String(s.code).trim(),
+        }));
+    } catch {
+      orderedSelections = [];
+    }
+
+    let registeredByName: string | null = null;
+    if (row.registeredBySnapshot) {
+      try {
+        const actor = JSON.parse(row.registeredBySnapshot) as {
+          fullName?: string | null;
+          email?: string | null;
+          userId?: string;
+        };
+        registeredByName =
+          actor.fullName?.trim() ||
+          actor.email?.trim() ||
+          actor.userId?.trim() ||
+          null;
+      } catch {
+        registeredByName = null;
+      }
+    }
+
+    let collectedByName: string | null = null;
+    if (row.collectedBySnapshot) {
+      try {
+        const collector = JSON.parse(row.collectedBySnapshot) as {
+          fullName?: string | null;
+          staffId?: string;
+        };
+        collectedByName =
+          collector.fullName?.trim() || collector.staffId?.trim() || null;
+      } catch {
+        collectedByName = null;
+      }
+    }
+
+    return {
+      id: row.id,
+      accessionNumber: row.accessionNumber,
+      barcode: row.barcode,
+      patientId: row.patientId,
+      patientJson: row.patientJson,
+      identityConfirmationJson: row.identityConfirmationJson,
+      specimenType: row.specimenType,
+      orderedTestsJson: row.orderedTestsJson,
+      orderedTests,
+      orderedSelections,
+      requisitionId: row.requisitionId,
+      registrationBatchId: row.registrationBatchId,
+      status: row.status,
+      collectedAt: row.collectedAt?.toISOString() ?? null,
+      collectedByStaffId: row.collectedByStaffId,
+      collectedBySnapshot: row.collectedBySnapshot,
+      collectedByName,
+      registeredAt: row.registeredAt.toISOString(),
+      registeredBy: row.registeredBy,
+      registeredBySnapshot: row.registeredBySnapshot,
+      registeredByName,
+      patientDisplayName,
+      patientMrn,
+    };
+  }
+
+  private normalizeSelections(
+    selections: OrderSelectionInput[] | undefined,
+  ): OrderSelectionInput[] {
+    if (!selections?.length) return [];
+    const seen = new Set<string>();
+    const out: OrderSelectionInput[] = [];
+    for (const sel of selections) {
+      if (sel.kind !== "panel" && sel.kind !== "test") continue;
+      const code = sel.code?.trim();
+      if (!code) continue;
+      const key = `${sel.kind}:${code}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ kind: sel.kind, code });
+    }
+    return out;
+  }
+
+  private collectorSnapshot(input: CollectorInput): string | null {
+    const staffId = input.collectedByStaffId?.trim();
+    const fullName = input.collectedBy?.trim();
+    if (!staffId && !fullName) return null;
+    return JSON.stringify({
+      staffId: staffId || undefined,
+      fullName: fullName || undefined,
     });
   }
 
@@ -101,6 +315,9 @@ export class SpecimensService {
     const accessionNumber =
       input.accessionNumber ?? (await this.nextAccessionNumber());
     const barcode = input.barcode ?? accessionNumber;
+    const registrationBatchId = randomUUID();
+    const collectedBySnapshot = this.collectorSnapshot(input);
+    const orderedSelections = this.normalizeSelections(input.selections);
 
     const specimen = await this.prisma.specimen.create({
       data: this.specimenCreateData({
@@ -110,9 +327,13 @@ export class SpecimensService {
         patientPayload: resolved.patientPayload,
         identityConfirmationJson: resolved.identityConfirmationJson,
         orderedTests,
+        orderedSelections,
         requisitionId: input.requisitionId,
+        registrationBatchId,
         specimenType: input.specimenType,
         collectedAt: input.collectedAt,
+        collectedByStaffId: input.collectedByStaffId?.trim() || null,
+        collectedBySnapshot,
         actor,
       }),
     });
@@ -131,6 +352,8 @@ export class SpecimensService {
       actor,
     });
 
+    await this.maybeQueueIdentityReview(resolved, accessionNumber, actor);
+
     return { specimen, printResult, labelPreview };
   }
 
@@ -143,6 +366,10 @@ export class SpecimensService {
     }
 
     const resolved = await this.resolveRegistration(input);
+    const registrationBatchId = randomUUID();
+    const collectedBySnapshot = this.collectorSnapshot(input);
+    const collectedByStaffId = input.collectedByStaffId?.trim() || null;
+    const orderedSelections = this.normalizeSelections(input.selections);
 
     const created = await this.prisma.$transaction(async (tx) => {
       const results: CreatedSpecimen[] = [];
@@ -163,9 +390,13 @@ export class SpecimensService {
             patientPayload: resolved.patientPayload,
             identityConfirmationJson: resolved.identityConfirmationJson,
             orderedTests,
+            orderedSelections,
             requisitionId: input.requisitionId,
+            registrationBatchId,
             specimenType: group.specimenType,
             collectedAt: input.collectedAt,
+            collectedByStaffId,
+            collectedBySnapshot,
             actor,
           }),
         });
@@ -208,6 +439,12 @@ export class SpecimensService {
       printResults.push(finalized.printResult);
     }
 
+    await this.maybeQueueIdentityReview(
+      resolved,
+      created[0]?.accessionNumber ?? "",
+      actor,
+    );
+
     return { specimens, labelPreviews, printResults };
   }
 
@@ -218,9 +455,13 @@ export class SpecimensService {
     patientPayload: ResolvedRegistration["patientPayload"];
     identityConfirmationJson: string | null;
     orderedTests: Array<{ code: string; name?: string }>;
+    orderedSelections: OrderSelectionInput[];
     requisitionId?: string;
+    registrationBatchId: string;
     specimenType?: string;
     collectedAt?: string;
+    collectedByStaffId: string | null;
+    collectedBySnapshot: string | null;
     actor: ActorSnapshot | null;
   }) {
     return {
@@ -230,9 +471,13 @@ export class SpecimensService {
       patientJson: JSON.stringify(args.patientPayload),
       identityConfirmationJson: args.identityConfirmationJson,
       orderedTestsJson: JSON.stringify(args.orderedTests),
+      orderedSelectionsJson: JSON.stringify(args.orderedSelections),
       requisitionId: args.requisitionId?.trim() || null,
+      registrationBatchId: args.registrationBatchId,
       specimenType: args.specimenType?.trim() || "blood",
       collectedAt: args.collectedAt ? new Date(args.collectedAt) : null,
+      collectedByStaffId: args.collectedByStaffId,
+      collectedBySnapshot: args.collectedBySnapshot,
       status: "registered" as const,
       registeredBy: args.actor?.userId ?? null,
       registeredBySnapshot: args.actor ? JSON.stringify(args.actor) : null,
@@ -276,6 +521,7 @@ export class SpecimensService {
       Boolean(patient.suspectGroupId) && siblings.length >= 1;
 
     let identityConfirmationJson: string | null = null;
+    let queuePossibleDuplicate = false;
     if (requiresConfirmation) {
       const conf = input.identityConfirmation;
       if (
@@ -306,6 +552,8 @@ export class SpecimensService {
           })),
         });
       }
+      queuePossibleDuplicate =
+        conf.decision === "possible_duplicate_acknowledged";
       identityConfirmationJson = JSON.stringify({
         ...conf,
         confirmedAt: conf.confirmedAt ?? new Date().toISOString(),
@@ -331,7 +579,31 @@ export class SpecimensService {
       identityConfirmationJson,
       patientPayload,
       patientName: displayName(patient),
+      queuePossibleDuplicate,
+      suspectGroupId: patient.suspectGroupId,
+      groupPatientIds: [patient.id, ...siblings.map((s) => s.id)],
     };
+  }
+
+  private async maybeQueueIdentityReview(
+    resolved: ResolvedRegistration,
+    accessionNumber: string,
+    actor: ActorSnapshot | null,
+  ) {
+    if (
+      !resolved.queuePossibleDuplicate ||
+      !resolved.suspectGroupId ||
+      resolved.groupPatientIds.length < 2
+    ) {
+      return;
+    }
+    await this.patients.upsertPendingIdentityReview({
+      suspectGroupId: resolved.suspectGroupId,
+      patientIds: resolved.groupPatientIds,
+      preferredSurvivorPatientId: resolved.patient.id,
+      flaggedFromAccessionNumber: accessionNumber,
+      actor,
+    });
   }
 
   private async finalizeSpecimen(args: {
@@ -372,6 +644,21 @@ export class SpecimensService {
         specimenType: specimen.specimenType,
         orderedTests,
         requisitionId: specimen.requisitionId,
+        registrationBatchId: specimen.registrationBatchId,
+        orderedSelections: (() => {
+          try {
+            const raw = (specimen as { orderedSelectionsJson?: string | null })
+              .orderedSelectionsJson;
+            return JSON.parse(raw || "[]");
+          } catch {
+            return [];
+          }
+        })(),
+        collectedAt: specimen.collectedAt?.toISOString() ?? null,
+        collectedByStaffId: specimen.collectedByStaffId,
+        collectedBySnapshot: specimen.collectedBySnapshot
+          ? JSON.parse(specimen.collectedBySnapshot)
+          : null,
         identityConfirmation: identityConfirmationJson
           ? JSON.parse(identityConfirmationJson)
           : null,

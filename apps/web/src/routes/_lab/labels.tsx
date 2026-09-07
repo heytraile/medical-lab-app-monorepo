@@ -23,10 +23,19 @@ import { ClearableInput } from "../../components/ui/clearable-input";
 import { Select } from "../../components/ui/select";
 import { Badge } from "../../components/ui/badge";
 import { cn } from "../../lib/utils";
+import {
+  actorDisplayName,
+  patientDisplayNameFromJson,
+} from "../../lib/specimen-display";
+import { groupSpecimensIntoSessions } from "../../lib/accession-sessions";
 
 type LabelsSearch = {
   accession?: string;
 };
+
+function isPrintApiMissing(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404;
+}
 
 export const Route = createFileRoute("/_lab/labels")({
   validateSearch: (search: Record<string, unknown>): LabelsSearch => ({
@@ -37,23 +46,6 @@ export const Route = createFileRoute("/_lab/labels")({
   }),
   component: LabelsPage,
 });
-
-function patientFromJson(json: string | null): string {
-  if (!json) return "—";
-  try {
-    const p = JSON.parse(json) as {
-      firstName?: string;
-      lastName?: string;
-    };
-    return [p.firstName, p.lastName].filter(Boolean).join(" ") || "—";
-  } catch {
-    return "—";
-  }
-}
-
-function isPrintApiMissing(err: unknown): boolean {
-  return err instanceof ApiError && err.status === 404;
-}
 
 function LabelsPage() {
   const { accession: accessionFromUrl } = Route.useSearch();
@@ -240,7 +232,10 @@ function LabelsPage() {
     selectAccession(value);
   });
 
-  const recent = (specimensQ.data ?? []).slice(0, 20);
+  const recentSessions = useMemo(
+    () => groupSpecimensIntoSessions(specimensQ.data ?? []).slice(0, 20),
+    [specimensQ.data],
+  );
 
   return (
     <AccessioningShell
@@ -323,7 +318,7 @@ function LabelsPage() {
                   Loading…
                 </li>
               )}
-              {!specimensQ.isLoading && recent.length === 0 && (
+              {!specimensQ.isLoading && recentSessions.length === 0 && (
                 <li className="px-3 py-3 text-sm text-muted-foreground">
                   No specimens yet.{" "}
                   <Link
@@ -334,40 +329,71 @@ function LabelsPage() {
                   </Link>
                 </li>
               )}
-              {recent.map((s) => {
-                const isSelected =
-                  s.accessionNumber.toUpperCase() ===
-                  activeAccession.trim().toUpperCase();
+              {recentSessions.map((session) => {
+                const s = session.primary;
+                const isSelected = session.accessionNumbers.some(
+                  (acc) =>
+                    acc.toUpperCase() === activeAccession.trim().toUpperCase(),
+                );
+                const patientName =
+                  s.patientDisplayName?.trim() ||
+                  patientDisplayNameFromJson(s.patientJson);
+                const registeredBy =
+                  s.registeredByName?.trim() ||
+                  actorDisplayName(s.registeredBySnapshot) ||
+                  null;
+                const collector = s.collectedByName?.trim() || null;
+                const tubeLabel =
+                  session.tubes.length === 1
+                    ? session.specimenTypes[0] ?? "blood"
+                    : `${session.tubes.length} tubes · ${session.specimenTypes.join(", ")}`;
                 return (
-                  <li key={s.id}>
+                  <li key={session.key}>
                     <button
                       type="button"
                       ref={isSelected ? selectedRowRef : undefined}
                       aria-current={isSelected ? "true" : undefined}
                       className={cn(
-                        // Accession and name stack above the badge on a phone;
-                        // all three on one line crushes the patient name.
-                        "flex w-full flex-col items-start gap-1 border-l-2 px-3 py-2.5 text-left text-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-2",
+                        "flex w-full flex-col items-start gap-1 border-l-2 px-3 py-2.5 text-left text-sm transition-colors",
                         isSelected
                           ? "border-l-accent bg-accent/10"
                           : "border-l-transparent hover:bg-muted",
                       )}
                       onClick={() => selectAccession(s.accessionNumber)}
                     >
-                      <span className="min-w-0">
-                        <span
-                          className={cn(
-                            "font-mono font-medium",
-                            isSelected && "text-accent",
-                          )}
-                        >
-                          {s.accessionNumber}
+                      <span className="flex w-full min-w-0 items-start justify-between gap-2">
+                        <span className="min-w-0">
+                          <span
+                            className={cn(
+                              "block truncate font-medium",
+                              isSelected && "text-accent",
+                            )}
+                          >
+                            {patientName}
+                          </span>
+                          <span
+                            className={cn(
+                              "font-mono text-xs tracking-tight",
+                              isSelected
+                                ? "text-accent/90"
+                                : "text-muted-foreground",
+                            )}
+                          >
+                            {session.accessionNumbers.join(" · ")}
+                          </span>
                         </span>
-                        <span className="ml-2 text-muted-foreground">
-                          {patientFromJson(s.patientJson)}
-                        </span>
+                        <Badge variant="muted" className="shrink-0">
+                          {s.status}
+                        </Badge>
                       </span>
-                      <Badge variant="muted">{s.status}</Badge>
+                      <span className="text-xs capitalize text-muted-foreground">
+                        {tubeLabel}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(session.registeredAt).toLocaleString()}
+                        {registeredBy ? ` · Reg: ${registeredBy}` : ""}
+                        {collector ? ` · Collector: ${collector}` : ""}
+                      </span>
                     </button>
                   </li>
                 );
@@ -395,6 +421,7 @@ function LabelsPage() {
                   type="button"
                   variant="secondary"
                   size="sm"
+                  title="Bench shows results. If none yet, you’ll see a waiting state for this accession."
                   onClick={() =>
                     void navigate({
                       to: "/bench",

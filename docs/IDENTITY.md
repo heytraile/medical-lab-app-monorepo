@@ -48,10 +48,24 @@ If the patient is in a suspect group with other active MRNs and the body has **n
 
 Allowed decisions (audited on `Specimen.identityConfirmationJson`):
 
-- `distinct_people` — tech asserts different people; proceed with selected MRN
-- `possible_duplicate_acknowledged` — possible duplicate; still proceed with selected MRN (no auto-merge)
+- `distinct_people` — proceed with chosen MRN (selected or switched sibling)
+- `possible_duplicate_acknowledged` — proceed with chosen MRN **and** upsert a pending **Identity review** queue item (`IdentityReviewItem`) for Patients → Identity review
+
+Accession UI: continue with selected, switch to a sibling, or cancel; optional **Flag as possible duplicate** checkbox. **No chart merge from Accession.**
 
 Quarantined patients → **400**, cannot register.
+
+## Identity review + merge (Patients)
+
+- `GET /patients/identity-reviews` — pending (default) / resolved / merged queue
+- `POST /patients/identity-reviews/:id/resolve-distinct` — **admin**; clear pending without merge
+- `POST /patients/merge` — **admin**; body `{ survivorPatientId, loserPatientId, reviewItemId?, reason? }`
+  - Re-points `Specimen.patientId` loser → survivor
+  - Quarantines loser (keeps MRN row); recomputes suspect groups
+  - Outbox `patient.merged` for cloud projector
+  - Does **not** rewrite historical `patientJson` / confirmation snapshots
+
+UI: Patients page tabs **Registry | Identity review**.
 
 ## APIs
 
@@ -60,16 +74,20 @@ Quarantined patients → **400**, cannot register.
 | `GET` | `/patients?q=` | Active patients (default); `includeQuarantined=true` optional |
 | `POST` | `/patients` | Create provisional patient |
 | `GET` | `/patients/:id` | One patient (+ suspect siblings when listed) |
+| `GET` | `/patients/identity-reviews` | Flagged possible-duplicate queue |
+| `POST` | `/patients/identity-reviews/:id/resolve-distinct` | Admin: mark distinct |
+| `POST` | `/patients/merge` | Admin: merge charts |
 | `POST` | `/patients/seed` | Re-import messy fixture |
 | `POST` | `/specimens` | **Requires** `patientId` + optional `identityConfirmation` |
 
 ## UI
 
-Register → single patient search. Select a hit, or **Register new patient** (provisional TEMP MRN). Suspect patients still open a **blocking** confirmation dialog before specimen register.
+Register → single patient search. Select a hit, or **Register new patient** (provisional TEMP MRN). Suspect patients still open a **blocking** confirmation dialog before specimen register (choose chart; optional flag for review).
+
+Patients → **Identity review** tab: open detail, mark distinct, or **Merge charts** (admin).
 
 ## Later
 
 - Live push to their registry / FHIR
 - Automatic MRN reconcile when upstream replies
-- Cloud patient table + merge tooling
-- Formal identity officer workflow for quarantine resolution
+- Formal identity officer workflow for quarantine resolution beyond merge/distinct

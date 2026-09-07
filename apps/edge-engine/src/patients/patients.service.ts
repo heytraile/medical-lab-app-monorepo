@@ -1,7 +1,13 @@
-import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from "@nestjs/common";
+import type { ActorSnapshot } from "@drax-lis/contracts";
 import { PrismaService } from "../prisma/prisma.service";
 import { SyncService } from "../sync/sync.service";
 import { PatientsImportService } from "./patients-import.service";
+import { AuditService } from "../audit/audit.service";
 import {
   displayName,
   normalizeMrn,
@@ -30,12 +36,34 @@ export type PatientListItem = {
   }>;
 };
 
+export type IdentityReviewListItem = {
+  id: string;
+  suspectGroupId: string;
+  status: "pending" | "resolved_distinct" | "merged";
+  flaggedAt: string;
+  flaggedFromAccessionNumber: string | null;
+  preferredSurvivorPatientId: string | null;
+  patients: Array<{
+    id: string;
+    mrn: string;
+    displayName: string;
+    dateOfBirth: string | null;
+    sex: string | null;
+    status: string;
+  }>;
+  resolvedAt?: string | null;
+  survivorPatientId?: string | null;
+  loserPatientId?: string | null;
+  resolutionNote?: string | null;
+};
+
 @Injectable()
 export class PatientsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly imports: PatientsImportService,
     private readonly sync: SyncService,
+    private readonly audit: AuditService,
   ) {}
 
   async list(opts: {
@@ -133,6 +161,324 @@ export class PatientsService {
     });
 
     return this.get(created.id);
+  }
+
+  /**
+   * Upsert a pending Identity review row when accession flags a possible duplicate.
+   * One pending item per suspectGroupId.
+   */
+  async upsertPendingIdentityReview(input: {
+    suspectGroupId: string;
+    patientIds: string[];
+    preferredSurvivorPatientId: string;
+    flaggedFromAccessionNumber?: string | null;
+    actor?: ActorSnapshot | null;
+  }) {
+    const patientIds = [...new Set(input.patientIds)].sort();
+    if (patientIds.length < 2) return null;
+
+    const existing = await this.prisma.identityReviewItem.findFirst({
+      where: { suspectGroupId: input.suspectGroupId, status: "pending" },
+    });
+
+    const data = {
+      patientIdsJson: JSON.stringify(patientIds),
+      flaggedAt: new Date(),
+      flaggedBy: input.actor?.userId ?? null,
+      flaggedBySnapshot: input.actor ? JSON.stringify(input.actor) : null,
+      flaggedFromAccessionNumber: input.flaggedFromAccessionNumber ?? null,
+      preferredSurvivorPatientId: input.preferredSurvivorPatientId,
+    };
+
+    const row = existing
+      ? await this.prisma.identityReviewItem.update({
+          where: { id: existing.id },
+          data,
+        })
+      : await this.prisma.identityReviewItem.create({
+          data: {
+            suspectGroupId: input.suspectGroupId,
+            status: "pending",
+            ...data,
+          },
+        });
+
+    await this.audit.log({
+      eventType: "identity_review.flagged",
+      entityType: "identity_review",
+      entityId: row.id,
+      actor: input.actor ?? null,
+      payload: {
+        suspectGroupId: input.suspectGroupId,
+        patientIds,
+        preferredSurvivorPatientId: input.preferredSurvivorPatientId,
+        flaggedFromAccessionNumber: input.flaggedFromAccessionNumber ?? null,
+      },
+    });
+
+    return row;
+  }
+
+  async listIdentityReviews(opts?: {
+    status?: "pending" | "resolved_distinct" | "merged" | "all";
+  }): Promise<{ items: IdentityReviewListItem[]; pendingCount: number }> {
+    const status = opts?.status ?? "pending";
+    const [rows, pendingCount] = await Promise.all([
+      this.prisma.identityReviewItem.findMany({
+        where: status === "all" ? {} : { status },
+        orderBy: { flaggedAt: "desc" },
+        take: 100,
+      }),
+      this.prisma.identityReviewItem.count({ where: { status: "pending" } }),
+    ]);
+
+    const allIds = new Set<string>();
+    for (const row of rows) {
+      for (const id of JSON.parse(row.patientIdsJson) as string[]) {
+        allIds.add(id);
+      }
+    }
+    const patients = allIds.size
+      ? await this.prisma.patient.findMany({
+          where: { id: { in: [...allIds] } },
+        })
+      : [];
+    const byId = new Map(patients.map((p) => [p.id, p]));
+
+    const items: IdentityReviewListItem[] = rows.map((row) => {
+      const ids = JSON.parse(row.patientIdsJson) as string[];
+      return {
+        id: row.id,
+        suspectGroupId: row.suspectGroupId,
+        status: row.status as IdentityReviewListItem["status"],
+        flaggedAt: row.flaggedAt.toISOString(),
+        flaggedFromAccessionNumber: row.flaggedFromAccessionNumber,
+        preferredSurvivorPatientId: row.preferredSurvivorPatientId,
+        patients: ids
+          .map((id) => byId.get(id))
+          .filter(Boolean)
+          .map((p) => ({
+            id: p!.id,
+            mrn: p!.mrn,
+            displayName: displayName(p!),
+            dateOfBirth: p!.dateOfBirth,
+            sex: p!.sex,
+            status: p!.status,
+          })),
+        resolvedAt: row.resolvedAt?.toISOString() ?? null,
+        survivorPatientId: row.survivorPatientId,
+        loserPatientId: row.loserPatientId,
+        resolutionNote: row.resolutionNote,
+      };
+    });
+
+    return { items, pendingCount };
+  }
+
+  async resolveIdentityReviewDistinct(
+    reviewItemId: string,
+    actor: ActorSnapshot,
+    note?: string,
+  ): Promise<IdentityReviewListItem> {
+    const row = await this.prisma.identityReviewItem.findUnique({
+      where: { id: reviewItemId },
+    });
+    if (!row) throw new NotFoundException(`Review item ${reviewItemId} not found`);
+    if (row.status !== "pending") {
+      throw new BadRequestException(`Review item is already ${row.status}`);
+    }
+
+    await this.prisma.identityReviewItem.update({
+      where: { id: row.id },
+      data: {
+        status: "resolved_distinct",
+        resolvedAt: new Date(),
+        resolvedBy: actor.userId,
+        resolvedBySnapshot: JSON.stringify(actor),
+        resolutionNote: note?.trim() || null,
+      },
+    });
+
+    await this.audit.log({
+      eventType: "identity_review.resolved_distinct",
+      entityType: "identity_review",
+      entityId: row.id,
+      actor,
+      payload: { suspectGroupId: row.suspectGroupId, note: note ?? null },
+    });
+
+    const listed = await this.listIdentityReviews({ status: "all" });
+    const item = listed.items.find((i) => i.id === reviewItemId);
+    if (!item) throw new NotFoundException(`Review item ${reviewItemId} not found`);
+    return item;
+  }
+
+  async mergePatients(
+    input: {
+      survivorPatientId: string;
+      loserPatientId: string;
+      reviewItemId?: string;
+      reason?: string;
+    },
+    actor: ActorSnapshot,
+  ): Promise<{
+    survivor: PatientListItem;
+    loser: PatientListItem;
+    specimensMoved: number;
+    reviewItemId: string | null;
+  }> {
+    const survivorId = input.survivorPatientId.trim();
+    const loserId = input.loserPatientId.trim();
+    if (!survivorId || !loserId || survivorId === loserId) {
+      throw new BadRequestException(
+        "survivorPatientId and loserPatientId must be different patients",
+      );
+    }
+
+    const [survivor, loser] = await Promise.all([
+      this.prisma.patient.findUnique({ where: { id: survivorId } }),
+      this.prisma.patient.findUnique({ where: { id: loserId } }),
+    ]);
+    if (!survivor) throw new NotFoundException(`Patient ${survivorId} not found`);
+    if (!loser) throw new NotFoundException(`Patient ${loserId} not found`);
+    if (survivor.status !== "active") {
+      throw new BadRequestException(
+        `Survivor ${survivor.mrn} must be active (is ${survivor.status})`,
+      );
+    }
+    if (loser.status === "quarantined" && loser.suspectGroupId == null) {
+      // Already merged/quarantined without an open suspect link — refuse double-merge noise
+      const stillHasSpecimens = await this.prisma.specimen.count({
+        where: { patientId: loser.id },
+      });
+      if (stillHasSpecimens === 0) {
+        throw new BadRequestException(
+          `Patient ${loser.mrn} is already quarantined with no specimens to move`,
+        );
+      }
+    }
+
+    if (input.reviewItemId) {
+      const review = await this.prisma.identityReviewItem.findUnique({
+        where: { id: input.reviewItemId },
+      });
+      if (!review) {
+        throw new NotFoundException(`Review item ${input.reviewItemId} not found`);
+      }
+      if (review.status !== "pending") {
+        throw new BadRequestException(`Review item is already ${review.status}`);
+      }
+    }
+
+    const moved = await this.prisma.$transaction(async (tx) => {
+      const specimens = await tx.specimen.findMany({
+        where: { patientId: loser.id },
+        select: { id: true, accessionNumber: true },
+      });
+
+      if (specimens.length) {
+        await tx.specimen.updateMany({
+          where: { patientId: loser.id },
+          data: { patientId: survivor.id },
+        });
+      }
+
+      await tx.patient.update({
+        where: { id: loser.id },
+        data: { status: "quarantined", suspectGroupId: null },
+      });
+
+      await tx.patient.update({
+        where: { id: survivor.id },
+        data: { status: "active" },
+      });
+
+      let reviewItemId: string | null = input.reviewItemId ?? null;
+      if (reviewItemId) {
+        await tx.identityReviewItem.update({
+          where: { id: reviewItemId },
+          data: {
+            status: "merged",
+            resolvedAt: new Date(),
+            resolvedBy: actor.userId,
+            resolvedBySnapshot: JSON.stringify(actor),
+            survivorPatientId: survivor.id,
+            loserPatientId: loser.id,
+            resolutionNote: input.reason?.trim() || null,
+          },
+        });
+      } else {
+        const pendingRows = await tx.identityReviewItem.findMany({
+          where: { status: "pending" },
+          take: 50,
+        });
+        const pending = pendingRows.find((r) => {
+          const ids = JSON.parse(r.patientIdsJson) as string[];
+          return ids.includes(survivor.id) && ids.includes(loser.id);
+        });
+        if (pending) {
+          reviewItemId = pending.id;
+          await tx.identityReviewItem.update({
+            where: { id: pending.id },
+            data: {
+              status: "merged",
+              resolvedAt: new Date(),
+              resolvedBy: actor.userId,
+              resolvedBySnapshot: JSON.stringify(actor),
+              survivorPatientId: survivor.id,
+              loserPatientId: loser.id,
+              resolutionNote: input.reason?.trim() || null,
+            },
+          });
+        }
+      }
+
+      return {
+        specimens,
+        reviewItemId,
+      };
+    });
+
+    await this.imports.recomputeSuspectGroups();
+
+    await this.sync.enqueue({
+      type: "patient.merged",
+      payload: {
+        survivorPatientId: survivor.id,
+        survivorMrn: survivor.mrn,
+        loserPatientId: loser.id,
+        loserMrn: loser.mrn,
+        accessionNumbers: moved.specimens.map((s) => s.accessionNumber),
+        reviewItemId: moved.reviewItemId,
+        reason: input.reason?.trim() || null,
+        mergedBy: actor.userId,
+        mergedBySnapshot: actor,
+        mergedAt: new Date().toISOString(),
+      },
+    });
+
+    await this.audit.log({
+      eventType: "patient.merged",
+      entityType: "patient",
+      entityId: survivor.id,
+      actor,
+      payload: {
+        survivorPatientId: survivor.id,
+        survivorMrn: survivor.mrn,
+        loserPatientId: loser.id,
+        loserMrn: loser.mrn,
+        specimensMoved: moved.specimens.length,
+        reviewItemId: moved.reviewItemId,
+        reason: input.reason?.trim() || null,
+      },
+    });
+
+    return {
+      survivor: await this.get(survivor.id),
+      loser: await this.get(loser.id),
+      specimensMoved: moved.specimens.length,
+      reviewItemId: moved.reviewItemId,
+    };
   }
 
   private async allocateProvisionalMrn(): Promise<string> {

@@ -300,6 +300,11 @@ export type SyncStatus = {
   failed: number;
 };
 
+export type SpecimenOrderedTest = {
+  code: string;
+  name?: string;
+};
+
 export type SpecimenRow = {
   id: string;
   accessionNumber: string;
@@ -309,9 +314,25 @@ export type SpecimenRow = {
   identityConfirmationJson?: string | null;
   specimenType?: string;
   orderedTestsJson?: string;
+  /** Parsed ordered tests when provided by the edge list API. */
+  orderedTests?: SpecimenOrderedTest[];
+  /** Original Accession ticks: panels and/or individual tests. */
+  orderedSelections?: Array<{ kind: "panel" | "test"; code: string }>;
   requisitionId?: string | null;
+  /** Shared across tubes from one Accession submit. */
+  registrationBatchId?: string | null;
   status: string;
+  collectedAt?: string | null;
+  collectedByStaffId?: string | null;
+  collectedBySnapshot?: string | null;
+  collectedByName?: string | null;
   registeredAt: string;
+  registeredBy?: string | null;
+  registeredBySnapshot?: string | null;
+  /** Convenience display name from registeredBySnapshot. */
+  registeredByName?: string | null;
+  patientDisplayName?: string;
+  patientMrn?: string | null;
 };
 
 export type LabelPreviewFields = {
@@ -389,6 +410,29 @@ export type IdentityConfirmationRequired = {
   }>;
 };
 
+export type IdentityReviewPatient = {
+  id: string;
+  mrn: string;
+  displayName: string;
+  dateOfBirth: string | null;
+  sex: string | null;
+  status: string;
+};
+
+export type IdentityReviewItem = {
+  id: string;
+  suspectGroupId: string;
+  status: "pending" | "resolved_distinct" | "merged";
+  flaggedAt: string;
+  flaggedFromAccessionNumber: string | null;
+  preferredSurvivorPatientId: string | null;
+  patients: IdentityReviewPatient[];
+  resolvedAt?: string | null;
+  survivorPatientId?: string | null;
+  loserPatientId?: string | null;
+  resolutionNote?: string | null;
+};
+
 export type CreatePatientBody = {
   firstName: string;
   lastName: string;
@@ -401,7 +445,10 @@ export const api = {
   health: () =>
     request<{ ok: boolean; service: string }>("/health", { auth: false }),
   results: () => request<BenchResult[]>("/results", { auth: false }),
-  specimens: () => request<SpecimenRow[]>("/specimens", { auth: false }),
+  specimens: (q?: string) => {
+    const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
+    return request<SpecimenRow[]>(`/specimens${qs}`, { auth: false });
+  },
   specimenByAccession: (accession: string) =>
     request<SpecimenRow | null>(
       `/specimens?accession=${encodeURIComponent(accession.trim())}`,
@@ -428,6 +475,36 @@ export const api = {
     request<{ seeded: boolean; processed: number }>("/patients/seed", {
       method: "POST",
       auth: false,
+    }),
+  identityReviews: (status: "pending" | "resolved_distinct" | "merged" | "all" = "pending") =>
+    request<{ items: IdentityReviewItem[]; pendingCount: number }>(
+      `/patients/identity-reviews?status=${encodeURIComponent(status)}`,
+      { auth: false },
+    ),
+  resolveIdentityReviewDistinct: (id: string, body?: { note?: string }) =>
+    request<IdentityReviewItem>(
+      `/patients/identity-reviews/${encodeURIComponent(id)}/resolve-distinct`,
+      {
+        method: "POST",
+        body: JSON.stringify(body ?? {}),
+        auth: true,
+      },
+    ),
+  mergePatients: (body: {
+    survivorPatientId: string;
+    loserPatientId: string;
+    reviewItemId?: string;
+    reason?: string;
+  }) =>
+    request<{
+      survivor: PatientListItem;
+      loser: PatientListItem;
+      specimensMoved: number;
+      reviewItemId: string | null;
+    }>("/patients/merge", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: true,
     }),
   registerSpecimen: (body: RegisterSpecimenRequest) =>
     request<{
@@ -696,6 +773,11 @@ export const api = {
       `/requisitions?accession=${encodeURIComponent(accession)}`,
       { baseUrl: CLOUD_API_URL, auth: true },
     ),
+  getRequisition: (id: string) =>
+    request<LabRequisition>(`/requisitions/${encodeURIComponent(id)}`, {
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
 
   listCollectors: () =>
     request<StaffCollector[]>("/lab/staff/collectors", {

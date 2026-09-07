@@ -6,46 +6,29 @@ import {
   formatSpecimenLabel,
   formattedToPreviewFields,
 } from "@drax-lis/contracts";
+import {
+  orderedTestCodesFromJson,
+  parsePatientJson,
+  patientDisplayNameFromJson,
+} from "./specimen-display";
+
+export { orderedTestCodesFromJson } from "./specimen-display";
 
 function patientFromSpecimenJson(json: string | null): {
   displayName: string;
   dateOfBirth: string;
   mrn?: string;
 } {
-  if (!json) {
+  const p = parsePatientJson(json);
+  if (!p) {
     return { displayName: "Unknown", dateOfBirth: "DOB —" };
   }
-  try {
-    const p = JSON.parse(json) as {
-      firstName?: string;
-      middleName?: string | null;
-      lastName?: string;
-      dateOfBirth?: string | null;
-      mrn?: string;
-    };
-    const displayName =
-      [p.firstName, p.middleName, p.lastName].filter(Boolean).join(" ") ||
-      "Unknown";
-    return {
-      displayName,
-      dateOfBirth: p.dateOfBirth?.trim() || "DOB —",
-      mrn: p.mrn,
-    };
-  } catch {
-    return { displayName: "Unknown", dateOfBirth: "DOB —" };
-  }
-}
-
-export function orderedTestCodesFromJson(
-  json: string | null | undefined,
-): string[] {
-  if (!json) return [];
-  try {
-    const parsed = JSON.parse(json) as Array<{ code?: string }>;
-    return parsed.map((t) => t.code).filter(Boolean) as string[];
-  } catch {
-    return [];
-  }
+  const displayName = patientDisplayNameFromJson(json);
+  return {
+    displayName: displayName === "—" ? "Unknown" : displayName,
+    dateOfBirth: p.dateOfBirth?.trim() || "DOB —",
+    mrn: p.mrn,
+  };
 }
 
 /** Same payload accession + labels use for edge ZPL preview. */
@@ -56,7 +39,9 @@ export function printPreviewPayloadFromSpecimen(row: SpecimenRow) {
     patientName: client.patientName,
     barcode: row.barcode,
     dateOfBirth: client.dateOfBirth,
-    orderedTests: orderedTestCodesFromJson(row.orderedTestsJson),
+    orderedTests:
+      row.orderedTests?.map((t) => t.code) ??
+      orderedTestCodesFromJson(row.orderedTestsJson),
     specimenType: row.specimenType?.trim() || "blood",
     mrn: client.mrn,
   };
@@ -97,7 +82,9 @@ export function buildLabelPreviewFromSpecimen(
       patientName: patient.displayName,
       barcode: row.barcode,
       dateOfBirth: patient.dateOfBirth,
-      orderedTests: orderedTestCodesFromJson(row.orderedTestsJson),
+      orderedTests:
+        row.orderedTests?.map((t) => t.code) ??
+        orderedTestCodesFromJson(row.orderedTestsJson),
       specimenType: row.specimenType?.trim() || "blood",
       mrn: patient.mrn,
     },

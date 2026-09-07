@@ -20,7 +20,7 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, X } from "lucide-react";
 import { resolveDisplayFlag } from "@drax-lis/contracts";
 import { api, type BenchResult } from "../../lib/api";
 import { analyzerLabel } from "../../lib/analyzers";
@@ -32,6 +32,7 @@ import {
   formatAttributionTime,
 } from "../../lib/result-attribution";
 import { BenchPatientPanel } from "../../components/bench-patient-panel";
+import { BenchEmptyState } from "../../components/bench-empty-state";
 import { BenchMobileList } from "../../components/bench-mobile-list";
 import { Sheet, SheetContent } from "../../components/ui/sheet";
 import { useIsDesktop, useIsWide } from "../../lib/use-media-query";
@@ -49,8 +50,10 @@ import {
   flagValueClass,
 } from "../../components/result-status";
 import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import { ScrollContainer } from "../../components/ui/scroll-container";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { findSpecimenByAccession } from "../../lib/label-preview-from-specimen";
 import { cn } from "../../lib/utils";
 
 /** Stable group key — unlinked specimens group by accession, not into one bucket. */
@@ -121,6 +124,7 @@ type TabFilter = "all" | "pending" | "flagged" | "released";
 
 function BenchPage() {
   const { analyzer, q } = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [tab, setTab] = useState<TabFilter>("all");
   const [sorting, setSorting] = useState<SortingState>([
     { id: "observedAt", desc: true },
@@ -138,6 +142,55 @@ function BenchPage() {
   const focusedRowRef = useRef<HTMLElement | null>(null);
   const isDesktop = useIsDesktop();
   const isWide = useIsWide();
+
+  const [searchDraft, setSearchDraft] = useState(q ?? "");
+  useEffect(() => {
+    setSearchDraft(q ?? "");
+  }, [q]);
+  const debouncedSearchDraft = useDebouncedValue(searchDraft, 250);
+  // Only push draft → URL once debounce has caught up to the live input.
+  // Otherwise Clear empties draft + URL, then the stale debounced value
+  // immediately re-applies ?q= and the filter never clears.
+  useEffect(() => {
+    const live = searchDraft.trim() || undefined;
+    const next = debouncedSearchDraft.trim() || undefined;
+    if (live !== next) return;
+    if (next === (q || undefined)) return;
+    void navigate({
+      to: "/bench",
+      search: (prev) => {
+        const analyzer = prev.analyzer;
+        return next
+          ? analyzer
+            ? { q: next, analyzer }
+            : { q: next }
+          : analyzer
+            ? { analyzer }
+            : {};
+      },
+      replace: true,
+    });
+  }, [debouncedSearchDraft, navigate, q, searchDraft]);
+
+  const clearUrlFilters = () => {
+    setSearchDraft("");
+    void navigate({ to: "/bench", search: {}, replace: true });
+  };
+  const clearQ = () => {
+    setSearchDraft("");
+    void navigate({
+      to: "/bench",
+      search: (prev) => (prev.analyzer ? { analyzer: prev.analyzer } : {}),
+      replace: true,
+    });
+  };
+  const clearAnalyzer = () => {
+    void navigate({
+      to: "/bench",
+      search: (prev) => (prev.q ? { q: prev.q } : {}),
+      replace: true,
+    });
+  };
 
   const { data = NO_RESULTS, isLoading, error, isFetching } = useQuery({
     queryKey: ["results"],
@@ -215,6 +268,26 @@ function BenchPage() {
   }, [data, filtered, specimensQ.data]);
 
   const searching = deferredQ.length > 0;
+
+  const matchedSpecimen = useMemo(() => {
+    const needle = (q ?? "").trim();
+    if (!needle || !specimensQ.data?.length) return null;
+    return (
+      findSpecimenByAccession(specimensQ.data, needle) ??
+      specimensQ.data.find(
+        (s) =>
+          s.accessionNumber.toLowerCase() === needle.toLowerCase() ||
+          s.barcode.toLowerCase() === needle.toLowerCase(),
+      ) ??
+      null
+    );
+  }, [q, specimensQ.data]);
+
+  const resultsExistForAccession = useMemo(() => {
+    if (!matchedSpecimen) return false;
+    const acc = matchedSpecimen.accessionNumber;
+    return data.some((r) => r.accessionNumber === acc);
+  }, [data, matchedSpecimen]);
 
   // While searching, open everything so a match is never hidden in a collapsed
   // group. Collapse everything again when the query clears.
@@ -435,6 +508,18 @@ function BenchPage() {
   const title = analyzer ? analyzerLabel(analyzer) : "All machines";
   const split = Boolean(selectedPatientId);
   const splitDocked = split && isWide;
+  const hasUrlFilter = Boolean(q || analyzer);
+
+  const emptyState = (
+    <BenchEmptyState
+      tab={tab}
+      q={q}
+      analyzer={analyzer}
+      matchedSpecimen={matchedSpecimen}
+      resultsExistForAccession={resultsExistForAccession}
+      onClearSearch={clearUrlFilters}
+    />
+  );
 
   // Each patient renders as a white block on a grey canvas, so rows need to
   // know where they sit inside their block. The row model is a flat list with
@@ -476,13 +561,8 @@ function BenchPage() {
         <tbody>
           {modelRows.length === 0 ? (
             <tr className="bg-card">
-              <td
-                colSpan={visibleColumnCount}
-                className="px-3 py-12 text-center text-muted-foreground"
-              >
-                {tab === "released"
-                  ? "No released results yet. After sign-off, results appear here."
-                  : "No results for this view. Try clearing your filters."}
+              <td colSpan={visibleColumnCount} className="p-0">
+                {emptyState}
               </td>
             </tr>
           ) : (
@@ -603,11 +683,12 @@ function BenchPage() {
             {title}
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Live results from instruments
+            Live results from instruments and manual entry
             {q ? ` · filter “${q}”` : ""}.
             {split ? " Click a patient row to focus; Esc closes." : ""}
             {" "}
-            Expand a patient row to see test-level values.
+            Expand a patient row to see test-level values. New accessions with
+            no results yet show as waiting when you search by accession.
           </p>
         </div>
         <span className="text-xs text-muted-foreground">
@@ -637,38 +718,86 @@ function BenchPage() {
             <TabsTrigger value="flagged">Flagged</TabsTrigger>
           </TabsList>
         </Tabs>
-        {groupSummaries.size > 0 && (
-          <div className="flex flex-wrap items-center gap-2">
-            <PatientNameOrderSelect className="w-[9.5rem]" />
-            {/* A phone has no thead to click, so the sort needs its own
-                control. Hidden from md up, where the header takes over. */}
-            <Tabs
-              value={sorting[0]?.id === "patientGroup" ? "patient" : "newest"}
-              onValueChange={(v) =>
-                setSorting([
-                  v === "patient"
-                    ? { id: "patientGroup", desc: false }
-                    : { id: "observedAt", desc: true },
-                ])
-              }
-              className="md:hidden"
-            >
-              <TabsList>
-                <TabsTrigger value="newest">Newest</TabsTrigger>
-                <TabsTrigger value="patient">Patient</TabsTrigger>
-              </TabsList>
-            </Tabs>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => table.toggleAllRowsExpanded(!allExpanded)}
-            >
-              {allExpanded ? "Collapse all" : "Expand all"}
-            </Button>
-          </div>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={searchDraft}
+            onChange={(e) => setSearchDraft(e.target.value)}
+            placeholder="Search accession, patient, test…"
+            className="h-8 w-[min(100%,16rem)] text-sm"
+            aria-label="Filter bench results"
+          />
+          {groupSummaries.size > 0 ? (
+            <>
+              <PatientNameOrderSelect className="w-[9.5rem]" />
+              {/* A phone has no thead to click, so the sort needs its own
+                  control. Hidden from md up, where the header takes over. */}
+              <Tabs
+                value={sorting[0]?.id === "patientGroup" ? "patient" : "newest"}
+                onValueChange={(v) =>
+                  setSorting([
+                    v === "patient"
+                      ? { id: "patientGroup", desc: false }
+                      : { id: "observedAt", desc: true },
+                  ])
+                }
+                className="md:hidden"
+              >
+                <TabsList>
+                  <TabsTrigger value="newest">Newest</TabsTrigger>
+                  <TabsTrigger value="patient">Patient</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => table.toggleAllRowsExpanded(!allExpanded)}
+              >
+                {allExpanded ? "Collapse all" : "Expand all"}
+              </Button>
+            </>
+          ) : null}
+        </div>
       </div>
+
+      {hasUrlFilter ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Active filters
+          </span>
+          {q ? (
+            <button
+              type="button"
+              onClick={clearQ}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
+            >
+              Search: <span className="font-mono">{q}</span>
+              <X className="size-3.5 opacity-70" aria-hidden />
+              <span className="sr-only">Clear search</span>
+            </button>
+          ) : null}
+          {analyzer ? (
+            <button
+              type="button"
+              onClick={clearAnalyzer}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
+            >
+              Analyzer: {analyzerLabel(analyzer)}
+              <X className="size-3.5 opacity-70" aria-hidden />
+              <span className="sr-only">Clear analyzer filter</span>
+            </button>
+          ) : null}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={clearUrlFilters}
+          >
+            Clear all
+          </Button>
+        </div>
+      ) : null}
 
       {isLoading && <p className="text-muted-foreground">Loading results…</p>}
       {error && (
@@ -689,11 +818,7 @@ function BenchPage() {
       >
         {!isDesktop ? (
           modelRows.length === 0 ? (
-            <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">
-              {tab === "released"
-                ? "No released results yet. After sign-off, results appear here."
-                : "No results for this view. Try clearing your filters."}
-            </p>
+            emptyState
           ) : (
             <ScrollContainer className="min-h-0 flex-1">
             <div className="space-y-3 p-1 pb-4">

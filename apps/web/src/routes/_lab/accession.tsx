@@ -48,8 +48,22 @@ import { Select } from "../../components/ui/select";
 import { cn } from "../../lib/utils";
 import type { SpecimenInfo } from "@drax-lis/contracts";
 import { AccessionMobileWizard } from "../../components/accessioning/accession-mobile-wizard";
+import { AccessionHistoryPanel } from "../../components/accessioning/accession-history-panel";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+
+type AccessionSearch = {
+  tab?: "new" | "history";
+  accession?: string;
+};
 
 export const Route = createFileRoute("/_lab/accession")({
+  validateSearch: (search: Record<string, unknown>): AccessionSearch => ({
+    tab: search.tab === "history" ? "history" : "new",
+    accession:
+      typeof search.accession === "string" && search.accession.trim()
+        ? search.accession.trim()
+        : undefined,
+  }),
   component: AccessionPage,
 });
 
@@ -65,6 +79,7 @@ type RegisteredSpecimenLabel = {
 function AccessionPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const { tab, accession: historyAccession } = Route.useSearch();
   const auth = useAuth();
   const catalogQ = useCatalog();
   const [selected, setSelected] = useState<PatientListItem | null>(null);
@@ -177,21 +192,30 @@ function AccessionPage() {
   });
 
   const mutation = useMutation({
-    mutationFn: async (identityConfirmation?: IdentityConfirmation) => {
-      if (!selected) throw new Error("Select a patient");
+    mutationFn: async (args?: {
+      identityConfirmation?: IdentityConfirmation;
+      patientId?: string;
+    }) => {
+      if (!selected && !args?.patientId) throw new Error("Select a patient");
       if (!catalogQ.data) throw new Error("Catalog not loaded");
       if (expandedTests.length === 0) {
         throw new Error("Select at least one panel or test");
       }
 
+      const patientForOrder =
+        args?.patientId && args.patientId !== selected?.id
+          ? await api.patient(args.patientId)
+          : selected;
+      if (!patientForOrder) throw new Error("Select a patient");
+
       let requisitionId: string | undefined;
       if (auth.accessToken) {
         const req = await api.createRequisition({
-          patientId: selected.id,
+          patientId: patientForOrder.id,
           patientSnapshot: {
-            displayName: selected.displayName,
-            mrn: selected.mrn,
-            dateOfBirth: selected.dateOfBirth,
+            displayName: patientForOrder.displayName,
+            mrn: patientForOrder.mrn,
+            dateOfBirth: patientForOrder.dateOfBirth,
           },
           selections: deferredSelections,
           specimenInfo,
@@ -205,13 +229,16 @@ function AccessionPage() {
       }));
 
       const data = await api.registerSpecimensBatch({
-        patientId: selected.id,
+        patientId: patientForOrder.id,
         identityConfirmation:
-          identityConfirmation ?? pendingConfirmation ?? undefined,
+          args?.identityConfirmation ?? pendingConfirmation ?? undefined,
         requisitionId,
         printLabel,
         copies,
         collectedAt: specimenInfo.collectedAt,
+        collectedByStaffId: specimenInfo.collectedByStaffId,
+        collectedBy: specimenInfo.collectedBy,
+        selections: deferredSelections,
         specimens: batchSpecimens,
       });
 
@@ -285,7 +312,10 @@ function AccessionPage() {
     setConfirmPayload(null);
   }, [selected?.id]);
 
-  function confirmIdentity(decision: IdentityConfirmation["decision"]) {
+  function confirmIdentity(
+    decision: IdentityConfirmation["decision"],
+    opts?: { patientId?: string },
+  ) {
     if (!confirmPayload?.patient.suspectGroupId) return;
     const conf: IdentityConfirmation = {
       decision,
@@ -293,9 +323,13 @@ function AccessionPage() {
       confirmedAt: new Date().toISOString(),
       confirmedBy: "edge-tech",
     };
+    const patientId = opts?.patientId ?? confirmPayload.patient.id;
+    if (patientId !== selected?.id) {
+      void api.patient(patientId).then((sibling) => setSelected(sibling));
+    }
     setPendingConfirmation(conf);
     setConfirmPayload(null);
-    mutation.mutate(conf);
+    mutation.mutate({ identityConfirmation: conf, patientId });
   }
 
   function resetAccessionDraft() {
@@ -441,39 +475,71 @@ function AccessionPage() {
     />
   );
 
+  const historyPanel = (
+    <AccessionHistoryPanel
+      initialAccession={historyAccession}
+      className={cn(!isWide ? "min-h-0 flex-1 p-3 pt-0" : "min-h-0 flex-1")}
+    />
+  );
+
+  const setTab = (value: string) => {
+    void navigate({
+      to: "/accession",
+      search: (prev) => ({
+        ...prev,
+        tab: value === "history" ? "history" : undefined,
+        accession: value === "history" ? historyAccession : undefined,
+      }),
+    });
+  };
+
   if (!isWide) {
     return (
-      <>
-        {mobileWizard}
-        {mutation.isError && !confirmPayload && (
-          <p className="px-3 text-sm text-lab-danger">
-            {mutation.error instanceof ApiError
-              ? mutation.error.message
-              : "Accession failed — please try again."}
-          </p>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 px-3 pt-2">
+          <Tabs value={tab} onValueChange={setTab}>
+            <TabsList>
+              <TabsTrigger value="new">New accession</TabsTrigger>
+              <TabsTrigger value="history">History</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+        {tab === "history" ? (
+          historyPanel
+        ) : (
+          <>
+            {mobileWizard}
+            {mutation.isError && !confirmPayload && (
+              <p className="px-3 text-sm text-lab-danger">
+                {mutation.error instanceof ApiError
+                  ? mutation.error.message
+                  : "Accession failed — please try again."}
+              </p>
+            )}
+            {confirmPayload && (
+              <IdentityConfirmDialog
+                payload={confirmPayload}
+                busy={mutation.isPending}
+                onCancel={() => {
+                  setConfirmPayload(null);
+                  mutation.reset();
+                }}
+                onConfirm={confirmIdentity}
+              />
+            )}
+            <ConfirmAccessionActionDialog
+              open={discardOpen}
+              onOpenChange={(open) => {
+                if (!open) closeDiscardPrompt();
+              }}
+              title="Discard accession draft?"
+              description="You'll lose the current patient and test selections."
+              confirmLabel="Discard"
+              onConfirm={() => confirmDiscard()}
+            />
+          </>
         )}
-        {confirmPayload && (
-          <IdentityConfirmDialog
-            payload={confirmPayload}
-            busy={mutation.isPending}
-            onCancel={() => {
-              setConfirmPayload(null);
-              mutation.reset();
-            }}
-            onConfirm={confirmIdentity}
-          />
-        )}
-        <ConfirmAccessionActionDialog
-          open={discardOpen}
-          onOpenChange={(open) => {
-            if (!open) closeDiscardPrompt();
-          }}
-          title="Discard accession draft?"
-          description="You'll lose the current patient and test selections."
-          confirmLabel="Discard"
-          onConfirm={() => confirmDiscard()}
-        />
-      </>
+      </div>
     );
   }
 
@@ -483,12 +549,26 @@ function AccessionPage() {
       title="Accession"
       description="Select an existing patient, build the test order, preview the tube label, then accession and print."
     >
-      <form
+      <div className="mb-3 shrink-0">
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            <TabsTrigger value="new">New accession</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </div>
+      {tab === "history" ? (
+        historyPanel
+      ) : (
+        <>
+<form
         className="grid min-w-0 grid-cols-1 gap-5 overflow-x-hidden lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_auto] lg:min-h-0 lg:flex-1 lg:overflow-hidden xl:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)_minmax(0,1fr)_minmax(22rem,28rem)] xl:grid-rows-1"
         onSubmit={(e) => {
           e.preventDefault();
           if (!selected || isRegistered) return;
-          mutation.mutate(pendingConfirmation ?? undefined);
+          mutation.mutate({
+            identityConfirmation: pendingConfirmation ?? undefined,
+          });
         }}
       >
         {/* Col 1 — Patient (primary step) */}
@@ -697,6 +777,7 @@ function AccessionPage() {
                   <Link
                     to="/bench"
                     search={{ q: primaryAccession }}
+                    title="Bench shows results. If none yet, you’ll see a waiting state for this accession."
                     className="inline-flex h-8 items-center rounded-md bg-secondary px-3 text-xs font-medium text-secondary-foreground hover:bg-secondary/80"
                   >
                     Open in Bench
@@ -747,6 +828,9 @@ function AccessionPage() {
         confirmLabel="Discard"
         onConfirm={() => confirmDiscard()}
       />
+
+        </>
+      )}
     </AccessioningShell>
   );
 }
@@ -760,8 +844,16 @@ function IdentityConfirmDialog({
   payload: IdentityConfirmationRequired;
   busy: boolean;
   onCancel: () => void;
-  onConfirm: (decision: IdentityConfirmation["decision"]) => void;
+  onConfirm: (
+    decision: IdentityConfirmation["decision"],
+    opts?: { patientId?: string },
+  ) => void;
 }) {
+  const [flagDuplicate, setFlagDuplicate] = useState(false);
+  const decision: IdentityConfirmation["decision"] = flagDuplicate
+    ? "possible_duplicate_acknowledged"
+    : "distinct_people";
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -777,7 +869,8 @@ function IdentityConfirmDialog({
           Confirm patient identity
         </h3>
         <p className="mt-2 text-sm text-muted-foreground">
-          {payload.message}
+          {payload.message} Choose which chart this order belongs to. Merging
+          charts is done later on Patients → Identity review — not here.
         </p>
 
         <div className="mt-4 space-y-2 rounded-md border border-border bg-muted/40 p-3 text-sm">
@@ -798,22 +891,44 @@ function IdentityConfirmDialog({
           </ul>
         </div>
 
+        <label className="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg border border-border px-3 py-2.5 text-sm">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 shrink-0 rounded border-border"
+            checked={flagDuplicate}
+            disabled={busy}
+            onChange={(e) => setFlagDuplicate(e.target.checked)}
+          />
+          <span>
+            <span className="font-medium">Flag as possible duplicate</span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              Queues this pair on Patients → Identity review for an admin to
+              merge or clear later.
+            </span>
+          </span>
+        </label>
+
         <div className="mt-5 flex flex-col gap-2 [&>button]:h-11 [&>button]:whitespace-normal sm:[&>button]:h-9">
           <Button
             type="button"
             disabled={busy}
-            onClick={() => onConfirm("distinct_people")}
+            onClick={() =>
+              onConfirm(decision, { patientId: payload.patient.id })
+            }
           >
-            These are different people
+            Continue with {payload.patient.displayName} ({payload.patient.mrn})
           </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            onClick={() => onConfirm("possible_duplicate_acknowledged")}
-          >
-            Possible duplicate — proceed with selected MRN
-          </Button>
+          {payload.siblings.map((s) => (
+            <Button
+              key={s.id}
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => onConfirm(decision, { patientId: s.id })}
+            >
+              Use {s.displayName} ({s.mrn}) instead
+            </Button>
+          ))}
           <Button
             type="button"
             variant="outline"

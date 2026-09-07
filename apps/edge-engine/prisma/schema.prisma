@@ -37,6 +37,34 @@ model Patient {
   @@index([syncStatus])
 }
 
+/// Queued when accession flags a suspect group as a possible duplicate.
+/// Merge / resolve-distinct happens on Patients → Identity review (not Accession).
+model IdentityReviewItem {
+  id                         String    @id @default(cuid())
+  suspectGroupId             String
+  /// Sorted JSON array of patient ids in the group at flag time
+  patientIdsJson             String
+  /// pending | resolved_distinct | merged
+  status                     String    @default("pending")
+  flaggedAt                  DateTime  @default(now())
+  flaggedBy                  String?
+  flaggedBySnapshot          String?
+  flaggedFromAccessionNumber String?
+  /// Patient id used for the accession that raised the flag (preferred survivor default)
+  preferredSurvivorPatientId String?
+  resolvedAt                 DateTime?
+  resolvedBy                 String?
+  resolvedBySnapshot         String?
+  survivorPatientId          String?
+  loserPatientId             String?
+  resolutionNote             String?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  @@index([status, flaggedAt])
+  @@index([suspectGroupId])
+}
+
 model Specimen {
   id                     String    @id @default(cuid())
   accessionNumber        String    @unique
@@ -51,8 +79,15 @@ model Specimen {
   submitMissingExpectedJson String?
   /// Cloud requisition id when reception created an order before accession.
   requisitionId          String?
+  /// Shared across every tube created in one Accession submit (multi-specimen).
+  registrationBatchId    String?
+  /// Original panel/test ticks from Accession (not expanded tube members).
+  orderedSelectionsJson  String    @default("[]")
   status                 String    @default("registered")
   collectedAt            DateTime?
+  /// Staff assigned to collect (from Accession collector dropdown).
+  collectedByStaffId     String?
+  collectedBySnapshot    String?
   registeredAt           DateTime  @default(now())
   registeredBy           String?
   registeredBySnapshot   String?
@@ -63,6 +98,8 @@ model Specimen {
 
   @@index([barcode])
   @@index([patientId])
+  @@index([requisitionId])
+  @@index([registrationBatchId])
 }
 
 model Result {

@@ -111,6 +111,46 @@ export const IdentityConfirmationSchema = z.object({
 });
 export type IdentityConfirmation = z.infer<typeof IdentityConfirmationSchema>;
 
+export const IdentityReviewStatusSchema = z.enum([
+  "pending",
+  "resolved_distinct",
+  "merged",
+]);
+export type IdentityReviewStatus = z.infer<typeof IdentityReviewStatusSchema>;
+
+export const IdentityReviewPatientSchema = z.object({
+  id: z.string().min(1),
+  mrn: z.string().min(1),
+  displayName: z.string().min(1),
+  dateOfBirth: z.string().nullable(),
+  sex: z.string().nullable(),
+  status: z.string(),
+});
+export type IdentityReviewPatient = z.infer<typeof IdentityReviewPatientSchema>;
+
+export const IdentityReviewItemSchema = z.object({
+  id: z.string().min(1),
+  suspectGroupId: z.string().min(1),
+  status: IdentityReviewStatusSchema,
+  flaggedAt: z.string().datetime(),
+  flaggedFromAccessionNumber: z.string().nullable(),
+  preferredSurvivorPatientId: z.string().nullable(),
+  patients: z.array(IdentityReviewPatientSchema).min(2),
+  resolvedAt: z.string().datetime().nullable().optional(),
+  survivorPatientId: z.string().nullable().optional(),
+  loserPatientId: z.string().nullable().optional(),
+  resolutionNote: z.string().nullable().optional(),
+});
+export type IdentityReviewItem = z.infer<typeof IdentityReviewItemSchema>;
+
+export const PatientMergeRequestSchema = z.object({
+  survivorPatientId: z.string().min(1),
+  loserPatientId: z.string().min(1),
+  reviewItemId: z.string().min(1).optional(),
+  reason: z.string().max(500).optional(),
+});
+export type PatientMergeRequest = z.infer<typeof PatientMergeRequestSchema>;
+
 export const OrderedTestSchema = z.object({
   code: z.string().min(1),
   name: z.string().optional(),
@@ -144,6 +184,17 @@ export const RegisterSpecimenRequestSchema = z.object({
   copies: z.number().int().min(1).max(10).optional(),
   specimenType: z.string().optional(),
   collectedAt: z.string().datetime().optional(),
+  collectedByStaffId: z.string().uuid().optional(),
+  collectedBy: z.string().max(200).optional(),
+  /** Original panel/test selections from Accession (before tube split). */
+  selections: z
+    .array(
+      z.object({
+        kind: z.enum(["panel", "test"]),
+        code: z.string().min(1),
+      }),
+    )
+    .optional(),
 });
 export type RegisterSpecimenRequest = z.infer<
   typeof RegisterSpecimenRequestSchema
@@ -191,6 +242,17 @@ export const RegisterSpecimensBatchRequestSchema = z.object({
   printLabel: z.boolean().optional(),
   copies: z.number().int().min(1).max(10).optional(),
   collectedAt: z.string().datetime().optional(),
+  collectedByStaffId: z.string().uuid().optional(),
+  collectedBy: z.string().max(200).optional(),
+  /** Original panel/test selections from Accession (before tube split). */
+  selections: z
+    .array(
+      z.object({
+        kind: z.enum(["panel", "test"]),
+        code: z.string().min(1),
+      }),
+    )
+    .optional(),
   specimens: z.array(RegisterSpecimensBatchItemSchema).min(1),
 });
 export type RegisterSpecimensBatchRequest = z.infer<

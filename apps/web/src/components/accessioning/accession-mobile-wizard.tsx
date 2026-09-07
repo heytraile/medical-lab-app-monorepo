@@ -69,7 +69,11 @@ type Props = {
   mutation: UseMutationResult<
     unknown,
     Error,
-    IdentityConfirmation | undefined,
+    | {
+        identityConfirmation?: IdentityConfirmation;
+        patientId?: string;
+      }
+    | undefined,
     unknown
   >;
   reprintPending: boolean;
@@ -208,6 +212,7 @@ export function AccessionMobileWizard({
                 <Link
                   to="/bench"
                   search={{ q: primaryAccession }}
+                  title="Bench shows results. If none yet, you’ll see a waiting state for this accession."
                   className="inline-flex h-10 items-center justify-center rounded-md border border-border bg-background text-sm font-medium"
                 >
                   Open in Bench
@@ -239,7 +244,9 @@ export function AccessionMobileWizard({
                     expandedTests.length === 0
                   }
                   onClick={() =>
-                    mutation.mutate(pendingConfirmation ?? undefined)
+                    mutation.mutate({
+                      identityConfirmation: pendingConfirmation ?? undefined,
+                    })
                   }
                 >
                   {submitLabel}

@@ -10,7 +10,7 @@
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"lint ok\"",
-    "test": "node --experimental-strip-types --test src/lib/manual-results.test.ts src/lib/result-workflow.test.ts"
+    "test": "node --experimental-strip-types --test src/lib/manual-results.test.ts src/lib/result-workflow.test.ts src/lib/accession-sessions.test.ts"
   },
   "dependencies": {
     "@drax-lis/catalog": "workspace:*",

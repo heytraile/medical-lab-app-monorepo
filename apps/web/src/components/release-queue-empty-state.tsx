@@ -2,7 +2,6 @@ import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
 import { api, ApiError } from "../lib/api";
-import { useAuth } from "../lib/auth";
 import { Button } from "./ui/button";
 
 type Props = {
@@ -14,7 +13,6 @@ export function ReleaseQueueEmptyState({
   className,
   variant = "authorization",
 }: Props) {
-  const auth = useAuth();
   const qc = useQueryClient();
 
   const syncQ = useQuery({
@@ -23,27 +21,32 @@ export function ReleaseQueueEmptyState({
     refetchInterval: 5_000,
   });
 
-  const pendingReviewQ = useQuery({
-    queryKey: ["cloud-results", "pending_review"],
-    queryFn: () => api.cloudResults("pending_review"),
-    enabled: auth.ready && auth.hasCloudSession,
+  // Same source as Bench: edge SQLite, not cloud (sync lag / seed rows diverge).
+  const edgeResultsQ = useQuery({
+    queryKey: ["results"],
+    queryFn: () => api.results(),
     refetchInterval: 10_000,
-    retry: (count, err) =>
-      count < 2 && !(err instanceof ApiError && err.status === 401),
   });
 
   const refreshM = useMutation({
     mutationFn: () => api.drainSync(),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["syncStatus"] });
-      void qc.invalidateQueries({ queryKey: ["cloud-results"] });
+      void qc.invalidateQueries({ queryKey: ["results"] });
       void qc.invalidateQueries({ queryKey: ["release-queue"] });
     },
   });
 
   const waitingToSend = syncQ.data?.pending ?? 0;
   const sendFailed = syncQ.data?.failed ?? 0;
-  const notYetSubmitted = pendingReviewQ.data?.length ?? 0;
+  // Submit-for-release is accession-scoped (same as Bench). Counting every
+  // analyte row (WBC, HB, …) inflated this to “7 results” when techs see a
+  // handful of patient/accession cards — including demo seeds.
+  const notYetSubmittedAccessions = new Set(
+    (edgeResultsQ.data ?? [])
+      .filter((r) => (r.status ?? "pending_review") === "pending_review")
+      .map((r) => r.accessionNumber),
+  ).size;
   const isReadyTab = variant === "ready";
 
   return (
@@ -73,7 +76,7 @@ export function ReleaseQueueEmptyState({
         )}
       </p>
 
-      {!isReadyTab && (waitingToSend > 0 || notYetSubmitted > 0 || sendFailed > 0) && (
+      {!isReadyTab && (waitingToSend > 0 || notYetSubmittedAccessions > 0 || sendFailed > 0) && (
         <ul className="mx-auto mt-4 max-w-md space-y-2 text-left text-sm text-muted-foreground">
           {waitingToSend > 0 && (
             <li>
@@ -89,12 +92,13 @@ export function ReleaseQueueEmptyState({
               .
             </li>
           )}
-          {notYetSubmitted > 0 && (
+          {notYetSubmittedAccessions > 0 && (
             <li>
               <span className="font-medium text-foreground">
                 On the Bench but not submitted yet:
               </span>{" "}
-              {notYetSubmitted} result{notYetSubmitted === 1 ? "" : "s"}
+              {notYetSubmittedAccessions} accession
+              {notYetSubmittedAccessions === 1 ? "" : "s"}
             </li>
           )}
           {sendFailed > 0 && (

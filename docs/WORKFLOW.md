@@ -86,8 +86,9 @@ Requires sign-in (cloud JWT). Lab branding (address, phone, logo URL) lives in `
 
 The **Bench Review** screen is the tech’s day board:
 
-- Live list of today’s accessions / results (edge Socket.IO + cloud query).
-- Filters: instrument, pending vs released, flagged/critical, accession search.
+- Live list of today’s **results** (edge Socket.IO + cloud query) — Bench is **results-first**, not a list of bare specimens.
+- Filters: instrument, pending vs released, flagged/critical, accession search (`?q=`). Active search/analyzer filters show as clearable chips.
+- Deep-linking **Open in Bench** with an accession filter: if the specimen is registered but no instrument or manual results exist yet, Bench shows a **Waiting for results** empty state (ordered tests, links to Labels / Accession History, and **Enter result** for any manual/hybrid components). A search with no matching specimen shows **No matching results** plus Clear.
 - Tech can open a result, review analytically, add tech notes (later).
 - Tech **cannot** flip status to `released`.
 
@@ -98,6 +99,8 @@ This is the “gallery of tests for the day” described with the lab team.
 Not every ordered test comes from the four bench analyzers. The catalog assigns each order line an explicit `instrument_only`, `manual_only`, `hybrid`, or `send_out` requirement. Hybrid tests can require named manual observations in addition to an equipment-produced portion.
 
 These assignments are **provisional** until Drax Hall confirms them against the installed analyzer menus and bench SOPs. The review checklist is [TEST_RESULT_REQUIREMENTS.md](./TEST_RESULT_REQUIREMENTS.md); laboratory SOP always overrides a general default.
+
+**Manual-only accessions:** order manual catalog tests at Accession → **Open in Bench** (`?q=` accession) → waiting state → **Enter result** for each required manual component → result rows appear on Bench for the normal submit → authorize → release path. You do not need an instrument result first.
 
 When a patient is opened on Bench:
 
@@ -221,9 +224,15 @@ Edge does **not** write Supabase directly. Cloud Nest does not poll the mini PC;
 
 Reception uses the **patient picker** (local MRN registry). If the person is missing, they **register a provisional patient** (TEMP MRN) in the LIS, then accession — never free-text name-only specimens.
 
-- Soft suspects (same name+DOB+sex, different MRNs) require a **blocking confirmation** before register; decision is audited on the specimen.
+- Soft suspects (same name+DOB+sex, different MRNs) require a **blocking confirmation** before register; choose the chart (or cancel). Optional **flag as possible duplicate** queues **Patients → Identity review** for admin merge/distinct. Decision is audited on the specimen.
 - Hard MRN conflicts are **quarantined** and not selectable.
+- Chart **merge is admin-only on Patients**, never from Accession.
 - Provisional patients enqueue `patient.provisional_created` for later upstream registry sync.
+
+### Accession History vs Labels
+
+- **Accession → History** — searchable archive of **registration sessions** (one Accession submit). When panels were ticked at Accession, History shows **Panels selected** (e.g. Executive I + Executive II) plus the expanded **Tests on order**. Individual-only orders show the test list alone. Multi-tube panels still group blood / serum / urine under one session with registered-by and collector.
+- **Labels** — scan/lookup + reprint workstation; recent list is likewise session-grouped (patient, accessions, tube types, registered datetime / operator / collector when known).
 
 Details: [IDENTITY.md](./IDENTITY.md).
 
