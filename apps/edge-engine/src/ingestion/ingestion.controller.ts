@@ -13,12 +13,13 @@ export class IngestionController {
     @Body()
     body: {
       analyzerId: string;
-      transport?: "serial" | "tcp";
+      transport?: "serial" | "tcp" | "http";
       protocol:
         | "astm_e1381"
         | "astm_e1394"
         | "hl7_mllp"
-        | "ascii_delimited";
+        | "ascii_delimited"
+        | "prolyte_network_lis";
       payload: string;
     },
   ) {

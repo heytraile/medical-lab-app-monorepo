@@ -80,7 +80,8 @@ doppler secrets set SUPABASE_URL=https://xxxx.supabase.co
 | `VITE_SUPABASE_ANON_KEY` | web | Browser-safe anon key |
 | `SYSMEX_TCP_PORT` / `MINDRAY_TCP_PORT` / `IFLASH_TCP_PORT` | edge / sims | Defaults 5001 / 5003 / 5004 |
 | `ZEBRA_PRINTER_HOST` / `ZEBRA_PRINTER_PORT` | edge | Defaults `127.0.0.1` / `9100` |
-| `PROLYTE_SERIAL_PATH` / `PROLYTE_BAUD` | edge / sims | Optional RS-232 |
+| `PROLYTE_NETWORK_LIS_*` | edge / sims | Network LIS HTTP on port **5002** (default on) |
+| `PROLYTE_SERIAL_PATH` / `PROLYTE_BAUD` | edge / sims | Optional RS-232 (set `PROLYTE_NETWORK_LIS_ENABLED=false`) |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_FROM` | api | Local Mailpit only — see [EMAIL.md](./EMAIL.md) |
 | `RESEND_API_KEY` | api | Production/staging — Resend (per client); empty locally |
 | `REVIEW_ALERT_EMAIL_FROM` | api | From address for authorizer alert email — see [EMAIL.md](./EMAIL.md) |
@@ -385,6 +386,22 @@ docker compose up --build
 docker compose --profile sim up --build
 ```
 
+## ProLyte Network LIS (HTTP — default)
+
+With `pnpm dev:local`, the edge engine listens on **port 5002** for ProLyte Network LIS POSTs (enabled by default).
+
+Simulators POST JSON automatically in the 30s loop. Manual test:
+
+```bash
+curl -X POST http://localhost:5002/ \
+  -H 'Content-Type: application/json' \
+  -d '{"pId":"DHDEMO0001","sampleType":"10","ionData":{"Na":{"conc":"140.2","strUnits":"mmol/L"},"K":{"conc":"4.15","strUnits":"mmol/L"},"Cl":{"conc":"102.0","strUnits":"mmol/L"}}}'
+```
+
+Accession a specimen with electrolytes first so Bench has context. To use serial instead, set `PROLYTE_NETWORK_LIS_ENABLED=false`.
+
+Field test on a MacBook at the lab: full steps in [LAB_MINI_PC_SETUP.md — ProLyte on a MacBook](./LAB_MINI_PC_SETUP.md#prolyte-on-a-macbook--network-lis-recommended).
+
 ## Serial PTYs with socat (ProLyte / RS-232 stand-in)
 
 Fake a null-modem cable between edge and the ProLyte simulator:
@@ -455,4 +472,4 @@ Per-app `.env.example` files list keys for reference. Optional local `.env` file
 4. `send:sysmex` with matching barcode (or wait for loop)  
 5. Bench shows WBC/RBC/HGB/PLT with flags and `pending_review`  
 6. Unplug network / stop `api` → sync stays pending → restart api → drains  
-7. (Optional) socat ProLyte PTY → `send:prolyte` → NA/K/CL/LI on Bench  
+7. ProLyte Network LIS curl (above) or serial PTY → NA/K/CL/LI on Bench  

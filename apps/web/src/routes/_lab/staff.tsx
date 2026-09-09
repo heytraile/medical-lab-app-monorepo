@@ -30,7 +30,10 @@ import { Input } from "../../components/ui/input";
 import { Select } from "../../components/ui/select";
 import { FormErrorSummary, FormField } from "../../components/forms/form-field";
 import { cn } from "../../lib/utils";
-import { useIsWide } from "../../lib/use-media-query";
+import {
+  useIsWorkstation,
+  useShowWorkstationChrome,
+} from "../../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab/staff")({
   component: StaffPage,
@@ -39,7 +42,8 @@ export const Route = createFileRoute("/_lab/staff")({
 function StaffPage() {
   const auth = useAuth();
   const qc = useQueryClient();
-  const isWide = useIsWide();
+  const isWorkstation = useIsWorkstation();
+  const showWorkstationChrome = useShowWorkstationChrome();
   const [registerOpen, setRegisterOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deviceCodeStaff, setDeviceCodeStaff] = useState<StaffMember | null>(
@@ -89,7 +93,7 @@ function StaffPage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3 lg:gap-4">
-        <div className={cn(!isWide && "hidden")}>
+        <div className={cn(!isWorkstation && "hidden")}>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Admin
           </p>
@@ -120,8 +124,10 @@ function StaffPage() {
         {!isCloudMode && (
           <Button
             type="button"
-            size={isWide ? "default" : "lg"}
-            className={cn(!isWide && "min-h-10 w-full sm:w-auto")}
+            size={showWorkstationChrome ? "default" : "lg"}
+            className={cn(
+              !showWorkstationChrome && "min-h-10 w-full sm:w-auto",
+            )}
             onClick={() => setRegisterOpen(true)}
           >
             Add staff
@@ -136,7 +142,7 @@ function StaffPage() {
         </p>
       )}
 
-      {!isWide ? (
+      {!showWorkstationChrome ? (
         <ul className="space-y-2">
           {staffQ.isLoading && (
             <li className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">

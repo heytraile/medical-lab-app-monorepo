@@ -16,7 +16,11 @@ import {
   parsePatientJson,
   patientDisplayNameFromJson,
 } from "../../lib/specimen-display";
-import { useIsWide } from "../../lib/use-media-query";
+import {
+  useIsCompactWorkstation,
+  useIsWorkstation,
+  useShowWorkstationChrome,
+} from "../../lib/use-media-query";
 import { cn } from "../../lib/utils";
 import {
   MultiLabelPreviewPanel,
@@ -87,7 +91,9 @@ export function AccessionHistoryPanel({
   initialAccession?: string;
   className?: string;
 }) {
-  const isWide = useIsWide();
+  const showWorkstationChrome = useShowWorkstationChrome();
+  const isWorkstation = useIsWorkstation();
+  const isCompactWorkstation = useIsCompactWorkstation();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [selectedKey, setSelectedKey] = useState("");
@@ -267,33 +273,33 @@ export function AccessionHistoryPanel({
     </div>
   );
 
-  const detail = selected ? (
-    <AccessionHistoryDetail
-      session={selected}
-      panelNameByCode={panelNameByCode}
-      onClose={() => setSelectedKey("")}
-    />
-  ) : (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center">
-      <p className="text-sm font-medium">Select an accession session</p>
-      <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-        Each session is one Accession submit — panels may create blood, serum,
-        and urine tubes together. Open a session to see the panels ordered, the
-        full test list, and each tube label.
-      </p>
-    </div>
-  );
+  const splitDocked = Boolean(selected) && isWorkstation && showWorkstationChrome;
 
-  if (isWide) {
+  if (showWorkstationChrome) {
     return (
       <div
         className={cn(
-          "grid min-h-0 flex-1 grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] gap-4",
+          "min-h-0 flex-1",
+          splitDocked &&
+            cn(
+              "grid items-stretch gap-4",
+              isCompactWorkstation
+                ? "grid-cols-[minmax(0,1fr)_minmax(16rem,42%)]"
+                : "grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)]",
+            ),
+          !splitDocked && "flex flex-col",
           className,
         )}
       >
         {list}
-        <div className="flex min-h-0 min-w-0 flex-col">{detail}</div>
+        {splitDocked && selected ? (
+          <AccessionHistoryDetail
+            session={selected}
+            panelNameByCode={panelNameByCode}
+            onClose={() => setSelectedKey("")}
+            className="min-h-0 min-w-0 flex-1"
+          />
+        ) : null}
       </div>
     );
   }
@@ -327,11 +333,13 @@ function AccessionHistoryDetail({
   panelNameByCode,
   onClose,
   embedded = false,
+  className,
 }: {
   session: AccessionSession;
   panelNameByCode: Map<string, string>;
   onClose: () => void;
   embedded?: boolean;
+  className?: string;
 }) {
   const row = session.primary;
   const patient = parsePatientJson(row.patientJson);
@@ -388,6 +396,7 @@ function AccessionHistoryDetail({
         embedded
           ? "h-full"
           : "h-full rounded-xl border border-border shadow-sm",
+        className,
       )}
     >
       <div className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-4 py-3">

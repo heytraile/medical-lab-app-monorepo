@@ -5,7 +5,10 @@ import { ReleaseQueueListItem } from "./release-queue-list-item";
 import { ConfirmAccessionActionDialog } from "./confirm-accession-action-dialog";
 import { ScrollContainer } from "./ui/scroll-container";
 import { Sheet, SheetContent } from "./ui/sheet";
-import { useIsWide } from "../lib/use-media-query";
+import {
+  useIsCompactWorkstation,
+  useIsWorkstation,
+} from "../lib/use-media-query";
 import { cn } from "../lib/utils";
 
 type Props = {
@@ -33,7 +36,8 @@ export function ReleaseQueueMasterDetail({
   onDismissFromQueue,
   className,
 }: Props) {
-  const isWide = useIsWide();
+  const isWorkstation = useIsWorkstation();
+  const isCompactWorkstation = useIsCompactWorkstation();
   const [selectedAccession, setSelectedAccession] = useState<string | null>(
     null,
   );
@@ -82,12 +86,12 @@ export function ReleaseQueueMasterDetail({
 
   const selectedGroup =
     groups.find((g) => g.accessionNumber === selectedAccession) ?? null;
+  const splitDocked = Boolean(selectedAccession) && isWorkstation;
 
   const list = (
     <ScrollContainer
       className={cn(
-        "min-h-0 rounded-xl border border-border bg-muted/10",
-        isWide ? "h-full" : "h-full flex-1",
+        "min-h-0 min-w-0 flex-1 rounded-xl border border-border bg-muted/10",
       )}
     >
       <ul className="space-y-2 p-2">
@@ -117,53 +121,44 @@ export function ReleaseQueueMasterDetail({
 
   return (
     <>
-      {isWide ? (
-        <div
-          className={cn(
-            "grid min-h-0 flex-1 grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] items-stretch gap-4",
-            className,
-          )}
+      <div
+        className={cn(
+          "min-h-0 flex-1",
+          splitDocked &&
+            cn(
+              "grid items-stretch gap-3",
+              isCompactWorkstation
+                ? "grid-cols-[minmax(0,1fr)_minmax(16rem,42%)]"
+                : "grid-cols-[minmax(16rem,22rem)_minmax(0,1fr)] lg:gap-4",
+            ),
+          !splitDocked && "flex flex-col",
+          className,
+        )}
+      >
+        {list}
+
+        {splitDocked && selectedGroup ? (
+          <ReleaseQueueDetailPanel
+            group={selectedGroup}
+            className="min-h-0 min-w-0 flex-1"
+          />
+        ) : null}
+      </div>
+
+      {!isWorkstation ? (
+        <Sheet
+          open={Boolean(selectedGroup)}
+          onOpenChange={(open) => {
+            if (!open) setSelectedAccession(null);
+          }}
         >
-          {list}
-          <div className="flex min-h-0 min-w-0 flex-col">
+          <SheetContent side="bottom" label="Release details" className="p-0">
             {selectedGroup ? (
-              <ReleaseQueueDetailPanel
-                group={selectedGroup}
-                className="min-h-0 flex-1"
-              />
-            ) : (
-              <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-card px-6 py-16 text-center shadow-sm">
-                <p className="text-sm font-medium text-foreground">
-                  Select a patient
-                </p>
-                <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-                  Choose a name from the list to see their test results and
-                  sign-off details.
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className={cn("flex min-h-0 flex-1 flex-col", className)}>
-          {list}
-          <Sheet
-            open={Boolean(selectedGroup)}
-            onOpenChange={(open) => {
-              if (!open) setSelectedAccession(null);
-            }}
-          >
-            <SheetContent side="bottom" label="Release details" className="p-0">
-              {selectedGroup ? (
-                <ReleaseQueueDetailPanel
-                  group={selectedGroup}
-                  embedded
-                />
-              ) : null}
-            </SheetContent>
-          </Sheet>
-        </div>
-      )}
+              <ReleaseQueueDetailPanel group={selectedGroup} embedded />
+            ) : null}
+          </SheetContent>
+        </Sheet>
+      ) : null}
 
       <ConfirmAccessionActionDialog
         open={returnDialogAccession !== null}

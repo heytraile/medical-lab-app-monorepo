@@ -41,7 +41,7 @@ import { ConfirmAccessionActionDialog } from "../../components/confirm-accession
 import { useCatalog } from "../../lib/use-catalog";
 import { useAuth } from "../../lib/auth";
 import { useUnsavedWorkGuard } from "../../lib/use-unsaved-work-guard";
-import { useIsWide } from "../../lib/use-media-query";
+import { useShowWorkstationChrome } from "../../lib/use-media-query";
 import { Button } from "../../components/ui/button";
 import { ScrollContainer } from "../../components/ui/scroll-container";
 import { Select } from "../../components/ui/select";
@@ -429,7 +429,7 @@ function AccessionPage() {
   const showPatientReminder =
     !selected && !isRegistered && expandedTests.length > 0;
 
-  const isWide = useIsWide();
+  const showWorkstationChrome = useShowWorkstationChrome();
 
   const mobileWizard = (
     <AccessionMobileWizard
@@ -478,7 +478,9 @@ function AccessionPage() {
   const historyPanel = (
     <AccessionHistoryPanel
       initialAccession={historyAccession}
-      className={cn(!isWide ? "min-h-0 flex-1 p-3 pt-0" : "min-h-0 flex-1")}
+      className={cn(
+        !showWorkstationChrome ? "min-h-0 flex-1 p-3 pt-0" : "min-h-0 flex-1",
+      )}
     />
   );
 
@@ -493,7 +495,7 @@ function AccessionPage() {
     });
   };
 
-  if (!isWide) {
+  if (!showWorkstationChrome) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 px-3 pt-2">
@@ -562,7 +564,12 @@ function AccessionPage() {
       ) : (
         <>
 <form
-        className="grid min-w-0 grid-cols-1 gap-5 overflow-x-hidden lg:grid-cols-2 lg:grid-rows-[minmax(0,1fr)_auto] lg:min-h-0 lg:flex-1 lg:overflow-hidden xl:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)_minmax(0,1fr)_minmax(22rem,28rem)] xl:grid-rows-1"
+        className={cn(
+          "grid min-w-0 grid-cols-1 gap-5 overflow-x-hidden lg:grid-rows-1 lg:min-h-0 lg:flex-1 lg:overflow-hidden",
+          !isRegistered && catalogQ.data
+            ? "lg:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)] xl:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)_minmax(0,1fr)_minmax(22rem,28rem)]"
+            : "lg:grid-cols-[minmax(15rem,18rem)_minmax(0,1fr)] xl:grid-cols-[minmax(15rem,18rem)_minmax(22rem,28rem)]",
+        )}
         onSubmit={(e) => {
           e.preventDefault();
           if (!selected || isRegistered) return;
@@ -616,11 +623,12 @@ function AccessionPage() {
           />
         </div>
 
-        {/* Col 2 & 3 — Panels + individual tests (side by side from lg up) */}
+        {/* Tablet lg: one right column (tests + session stacked). xl: grid via contents. */}
+        <div className="flex min-h-0 min-w-0 flex-col gap-5 overflow-hidden lg:col-span-1 lg:min-h-0 xl:contents">
         {!isRegistered && catalogQ.data && (
-          <div className="grid min-h-0 grid-cols-1 gap-3 lg:col-span-1 lg:h-full lg:min-h-0 xl:col-span-2 xl:col-start-2 xl:flex xl:flex-col">
+          <div className="grid min-h-0 min-w-0 grid-cols-1 gap-3 xl:col-span-2 xl:col-start-2 xl:flex xl:h-full xl:min-h-0 xl:flex-col">
             {showPatientReminder && <PatientRequiredHint className="shrink-0" />}
-            <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 lg:grid-cols-2 lg:gap-4">
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-5 xl:grid-cols-2 xl:gap-4">
               <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm max-lg:min-h-[min(40vh,20rem)]">
                 <PanelOrderSection
                   catalog={catalogQ.data}
@@ -641,8 +649,8 @@ function AccessionPage() {
           </div>
         )}
 
-        {/* Col 4 — Session: column scrolls; sections scroll internally when they overflow */}
-        <ScrollContainer className="h-full min-h-0 min-w-0 xl:min-w-[22rem] lg:col-span-2 xl:col-span-1">
+        {/* Session / labels */}
+        <ScrollContainer className="min-h-0 min-w-0 flex-1 lg:max-h-none xl:col-span-1 xl:h-full xl:min-w-[22rem]">
           <div className="flex min-w-0 flex-col gap-3">
           {!isRegistered && catalogQ.data && (
             <>
@@ -796,6 +804,7 @@ function AccessionPage() {
           />
           </div>
         </ScrollContainer>
+        </div>
       </form>
 
       {mutation.isError && !confirmPayload && (

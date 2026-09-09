@@ -17,7 +17,7 @@ export const AnalyzerIdSchema = z.enum([
 ]);
 export type AnalyzerId = z.infer<typeof AnalyzerIdSchema>;
 
-export const AnalyzerTransportSchema = z.enum(["serial", "tcp"]);
+export const AnalyzerTransportSchema = z.enum(["serial", "tcp", "http"]);
 export type AnalyzerTransport = z.infer<typeof AnalyzerTransportSchema>;
 
 export const ProtocolKindSchema = z.enum([
@@ -25,6 +25,7 @@ export const ProtocolKindSchema = z.enum([
   "astm_e1394",
   "hl7_mllp",
   "ascii_delimited",
+  "prolyte_network_lis",
 ]);
 export type ProtocolKind = z.infer<typeof ProtocolKindSchema>;
 

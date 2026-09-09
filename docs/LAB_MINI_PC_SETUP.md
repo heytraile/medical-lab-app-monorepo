@@ -12,7 +12,10 @@
 - [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md) — how staff sign in, who can use the cloud app, device enrollment
 - [ANALYZERS.md](./ANALYZERS.md) — what each machine speaks and how barcodes join
 - [HARDWARE.md](./HARDWARE.md) — Zebra printer and Honeywell scanner at registration
+- [LOCAL_DEV.md](./LOCAL_DEV.md) — laptop local run (also used for MacBook field tests)
 - [GLOSSARY.md](./GLOSSARY.md) — longer acronym list
+
+**Quick jump:** [Field visit — test one analyzer with only a MacBook](#field-visit--test-one-analyzer-with-only-a-macbook)
 
 ---
 
@@ -36,7 +39,14 @@ The mini PC **listens** for three analyzers over **TCP** (network):
 | Mindray BS-240 (chemistry) | **5003** | ASTM over TCP |
 | YHLO iFlash 1200 (immuno) | **5004** | HL7 over TCP (MLLP) |
 
-The **Diamond ProLyte** (electrolytes) uses **RS-232 serial** through a **USB serial hub** — not TCP.
+The **Diamond ProLyte** (electrolytes) supports **two LIS paths** in this app:
+
+| Path | Transport | Default |
+| --- | --- | --- |
+| **Network LIS** | HTTP POST over LAN (port **5002**) | **On** — use for MacBook field tests and Ethernet/Wi‑Fi ProLyte |
+| **Serial LIS** | RS-232 via USB serial hub (`/dev/prolyte`) | Optional — mini PC with DB9 cable |
+
+Network LIS is **not** Sysmex-style TCP ASTM. The ProLyte POSTs JSON to your host IP:port.
 
 The **Zebra label printer** has its own IP on the network. The mini PC **connects to the printer** on port **9100** to send label commands (ZPL).
 
@@ -94,27 +104,265 @@ Read this once. Refer back when a step uses a term.
 
 ## Overview — phases in order
 
+Do these in order on the mini PC. Do **not** skip a phase because a later one “sounds optional” — later steps assume earlier ones worked.
+
 | Phase | What | Time (rough) |
 | --- | --- | --- |
-| 1 | Plan IPs and names | 30 min |
+| 1 | Plan IPs and names (mini PC + **every** analyzer + printer) | 30 min |
 | 2 | Router: reserve mini PC IP | 15 min |
-| 3 | Ubuntu: updates, hostname, optional static IP | 30 min |
+| 3 | Ubuntu: updates, hostname, SSH, timezone, firewall | 30 min |
 | 4 | Install Docker | 20 min |
 | 5 | Get the app code (clone or deploy package) | 15 min |
 | 6 | Configure secrets and `.env` | 30 min |
-| 7 | Build and start lab container | 20 min first build |
-| 8 | Wire serial hub + udev rules | 45 min |
-| 9 | Configure each analyzer to talk to mini PC | 1–2 hours (vendor menus) |
-| 10 | Configure Zebra printer | 30 min |
+| 7 | Wire **ProLyte** serial hub + udev rules + Docker device passthrough | 45 min |
+| 8 | Configure **each TCP analyzer** (Sysmex, Mindray, iFlash) on the instrument menus | 1–2 hours (vendor menus) |
+| 9 | Configure Zebra printer | 30 min |
+| 10 | Build and start lab container, then **verify listeners** | 20 min first build |
 | 11 | Staff PCs: browser + scanner | 20 min per desk |
-| 12 | End-to-end test | 1 hour |
+| 12 | End-to-end test **per machine** | 1 hour |
 | 13 | Security + backup checklist | See [EDGE_SECURITY_AND_BACKUP.md](./EDGE_SECURITY_AND_BACKUP.md) |
+
+**Need a one-machine smoke test before the mini PC is ready?** Jump to [Field visit — test one analyzer with only a MacBook](#field-visit--test-one-analyzer-with-only-a-macbook). That path does **not** replace Phases 1–13 for go-live.
+
+---
+
+## Field visit — test one analyzer with only a MacBook
+
+Use this when you walk into the lab with **only your MacBook** and want to prove **one** instrument sends a real result into **this** app. You are temporarily using the laptop as the “edge” computer. The mini PC install (phases above) is still required for production.
+
+### What you can and cannot do without Ethernet / RS-232 ports
+
+| Machine | Can you test with MacBook only? | What you need |
+| --- | --- | --- |
+| **Sysmex XS-1000i** | Yes — preferred for a first visit | Same LAN as the instrument (Wi‑Fi or USB‑C Ethernet dongle) |
+| **Mindray BS-240** | Yes | Same as Sysmex |
+| **YHLO iFlash 1200** | Yes | Same as Sysmex |
+| **Diamond ProLyte** | **Yes — preferred** | Same LAN/Wi‑Fi as the instrument; **Network LIS** to MacBook IP port **5002** (no serial adapter). Serial path still available with USB‑C → RS‑232 if needed |
+
+**You do not need a Cat6 jack on the MacBook** if:
+
+1. The clinic Wi‑Fi and the analyzer switch are on the **same subnet** (common), **or**
+2. You bring a **USB‑C Gigabit Ethernet adapter**, plug into the **same switch** as the analyzer (most reliable).
+
+Do **not** try to “USB cable the analyzer into the MacBook” for Sysmex/Mindray/iFlash — those three talk **TCP over the network**, not USB.
+
+### Packing list (MacBook field test)
+
+- [ ] MacBook with charger  
+- [ ] This repo cloned and dependencies installable (`pnpm` / Node already set up from local dev)  
+- [ ] **USB‑C Ethernet dongle** (strongly recommended) + short Cat6 patch cable  
+- [ ] ProLyte: confirm **Network LIS** on instrument menu (no serial adapter required)  
+- [ ] Optional: USB‑C → RS‑232 only if using serial path instead of Network LIS  
+- [ ] Phone hotspot is **not** a substitute unless the analyzer can also reach that hotspot (usually it cannot — analyzers are wired to the lab switch)
+
+### Step-by-step — TCP machine (Sysmex, Mindray, or iFlash)
+
+Pick **one** machine. Example below uses **Sysmex → port 5001**. Swap ports for Mindray (**5003**) or iFlash (**5004**).
+
+#### A. Get on the same network as the analyzer
+
+1. Ask lab staff which switch/router the analyzer’s Ethernet cable uses.  
+2. Prefer: plug your **USB‑C Ethernet adapter** into that same switch. Disable Wi‑Fi on the Mac while testing so traffic has one clear path.  
+3. Alternative: join clinic Wi‑Fi **only if** IT confirms Wi‑Fi clients can reach the analyzer VLAN/subnet (many clinics isolate wired instruments — if so, Wi‑Fi will fail and you need the dongle).
+
+#### B. Find your MacBook’s LAN IP
+
+```bash
+# Wired (en0/en7/… — look for the interface that has the lab subnet)
+ifconfig | grep -A4 "inet "
+```
+
+Or: **System Settings → Network → Ethernet (or Wi‑Fi) → Details → TCP/IP → IP Address**.
+
+Write it down, e.g. `192.168.1.84`. This is the address you will type into the **analyzer’s LIS host** field — **not** `localhost`, not `127.0.0.1` (the instrument cannot reach those).
+
+#### C. Allow inbound ports on the Mac firewall
+
+**System Settings → Network → Firewall** — either turn the firewall **Off** for the test hour, or allow incoming for Node/Docker on:
+
+| Machine under test | Port to allow |
+| --- | --- |
+| Sysmex | **5001** |
+| Mindray | **5003** |
+| iFlash | **5004** |
+| Web UI (browser on same Mac) | **3101** |
+
+If the firewall blocks the port, the instrument will look “configured” but **no results** will arrive.
+
+#### D. Run the edge stack on the MacBook
+
+From the repo (same as local development — see [LOCAL_DEV.md](./LOCAL_DEV.md)):
+
+```bash
+cd /path/to/medical-lab-app-monorepo
+pnpm install
+pnpm --filter @drax-lis/edge-engine dev
+```
+
+Or your usual `pnpm dev:local` if you already use that for day-to-day work.
+
+Confirm the Mac is listening:
+
+```bash
+lsof -nP -iTCP:5001 -sTCP:LISTEN
+# Mindray: 5003 · iFlash: 5004 · UI: 3101
+```
+
+You should see `node` (or Docker) owning that port.
+
+Open the UI on the Mac:
+
+```text
+http://127.0.0.1:3101
+```
+
+Sign in (local/dev staff as you normally do on this laptop).
+
+#### E. Point the instrument at your MacBook
+
+On the **analyzer’s LIS / host / communication menu** (wording varies — bring the vendor PDF):
+
+| Setting | Value for this test |
+| --- | --- |
+| Host / LIS / Server IP | **Your MacBook LAN IP** from step B (e.g. `192.168.1.84`) |
+| Host port | **5001** (Sysmex) / **5003** (Mindray) / **5004** (iFlash) |
+| Mode | Instrument is **client** → connects **to** the host (most common) |
+| Protocol | Sysmex/Mindray: **ASTM**; iFlash: **HL7** |
+
+Save. Power-cycle the instrument interface if the menu says to.
+
+#### F. Get the instrument to send data (you do **not** need a real patient tube)
+
+You are proving the **wire + parser**, not the whole clinical draw workflow. Pick the lightest option that staff will allow.
+
+##### Option 1 — Fastest: no tube, no accession (unlinked results OK)
+
+Goal: see **numbers land on Bench / in logs**, even if the patient shows as `—`.
+
+1. On the instrument, use whatever it offers that still **transmits to the host**:
+   - **Retransmit / resend** last completed result (very common).  
+   - **QC / control** run that still goes online.  
+   - **Communication / host test** send (if the menu has one).  
+   - Manual **sample ID** entry + any stored result send.
+2. For sample ID, type anything memorable (e.g. `FIELDTEST1`) — it does **not** have to exist in our app for this option.
+3. Trigger the send.
+4. On the Mac, watch:
+
+   ```bash
+   # in the edge terminal, or:
+   # look for ingest / ASTM / HL7 / parse lines
+   ```
+
+   And open **Bench**. You should see new result rows. Patient may be **`—`** — that is **expected** when the ID was never accessioned. Still confirm:
+
+   - Values look like real lab numbers (not empty / not garbage).  
+   - Test codes map to sensible names on Bench.  
+   - `GET /analyzers/status` updates `lastAccession` / clears parse errors.
+
+This is enough to say: **“this machine is talking to our app cleanly.”**
+
+##### Option 2 — No physical tube, but matched patient (recommended if you have 5 extra minutes)
+
+Goal: same as Option 1, **plus** prove accession join (patient name on Bench).
+
+1. In the app: **Accession** a throwaway test patient.  
+2. Order tests that machine actually runs (CBC / chemistry / immuno).  
+3. **You do not need to print a label or draw blood.** Copy the accession from the screen (e.g. `DH202609080001`).  
+4. On the instrument / IPU: **type** that accession as the sample ID (or scan a printed label if someone already printed one).  
+5. Send via **retransmit**, **QC**, or a short control run — still no patient tube required if the instrument will transmit with that ID.  
+6. On Bench: patient name should **not** be `—`, and values should match the instrument screen.
+
+##### Option 3 — Full wet path (optional)
+
+Real or leftover QC material in a tube, printed label, scan at loader — only if you are already doing a clinical/QC run that day. Not required for a first connectivity visit.
+
+**Do not** use `pnpm … simulators send:sysmex` for this field test. That fakes traffic **from the laptop**, so it never proves the **real** instrument.
+
+#### G. Prove the app got good-looking data
+
+| Check | Option 1 (no accession) | Option 2 (digital accession) |
+| --- | --- | --- |
+| Something arrived | Bench shows new rows **or** logs show ingest | Same |
+| Patient on Bench | May be `—` — OK | Real test patient name |
+| Values | Match instrument screen / last result printout | Same |
+| Codes | Sensible catalog names, not raw junk | Same |
+| Status | `pending_review` | `pending_review` |
+
+Optional API check:
+
+```bash
+curl -s http://127.0.0.1:3101/analyzers/status
+```
+
+#### H. When you leave
+
+1. Put the instrument’s LIS host IP **back** to the real mini PC address (or previous setting) so production is not left pointing at your laptop.  
+2. Stop the local edge process.  
+3. Note any menu path that worked (photo of the LIS screen helps Phase 8 later).
+
+### ProLyte on a MacBook — Network LIS (recommended)
+
+The ProLyte can run a **real sample** and POST results over the lab network. **No USB‑serial adapter** required.
+
+#### Prerequisites
+
+- MacBook and ProLyte on the **same LAN or Wi‑Fi subnet**.
+- App stack running (`pnpm dev:local`).
+- ProLyte menu: **Instrument Settings → LIS Setup → Network LIS**.
+
+#### Steps
+
+1. **Start edge** — confirm log line: `diamond_prolyte Network LIS HTTP listener on 0.0.0.0:5002` (enabled by default).
+2. **Mac IP** — `ipconfig getifaddr en0` (e.g. `192.168.1.87`).
+3. **Firewall** — allow Node/incoming on port **5002**, or disable firewall briefly for the test.
+4. **ProLyte LIS menu** — Network LIS **Enabled**; Host IP = Mac IP; Port = **5002**; run **Test Network LIS**.
+5. **Accession** in the app with electrolytes on the order; note accession (e.g. `DH202603151234`).
+6. **On ProLyte** — enter the **same sample ID** as the accession; run sample (patient or control).
+7. **Verify** — Bench shows Na/K/Cl; `curl -s http://127.0.0.1:3101/analyzers/status` shows `lastAccession`.
+
+Quick curl (no instrument):
+
+```bash
+curl -X POST http://localhost:5002/ \
+  -H 'Content-Type: application/json' \
+  -d '{"pId":"DHDEMO0001","sampleType":"10","ionData":{"Na":{"conc":"140.2","strUnits":"mmol/L"},"K":{"conc":"4.15","strUnits":"mmol/L"},"Cl":{"conc":"102.0","strUnits":"mmol/L"}}}'
+```
+
+| Problem | Fix |
+| --- | --- |
+| Test Network LIS fails | Wrong Mac IP, firewall, different VLAN/subnet |
+| No Bench results | `pId` must match accession; order must include electrolytes |
+| Listener skipped | `PROLYTE_NETWORK_LIS_ENABLED=true`, restart edge |
+
+When you leave, set the ProLyte host IP back to the production mini PC.
+
+---
+
+### ProLyte on a MacBook — RS-232 serial (optional fallback)
+
+1. Set `PROLYTE_NETWORK_LIS_ENABLED=false`.  
+2. Plug **USB‑C → RS‑232**; set `PROLYTE_SERIAL_PATH` (e.g. `/dev/cu.usbserial-*`), `PROLYTE_BAUD=9600`.  
+3. Restart edge; confirm `ProLyte serial open on …`.  
+4. Enter matching accession on ProLyte; run sample; verify Na/K/Cl on Bench.
+
+### What “accurate data” means for this smoke test
+
+| Check | Pass |
+| --- | --- |
+| Payload arrived | Bench and/or edge logs show the send |
+| Accession match (Option 2+) | Same `DH…` on app / instrument sample ID / Bench |
+| Patient (Option 2+) | Not `—` on Bench |
+| Values | Same numbers (within rounding) as the instrument screen or last result |
+| Codes | Remapped to catalog names on Bench (see [MACHINE_TO_REQUEST_FORM.md](./MACHINE_TO_REQUEST_FORM.md)) — not raw garbage |
+| Timing | Result appears within seconds–a minute of transmit |
+
+If values appear but patient is `—`, the machine sent an ID that was never accessioned — fine for Option 1; for Option 2, fix typed/scanned ID, not the network.
 
 ---
 
 ## Phase 1 — Plan your network addresses
 
-Before touching anything, write this on paper:
+Before touching anything, write this on paper (or a photo of the whiteboard). You need a row for **every** device — not only the mini PC and ProLyte.
 
 | Device | Suggested hostname | Example static IP | Notes |
 | --- | --- | --- | --- |
@@ -123,16 +371,29 @@ Before touching anything, write this on paper:
 | Sysmex XS-1000i | — | `192.168.1.71` | **Client** → connects **to** mini PC `:5001` |
 | Mindray BS-240 | — | `192.168.1.72` | **Client** → mini PC `:5003` |
 | YHLO iFlash 1200 | — | `192.168.1.73` | **Client** → mini PC `:5004` |
-| ProLyte | — | *(serial, no IP)* | USB serial hub on mini PC |
+| ProLyte | *(Network LIS)* | mini PC LAN IP, port **5002** | Or serial via USB hub — see Phase 7 |
 
-Adjust the subnet to match your clinic router (might be `192.168.0.x` or `192.168.10.x` — check an existing PC’s IP).
+Adjust the subnet to match your clinic router (might be `192.168.0.x` or `192.168.10.x` — check an existing PC’s IP with `ip addr` or Windows `ipconfig`).
 
-**Important direction:** for TCP analyzers, the **mini PC is the server**. You configure each instrument’s LIS/host settings with:
+### 1.1 Checklist before you leave Phase 1
+
+- [ ] You know the **router admin URL** and who has the password.  
+- [ ] You wrote the mini PC **MAC address** (Phase 2 will need it).  
+- [ ] Each TCP analyzer has (or will get) a **stable IP** on the **same subnet** as the mini PC.  
+- [ ] You know which **switch port / wall jack** each analyzer uses.  
+- [ ] You have (or will get) the **vendor LIS/interface PDF** for Sysmex, Mindray, iFlash, and ProLyte.  
+- [ ] You know **where barcodes are scanned** for each line (IPU / loader / handheld) — see [ANALYZERS.md](./ANALYZERS.md).
+
+### 1.2 Connection direction (read twice)
+
+For TCP analyzers, the **mini PC is the server**. You configure each instrument’s LIS/host settings with:
 
 - **Host IP** = mini PC IP (`192.168.1.50`)
 - **Host port** = 5001 / 5003 / 5004 (per machine)
 
 The instrument **initiates** the connection when it has results (or stays connected — depends on vendor).
+
+ProLyte **Network LIS**: set instrument host IP to mini PC, port **5002**. **Serial path**: no IP — RS‑232 into mini PC (Phase 7).
 
 ---
 
@@ -400,12 +661,26 @@ CORS_ORIGINS=http://192.168.1.50:3101,http://drax-lis.local:3101
 ZEBRA_PRINTER_HOST=192.168.1.60
 ZEBRA_PRINTER_PORT=9100
 
-# --- Serial (ProLyte on USB hub) — host path, mapped into container below ---
+# --- TCP analyzers (defaults match the app; set only if you change ports) ---
+SYSMEX_TCP_PORT=5001
+MINDRAY_TCP_PORT=5003
+IFLASH_TCP_PORT=5004
+
+# --- Serial (ProLyte on USB hub) — host path, mapped into container in Phase 7 ---
+PROLYTE_NETWORK_LIS_ENABLED=true
+PROLYTE_NETWORK_LIS_PORT=5002
 PROLYTE_SERIAL_PATH=/dev/prolyte
 PROLYTE_BAUD=9600
 
 # --- Optional overrides ---
 BACKUP_RETENTION_DAYS=7
+```
+
+Generate secrets on the mini PC (do not invent short passwords):
+
+```bash
+openssl rand -hex 32   # paste into EDGE_SYNC_TOKEN
+openssl rand -hex 32   # paste into EDGE_JWT_SECRET (different value)
 ```
 
 | Variable | Why |
@@ -416,7 +691,9 @@ BACKUP_RETENTION_DAYS=7
 | `EDGE_STAFF_SEED` | Set `false` on a real lab PC so no demo accounts are created |
 | `CORS_ORIGINS` | Must match exactly how staff open the app (IP or `.local` URL) |
 | `ZEBRA_PRINTER_HOST` | Printer IP — edge connects **out** to it |
-| `PROLYTE_SERIAL_PATH` | Stable serial device name (after udev rules) |
+| `SYSMEX_TCP_PORT` / `MINDRAY_TCP_PORT` / `IFLASH_TCP_PORT` | Ports the mini PC **listens** on for each TCP analyzer |
+| `PROLYTE_NETWORK_LIS_PORT` | HTTP port for Network LIS (default **5002**); set same port on ProLyte LIS menu |
+| `PROLYTE_SERIAL_PATH` | Stable serial device name (Phase 7 — optional if using Network LIS) |
 
 **Generate a sync token and a JWT secret** (run twice — they must be **different** values):
 
@@ -436,9 +713,11 @@ This part happens on the **cloud** side (wherever `apps/api` and the hosted Supa
 
 ---
 
-## Phase 7 — Serial hub: plug in, name ports, pass into Docker
+## Phase 7 — Serial hub: ProLyte (and optional Sysmex serial)
 
-The **USB serial hub** (multi-port RS-232 adapter) lets the ProLyte (and optionally Sysmex over serial) talk to the mini PC over cables.
+This phase covers **ProLyte RS‑232 serial** (USB hub on the mini PC). If the ProLyte uses **Network LIS over LAN** instead, configure the instrument to POST to the mini PC IP on port **5002** (see env above) — **Phase 7 serial wiring is optional** in that case. Sysmex / Mindray / iFlash are configured in **Phase 8** (TCP).
+
+The **USB serial hub** (multi-port RS-232 adapter) lets the ProLyte talk to the mini PC over a cable.
 
 ### 7.1 Physical wiring
 
@@ -549,57 +828,204 @@ If you use Sysmex serial as well, add `/dev/sysmex-serial` the same way and set 
 
 ## Phase 8 — Configure TCP analyzers (Sysmex, Mindray, iFlash)
 
-Do this on **each instrument’s LIS/host interface menu** (wording varies by vendor). Bring the vendor PDF if you have it.
+Phase 7 covered **ProLyte (serial)** in detail. This phase covers the **other three machines** with the same level of care. Do **all three** before you call networking “done.”
 
-**Common pattern:**
+You can set instrument menus **before** the Docker container is up (Phase 10). You **cannot** fully prove they work until the mini PC is listening — that proof is in **Phase 10.4** and **Phase 12**.
 
-| Setting on instrument | Value |
-| --- | --- |
-| LIS host IP | Mini PC IP — `192.168.1.50` |
-| LIS host port | Sysmex **5001**, Mindray **5003**, iFlash **5004** |
-| Mode | Client (instrument connects to host) — *most common for our edge listeners* |
-| Protocol | Sysmex/Mindray: ASTM; iFlash: HL7 |
+Bring each vendor’s **LIS / host interface** PDF. Menu names below are typical English labels; the screen may say “Host computer”, “LIS”, “Data manager”, “Online”, or “Communication”.
 
-**Barcode / sample ID:** configure each line so the **accession on the tube label** is what the machine sends back (see [ANALYZERS.md](./ANALYZERS.md) — Sysmex often scans on IPU/loader, not on the main unit).
+### 8.0 Shared pattern (all three TCP machines)
 
-### 8.1 Verify TCP ports are listening (after container is running)
+For **each** of Sysmex, Mindray, and iFlash, complete this checklist:
+
+1. **Physical:** Analyzer Ethernet cable → lab switch → same LAN as mini PC.  
+2. **Instrument IP:** Give the analyzer a **static IP** from Phase 1 (or a DHCP reservation on the router).  
+3. **Ping test from mini PC** (after the instrument has an IP):
+
+   ```bash
+   ping -c 3 192.168.1.71   # Sysmex example — use Mindray/iFlash IPs for the others
+   ```
+
+4. **LIS host on the instrument:**
+
+   | Setting on instrument | Value |
+   | --- | --- |
+   | LIS / host / server IP | Mini PC IP — e.g. `192.168.1.50` |
+   | LIS host port | Sysmex **5001**, Mindray **5003**, iFlash **5004** |
+   | Mode | **Client** (instrument connects **to** host) — most common for our listeners |
+   | Protocol | Sysmex / Mindray: **ASTM**; iFlash: **HL7** (often with MLLP) |
+
+5. **Barcode / sample ID:** whatever staff scan or type must equal the **accession on the tube label** (`DH…`). See [ANALYZERS.md](./ANALYZERS.md).  
+6. **Save** settings; reboot the instrument interface if the manual says so.  
+7. **Do not** point two instruments at the same port.
+
+### 8.1 Sysmex XS-1000i (CBC) → mini PC port **5001**
+
+**What you are proving:** CBC results arrive tagged with the tube accession.
+
+#### Physical / network
+
+1. Confirm the Sysmex (or its network interface / IPU PC) has Ethernet to the lab switch.  
+2. Set static IP e.g. `192.168.1.71` (or reserve that MAC on the router).  
+3. From the mini PC: `ping -c 3 192.168.1.71`.
+
+#### LIS / host menu (on Sysmex software / IPU — not always on the analyzer face)
+
+Exact path varies; look for **Communication**, **Host**, **LIS**, or **Online settings**:
+
+1. Set **host IP** = mini PC (`192.168.1.50`).  
+2. Set **host port** = **5001**.  
+3. Set protocol to **ASTM** (E1381/E1394 family) if asked.  
+4. Enable **result send** / **real-time send** / **auto transmit** (whatever the menu calls “send results to host when done”).  
+5. Save.
+
+#### Where the barcode is scanned
+
+On many XS installs, **there is no scanner on the analyzer box**. Staff scan the tube at the **Sysmex IPU PC** or **rack loader**. That scanned ID must be the accession from our label. If the IPU has its own “worklist” ID that is not `DH…`, Bench will show results under the wrong ID or as unlinked (`—`).
+
+#### After Phase 10 (container running) — smoke check
 
 ```bash
-ss -tlnp | grep -E '5001|5003|5004|3101'
+ss -tlnp | grep 5001
+# Run a CBC with accession DH… then:
+docker compose --profile lab-prod logs -f lab | grep -i sysmex
 ```
 
-| Command | Meaning |
-| --- | --- |
-| `ss -tlnp` | Show all TCP ports listening and which process owns them |
+Bench should show WBC/RBC/HGB/… for that accession.
 
-Or call the app:
+---
+
+### 8.2 Mindray BS-240 (chemistry) → mini PC port **5003**
+
+**What you are proving:** chemistry analytes (glucose, creatinine, etc.) arrive with the correct accession.
+
+#### Physical / network
+
+1. Ethernet to lab switch; static IP e.g. `192.168.1.72`.  
+2. From mini PC: `ping -c 3 192.168.1.72`.
+
+#### LIS / host menu
+
+On the Mindray control software / instrument communication screen:
+
+1. Host IP = mini PC (`192.168.1.50`).  
+2. Host port = **5003**.  
+3. Protocol = **ASTM** (same family as Sysmex; different test codes).  
+4. If the menu offers **host query** (“ask LIS what was ordered”), you may leave it on — our edge can answer when enabled — or start with **result send only** for first bring-up.  
+5. Enable automatic transmit of completed results.  
+6. Save.
+
+#### Barcode
+
+Usually at the Mindray **workstation or sample track**. Same golden rule: scanned ID = printed accession.
+
+#### After Phase 10 — smoke check
 
 ```bash
-curl -s http://localhost:3101/analyzers/status | jq
+ss -tlnp | grep 5003
+docker compose --profile lab-prod logs -f lab | grep -i mindray
 ```
 
-(Requires login when hardened — use browser dev tools or admin token.)
+Bench should show chemistry codes remapped to catalog names (see [MACHINE_TO_REQUEST_FORM.md](./MACHINE_TO_REQUEST_FORM.md)).
+
+---
+
+### 8.3 YHLO iFlash 1200 (immunoassay) → mini PC port **5004**
+
+**What you are proving:** immunoassay results (e.g. TSH) arrive over **HL7/MLLP**, not ASTM.
+
+#### Physical / network
+
+1. Ethernet to lab switch; static IP e.g. `192.168.1.73`.  
+2. From mini PC: `ping -c 3 192.168.1.73`.
+
+#### LIS / host menu
+
+1. Host IP = mini PC (`192.168.1.50`).  
+2. Host port = **5004**.  
+3. Protocol = **HL7** (v2.x). Framing is **MLLP** (start/end bytes) — if the menu asks for MLLP / LLP, enable it.  
+4. Enable ORU / result transmission to host.  
+5. Optional host query (QRY): same note as Mindray — fine once basics work.  
+6. Save.
+
+#### Barcode
+
+Typically at the iFlash **control software / rack loader**. Accession in the message usually appears in **OBR-2** or **OBR-3**.
+
+#### After Phase 10 — smoke check
+
+```bash
+ss -tlnp | grep 5004
+docker compose --profile lab-prod logs -f lab | grep -i iflash
+```
+
+---
+
+### 8.4 Phase 8 exit checklist
+
+- [ ] Sysmex: IP set, host=`miniPC:5001`, barcode path known, ping OK  
+- [ ] Mindray: IP set, host=`miniPC:5003`, barcode path known, ping OK  
+- [ ] iFlash: IP set, host=`miniPC:5004`, HL7/MLLP, barcode path known, ping OK  
+- [ ] ProLyte: Phase 7 complete (`/dev/prolyte` exists)  
+- [ ] Photos or notes of each LIS screen saved for troubleshooting  
+
+Listener proof waits until **Phase 10.4**.
 
 ---
 
 ## Phase 9 — Zebra label printer
 
-Follow [HARDWARE.md](./HARDWARE.md). Short version:
+Follow [HARDWARE.md](./HARDWARE.md) for model-specific details. Do not skip steps.
 
-1. Print network config label from Zebra (Feed button at power-on or Zebra Setup Utilities).
-2. Set printer static IP `192.168.1.60` on lab subnet.
-3. From mini PC:
+### 9.1 Put the printer on the lab network
 
-   ```bash
-   nc -zv 192.168.1.60 9100
-   ```
+1. Power on the Zebra with label stock loaded.  
+2. Print a **network configuration** label (often: hold **Feed** at power-on, or use Zebra Setup Utilities from a Windows laptop).  
+3. Note the current IP (DHCP or factory).  
+4. Set a **static IP** for the printer — e.g. `192.168.1.60` — on the **same subnet** as the mini PC (printer menu or Setup Utilities).  
+5. Reboot printer; confirm the config label now shows `192.168.1.60`.
 
-   **`nc -zv`** = “netcat, zero-I/O, verbose” — tests if port 9100 is open.
+### 9.2 Prove the mini PC can reach the printer
 
-4. Set `ZEBRA_PRINTER_HOST=192.168.1.60` in `infra/.env`.
-5. After app is up: open **Labels** page → **Test label**.
+From the mini PC:
 
-Label stock default: **2" × 1"** (`LABEL_SIZE_ID=tube_2x1`).
+```bash
+ping -c 3 192.168.1.60
+nc -zv 192.168.1.60 9100
+```
+
+| Command | Meaning |
+| --- | --- |
+| `ping` | Basic network reachability |
+| `nc -zv` | “netcat, zero-I/O, verbose” — tests if **port 9100** (raw ZPL) is open |
+
+If `nc` fails: wrong IP, printer offline, or a firewall between PC and printer.
+
+### 9.3 Tell the app about the printer
+
+In `infra/.env` (Phase 6):
+
+```bash
+ZEBRA_PRINTER_HOST=192.168.1.60
+ZEBRA_PRINTER_PORT=9100
+```
+
+Label stock default: **2" × 1"** (`LABEL_SIZE_ID=tube_2x1` if you override).
+
+Restart the lab container after changing env (Phase 10):
+
+```bash
+cd ~/medical-lab-app-monorepo/infra
+docker compose --profile lab-prod up -d lab
+```
+
+### 9.4 Print a test label from the app
+
+After the container is up and you can log in:
+
+1. Open **Labels** in the browser.  
+2. Click **Test label** (or print from a real accession).  
+3. Confirm barcode scans back into an Accession / Labels field with a USB wedge scanner.
 
 ---
 
@@ -680,6 +1106,42 @@ Add line:
 
 Or create `/etc/systemd/system/drax-lis.service` (cleaner — see appendix).
 
+### 10.4 Verify analyzer listeners (do not skip)
+
+Only after the container is **up**. This is the proof that Phase 8’s instrument settings have somewhere to connect.
+
+```bash
+ss -tlnp | grep -E '5001|5003|5004|3101'
+```
+
+| Port | Must show LISTEN | Machine |
+| --- | --- | --- |
+| **3101** | yes | Web UI |
+| **5001** | yes | Sysmex |
+| **5003** | yes | Mindray |
+| **5004** | yes | iFlash |
+
+| Command | Meaning |
+| --- | --- |
+| `ss -tlnp` | Show all TCP ports listening and which process owns them |
+
+Serial (ProLyte) — confirm the symlink and that logs opened the port:
+
+```bash
+ls -l /dev/prolyte
+docker compose --profile lab-prod logs lab | grep -i prolyte | tail -20
+```
+
+Expect a line like `ProLyte serial open on /dev/prolyte`. If you see `ProLyte serial skipped`, `PROLYTE_SERIAL_PATH` or the Docker `devices:` override is wrong (return to Phase 7.5).
+
+Optional (requires a logged-in session / token when hardened):
+
+```bash
+curl -s http://localhost:3101/analyzers/status | jq
+```
+
+Each transport should show listening / last activity fields with no persistent parse errors.
+
 ---
 
 ## Phase 11 — Staff workstations (registration desk)
@@ -722,19 +1184,60 @@ Full checklist: [EDGE_SECURITY_AND_BACKUP.md](./EDGE_SECURITY_AND_BACKUP.md).
 3. Register specimen → print label.
 4. Confirm label prints with barcode `DH…`.
 
-### 12.4 Run sample on each analyzer
+### 12.4 Run a sample on **each** analyzer (do not batch-skip)
 
-Use a real or QC tube with that accession. Confirm:
+Use a real or QC tube with a **registered** accession for that line. Complete all four — ticking one machine does not prove the others.
+
+#### Sysmex (5001)
+
+1. Accession + order CBC (or panel that includes CBC). Print label.  
+2. Scan accession at Sysmex **IPU / loader**.  
+3. Run sample.  
+4. Confirm Bench shows CBC analytes for that accession.  
+5. Logs: `docker compose --profile lab-prod logs -f lab | grep -i sysmex`
+
+#### Mindray (5003)
+
+1. Accession + order chemistry tests that Mindray runs.  
+2. Scan at Mindray workstation / track.  
+3. Run sample.  
+4. Confirm Bench chemistry values.  
+5. Logs: `… | grep -i mindray`
+
+#### iFlash (5004)
+
+1. Accession + order an immunoassay the iFlash runs (e.g. TSH).  
+2. Scan at iFlash software / loader.  
+3. Run sample.  
+4. Confirm Bench shows the immunoassay result.  
+5. Logs: `… | grep -i iflash`
+
+#### ProLyte (serial)
+
+1. Accession + order electrolytes.  
+2. Enter/scan sample ID on ProLyte so `SAMPLE:` matches accession.  
+3. Run sample.  
+4. Confirm Na/K/Cl (and Li if enabled) on Bench.  
+5. If nothing arrives: minicom sniff (Phase 7.4), baud 9600 vs 1200, null-modem cable.
+
+Or watch all ingest:
 
 ```bash
 docker compose --profile lab-prod logs -f lab | grep -i ingest
 ```
 
-Or **Bench Review** in UI shows new results.
+#### Accuracy check (same for every machine)
 
-### 12.5 Analyzer status
+| Check | Pass |
+| --- | --- |
+| Accession | Matches label / Bench / instrument sample ID |
+| Patient | Not `—` on Bench |
+| Values | Match instrument screen/printout |
+| Status | `pending_review` until submitted for release |
 
-In browser (logged in): network tab or API client to `GET /analyzers/status` — each listener should show transport, last accession, no persistent parse errors.
+### 12.5 Analyzer status API
+
+In browser (logged in): call `GET /analyzers/status` — each listener should show transport, last accession, no persistent parse errors. Cross-check against Phase 10.4.
 
 ### 12.6 Cloud sync
 
@@ -754,7 +1257,20 @@ On a **copy** of a backup file, practice [restore-edge-db.sh](../infra/scripts/r
 
 ---
 
-## Phase 13 — What happens when you plug in the serial hub (timeline)
+## Phase 13 — Security + backup checklist
+
+Complete [EDGE_SECURITY_AND_BACKUP.md](./EDGE_SECURITY_AND_BACKUP.md) before real patients. At minimum:
+
+- [ ] Hardened auth on (no open PHI APIs)  
+- [ ] `EDGE_JWT_SECRET` / `EDGE_SYNC_TOKEN` are unique (not dev defaults)  
+- [ ] Firewall rules from Phase 3.6 still correct  
+- [ ] Backup volume has files; restore drill done once  
+
+---
+
+## Appendix — What happens when you plug in the ProLyte serial hub (timeline)
+
+This is background for Phase 7 — not a substitute for the steps there.
 
 1. **USB connect** — Linux kernel loads `usbserial` driver → creates `/dev/ttyUSB0`.
 2. **udev rule** — renames to `/dev/prolyte` with correct permissions.
@@ -767,6 +1283,18 @@ On a **copy** of a backup file, practice [restore-edge-db.sh](../infra/scripts/r
 
 ---
 
+## Appendix — ProLyte Network LIS over LAN (timeline)
+
+Use this path when the instrument is on Ethernet/Wi‑Fi (MacBook field test or production mini PC).
+
+1. **Edge start** — HTTP server binds `PROLYTE_NETWORK_LIS_HOST:PROLYTE_NETWORK_LIS_PORT` (default `0.0.0.0:5002`).
+2. **ProLyte LIS menu** — Network LIS enabled; host IP = lab PC or MacBook; port = **5002**.
+3. **Sample completes** — ProLyte POSTs JSON (`pId`, `ionData.Na/K/Cl/Li`) to `http://<host>:5002/`.
+4. **Edge parses** — `parseProlyteNetworkLis` → same ingest path as serial → Bench + SQLite + sync.
+5. **Instrument expects** — HTTP **200** with `{ "ok": true }`; timeouts if host/firewall blocks port.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
@@ -776,9 +1304,13 @@ On a **copy** of a backup file, practice [restore-edge-db.sh](../infra/scripts/r
 | Cloud login says "restricted to admin and authorizer accounts" | Signed-in account is a tech | Expected — techs never get cloud access, see [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md) |
 | Cloud app keeps asking for an enrollment code | Browser/device not enrolled, or was revoked | Issue a fresh code from **Staff** on the mini PC |
 | CORS error in browser console | Wrong `CORS_ORIGINS` | Must match exact URL in address bar (http vs https, IP vs name) |
-| ProLyte no results | Serial path, baud, cable | `dmesg`, `ls /dev/prolyte`, minicom test, null-modem |
-| Sysmex no results | Instrument not pointing to PC IP:5001 | Vendor LIS menu; `ss -tlnp \| grep 5001` |
-| Label does not print | Printer IP / port 9100 | `nc -zv printer-ip 9100`, `ZEBRA_PRINTER_HOST` |
+| ProLyte no results (Network LIS) | Wrong host IP/port, firewall, accession mismatch | ProLyte **Test Network LIS**; Mac/PC firewall on **5002**; `pId` = app accession; edge log for `Network LIS HTTP listener` |
+| ProLyte no results (serial) | Serial path, baud, cable | `dmesg`, `ls /dev/prolyte`, minicom test, null-modem; Phase 7 |
+| Sysmex no results | Not pointing at PC IP:5001; barcode scanned elsewhere | Vendor LIS menu; `ss -tlnp \| grep 5001`; scan at IPU/loader; Phase 8.1 |
+| Mindray no results | Not pointing at PC IP:5003 | Vendor LIS; `ss -tlnp \| grep 5003`; Phase 8.2 |
+| iFlash no results | Not pointing at PC IP:5004; HL7/MLLP off | Vendor LIS; `ss -tlnp \| grep 5004`; Phase 8.3 |
+| MacBook field test: no results | Firewall, wrong host IP (`127.0.0.1`), VLAN isolation | Use USB‑C Ethernet to same switch; allow ports; host = Mac LAN IP — [Field visit](#field-visit--test-one-analyzer-with-only-a-macbook) |
+| Label does not print | Printer IP / port 9100 | `nc -zv printer-ip 9100`, `ZEBRA_PRINTER_HOST`; Phase 9 |
 | Results local but not in cloud | `CLOUD_API_URL` / token / internet | Logs; verify `EDGE_SYNC_TOKEN` matches cloud |
 | `ttyUSB` swapped after reboot | Missing udev rules | Phase 7.3 |
 | Container cannot open serial | Missing `devices:` override | Phase 7.5 |

@@ -120,6 +120,7 @@ export function BenchGroupRow({
   summary,
   expanded,
   alternate,
+  compact = false,
   selected,
   onToggle,
   onSelectPatient,
@@ -129,6 +130,8 @@ export function BenchGroupRow({
   expanded: boolean;
   /** Every other patient sits a shade lighter, on top of the block gaps. */
   alternate: boolean;
+  /** Tablet landscape: tighter cells, fewer columns. */
+  compact?: boolean;
   selected: boolean;
   onToggle: () => void;
   onSelectPatient: (id: string) => void;
@@ -161,7 +164,20 @@ export function BenchGroupRow({
         : null
     : null;
 
-  const cellClass = "px-3 py-3.5 align-middle";
+  const cellClass = compact
+    ? "px-2 py-2 align-middle"
+    : "px-3 py-3.5 align-middle";
+
+  const observedLabel = summary.latestObservedAt
+    ? compact
+      ? new Date(summary.latestObservedAt).toLocaleString(undefined, {
+          month: "numeric",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : new Date(summary.latestObservedAt).toLocaleString()
+    : "—";
 
   const collapsedNamePillBg = alternate
     ? "bg-white shadow-sm ring-1 ring-black/5 dark:bg-card dark:shadow-none dark:ring-border/50"
@@ -202,7 +218,12 @@ export function BenchGroupRow({
       )}
     >
       {/* Patient */}
-      <td className={cn(cellClass, "min-w-[18rem] w-[22%] align-top")}>
+      <td
+        className={cn(
+          cellClass,
+          compact ? "w-[26%] align-top" : "min-w-[18rem] w-[22%] align-top",
+        )}
+      >
         <div className="flex items-start gap-x-1.5">
           <button
             type="button"
@@ -234,7 +255,8 @@ export function BenchGroupRow({
               {patient ? (
                 <span
                   className={cn(
-                    "rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight whitespace-nowrap",
+                    "rounded-md px-2 py-1 text-left font-bold leading-snug tracking-tight whitespace-nowrap",
+                    compact ? "text-sm" : "text-base",
                     expanded
                       ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
                       : collapsedNamePillBg,
@@ -294,10 +316,8 @@ export function BenchGroupRow({
 
       {/* Observed */}
       <td className={cellClass}>
-        <span className="whitespace-nowrap text-sm font-medium tabular-nums text-foreground/85">
-          {summary.latestObservedAt
-            ? new Date(summary.latestObservedAt).toLocaleString()
-            : "—"}
+        <span className="whitespace-nowrap text-xs font-medium tabular-nums text-foreground/85 sm:text-sm">
+          {observedLabel}
         </span>
       </td>
 
@@ -315,10 +335,11 @@ export function BenchGroupRow({
         </span>
       </td>
 
-      {/* Analyzer */}
-      <td className={cellClass}>
-        <SummaryPlaceholder />
-      </td>
+      {!compact ? (
+        <td className={cellClass}>
+          <SummaryPlaceholder />
+        </td>
+      ) : null}
 
       {/* Test */}
       <td className={cellClass}>
@@ -333,10 +354,11 @@ export function BenchGroupRow({
         <SummaryPlaceholder />
       </td>
 
-      {/* Units */}
-      <td className={cellClass}>
-        <SummaryPlaceholder />
-      </td>
+      {!compact ? (
+        <td className={cellClass}>
+          <SummaryPlaceholder />
+        </td>
+      ) : null}
 
       {/* Flag */}
       <td className={cellClass}>
@@ -360,9 +382,12 @@ export function BenchGroupRow({
       </td>
 
       {/* Status + actions */}
-      <td className={cn(cellClass, "min-w-[10rem]")}>
+      <td className={cn(cellClass, compact ? "min-w-0" : "min-w-[10rem]")}>
         <div
-          className="flex min-w-[9rem] flex-col gap-1.5"
+          className={cn(
+            "flex flex-col",
+            compact ? "min-w-0 gap-1" : "min-w-[9rem] gap-1.5",
+          )}
           onClick={stopRowSelect}
           onKeyDown={(e) => e.stopPropagation()}
           role="presentation"

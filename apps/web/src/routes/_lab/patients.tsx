@@ -14,7 +14,10 @@ import { Button } from "../../components/ui/button";
 import { ClearableInput } from "../../components/ui/clearable-input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { cn } from "../../lib/utils";
-import { useIsDesktop, useIsWide } from "../../lib/use-media-query";
+import {
+  useIsWorkstation,
+  useShowWorkstationChrome,
+} from "../../lib/use-media-query";
 
 type PatientsSearch = {
   register?: boolean;
@@ -42,8 +45,8 @@ function PatientsPage() {
   const deferredQuery = useDeferredValue(query);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
-  const isDesktop = useIsDesktop();
-  const isWide = useIsWide();
+  const isWorkstation = useIsWorkstation();
+  const showWorkstationChrome = useShowWorkstationChrome();
   const pendingReviewCount = useIdentityReviewPendingCount();
 
   useEffect(() => {
@@ -61,7 +64,7 @@ function PatientsPage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3 lg:gap-4">
-        <div className={cn(!isWide && "hidden")}>
+        <div className={cn(!isWorkstation && "hidden")}>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Registry
           </p>
@@ -88,8 +91,10 @@ function PatientsPage() {
           )}
           <Button
             type="button"
-            size={isWide ? "default" : "lg"}
-            className={cn(!isWide && "min-h-10 flex-1 sm:flex-none")}
+            size={showWorkstationChrome ? "default" : "lg"}
+            className={cn(
+              !showWorkstationChrome && "min-h-10 flex-1 sm:flex-none",
+            )}
             onClick={() => setRegisterOpen(true)}
           >
             Register patient
@@ -155,7 +160,7 @@ function PatientsPage() {
             </p>
           )}
 
-          {!isDesktop ? (
+          {!showWorkstationChrome ? (
             <div className="space-y-2">
               {patientsQ.isLoading && (
                 <p className="rounded-xl border border-border bg-card px-3 py-12 text-center text-muted-foreground">

@@ -11,7 +11,10 @@ import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { FormErrorSummary, FormField } from "../../components/forms/form-field";
-import { useIsWide } from "../../lib/use-media-query";
+import {
+  useIsWorkstation,
+  useShowWorkstationChrome,
+} from "../../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab/profile")({
   component: ProfilePage,
@@ -19,7 +22,8 @@ export const Route = createFileRoute("/_lab/profile")({
 
 function ProfilePage() {
   const auth = useAuth();
-  const isWide = useIsWide();
+  const isWorkstation = useIsWorkstation();
+  const showWorkstationChrome = useShowWorkstationChrome();
   const signedIn = Boolean(auth.accessToken);
   const canEditName = Boolean(auth.session?.user?.id) && !auth.isDevSession;
 
@@ -93,7 +97,7 @@ function ProfilePage() {
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-4 lg:space-y-6">
-      {isWide ? (
+      {isWorkstation ? (
       <div>
         <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Account
@@ -186,8 +190,8 @@ function ProfilePage() {
           </FormField>
           <Button
             type="submit"
-            size={isWide ? "default" : "lg"}
-            className={!isWide ? "min-h-11 w-full" : undefined}
+            size={showWorkstationChrome ? "default" : "lg"}
+            className={!showWorkstationChrome ? "min-h-11 w-full" : undefined}
             disabled={isSubmitting}
           >
             {isSubmitting ? "Saving…" : "Save name"}

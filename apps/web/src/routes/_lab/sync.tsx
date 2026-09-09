@@ -4,7 +4,10 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { api, ApiError } from "../../lib/api";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
-import { useIsWide } from "../../lib/use-media-query";
+import {
+  useIsWorkstation,
+  useShowWorkstationChrome,
+} from "../../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab/sync")({
   component: SyncPage,
@@ -17,7 +20,8 @@ function formatCount(n: number | undefined): string {
 
 function SyncPage() {
   const qc = useQueryClient();
-  const isWide = useIsWide();
+  const isWorkstation = useIsWorkstation();
+  const showWorkstationChrome = useShowWorkstationChrome();
   const { data, isLoading, error } = useQuery({
     queryKey: ["syncStatus"],
     queryFn: () => api.syncStatus(),
@@ -39,7 +43,7 @@ function SyncPage() {
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
       <div>
-        {isWide ? (
+        {isWorkstation ? (
           <>
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Connectivity
@@ -68,8 +72,8 @@ function SyncPage() {
           <Button
             type="button"
             variant="outline"
-            size={isWide ? "sm" : "lg"}
-            className={cn(!isWide && "min-h-11 w-full")}
+            size={showWorkstationChrome ? "sm" : "lg"}
+            className={cn(!showWorkstationChrome && "min-h-11 w-full")}
             disabled={drainM.isPending}
             onClick={() => drainM.mutate()}
           >

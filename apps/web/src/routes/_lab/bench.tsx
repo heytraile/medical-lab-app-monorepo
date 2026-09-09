@@ -35,7 +35,12 @@ import { BenchPatientPanel } from "../../components/bench-patient-panel";
 import { BenchEmptyState } from "../../components/bench-empty-state";
 import { BenchMobileList } from "../../components/bench-mobile-list";
 import { Sheet, SheetContent } from "../../components/ui/sheet";
-import { useIsDesktop, useIsWide } from "../../lib/use-media-query";
+import {
+  useIsDesktop,
+  useIsCompactWorkstation,
+  useIsWorkstation,
+  useWorkstationViewportClass,
+} from "../../lib/use-media-query";
 import {
   BenchGroupRow,
   summarizeGroup,
@@ -141,7 +146,11 @@ function BenchPage() {
   // mobile one at a card element.
   const focusedRowRef = useRef<HTMLElement | null>(null);
   const isDesktop = useIsDesktop();
-  const isWide = useIsWide();
+  const isWorkstation = useIsWorkstation();
+  const isCompactWorkstation = useIsCompactWorkstation();
+  /** Tablet landscape (lg–xl): card list like phone; full table only with sidebar at xl+. */
+  const useListLayout = !isDesktop || isCompactWorkstation;
+  const workstationViewportClass = useWorkstationViewportClass();
 
   const [searchDraft, setSearchDraft] = useState(q ?? "");
   useEffect(() => {
@@ -324,6 +333,8 @@ function BenchPage() {
     );
   }, [selectedPatientId, selectedResults]);
 
+  const formatObserved = (iso: string) => new Date(iso).toLocaleString();
+
   const columns = useMemo(
     () => [
       // Drives grouping, and carries the sortable Patient header. The accessor
@@ -363,8 +374,8 @@ function BenchPage() {
         // One of the three things a tech actually reads, so it sits at body
         // size rather than the muted 12px it used to be.
         cell: (info) => (
-          <span className="whitespace-nowrap text-sm font-medium tabular-nums text-foreground/85">
-            {new Date(info.getValue()).toLocaleString()}
+          <span className="whitespace-nowrap text-xs font-medium tabular-nums text-foreground/85 sm:text-sm">
+            {formatObserved(info.getValue())}
           </span>
         ),
       }),
@@ -427,14 +438,14 @@ function BenchPage() {
             referenceHigh: row.referenceHigh,
           };
           return (
-          <span
-            className={cn(
-              "text-lg font-semibold tabular-nums",
-              flagValueClass(row.flag, ctx),
-            )}
-          >
-            {info.getValue()}
-          </span>
+            <span
+              className={cn(
+                "text-lg font-semibold tabular-nums",
+                flagValueClass(row.flag, ctx),
+              )}
+            >
+              {info.getValue()}
+            </span>
           );
         },
       }),
@@ -507,7 +518,7 @@ function BenchPage() {
 
   const title = analyzer ? analyzerLabel(analyzer) : "All machines";
   const split = Boolean(selectedPatientId);
-  const splitDocked = split && isWide;
+  const splitDocked = split && isWorkstation;
   const hasUrlFilter = Boolean(q || analyzer);
 
   const emptyState = (
@@ -539,7 +550,7 @@ function BenchPage() {
           split ? "min-w-[52rem]" : "min-w-[960px]",
         )}
       >
-        <thead className="border-b border-border bg-muted text-xs uppercase tracking-wider text-muted-foreground">
+        <thead className="border-b border-border bg-muted text-[10px] uppercase tracking-wider text-muted-foreground sm:text-xs">
           {table.getHeaderGroups().map((hg) => (
             <tr key={hg.id}>
               {hg.headers.map((h) => (
@@ -661,35 +672,78 @@ function BenchPage() {
       </table>
   );
 
+  const benchList = modelRows.length === 0 ? (
+    emptyState
+  ) : (
+    <ScrollContainer className="min-h-0 min-w-0 flex-1">
+      <div className="space-y-3 p-1 pb-4">
+        <BenchMobileList
+          rows={modelRows}
+          groupSummaries={groupSummaries}
+          selectedPatientId={selectedPatientId}
+          focusedResultId={focusedResultId}
+          focusedRef={focusedRowRef}
+          onSelectPatient={setSelectedPatientId}
+          onToggleGroup={(row) => row.toggleExpanded()}
+          onJumpToFlag={(row, summary) => {
+            row.toggleExpanded(true);
+            const target = row.subRows.find(
+              (sr) => sr.original.flag === summary.worstFlag,
+            );
+            setFocusedResultId(target?.original.id ?? null);
+          }}
+        />
+      </div>
+    </ScrollContainer>
+  );
+
   return (
     <div
       className={cn(
-        "mx-auto w-full",
-        isWide
-          ? splitDocked
-            ? "flex min-h-0 flex-col gap-5 lg:h-[calc(100svh-7rem)]"
-            : "space-y-5"
+        "mx-auto w-full max-w-none",
+        isWorkstation
+          ? cn(
+              "flex min-h-0 flex-col",
+              isCompactWorkstation ? "gap-3" : "gap-5",
+              workstationViewportClass,
+            )
           : "flex h-full min-h-0 flex-col gap-2 p-3",
-        split && isWide ? "max-w-none" : isWide ? "max-w-[min(100%,90rem)]" : "max-w-none",
+        !isCompactWorkstation &&
+          isWorkstation &&
+          !splitDocked &&
+          "max-w-[min(100%,90rem)]",
       )}
     >
-      {isWide ? (
+      {isWorkstation ? (
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Bench Review
           </p>
-          <h2 className="font-display text-2xl font-semibold sm:text-3xl tracking-tight text-foreground">
+          <h2
+            className={cn(
+              "font-display font-semibold tracking-tight text-foreground",
+              isCompactWorkstation
+                ? "text-xl sm:text-2xl"
+                : "text-2xl sm:text-3xl",
+            )}
+          >
             {title}
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Live results from instruments and manual entry
-            {q ? ` · filter “${q}”` : ""}.
-            {split ? " Click a patient row to focus; Esc closes." : ""}
-            {" "}
-            Expand a patient row to see test-level values. New accessions with
-            no results yet show as waiting when you search by accession.
-          </p>
+          {!isCompactWorkstation ? (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Live results from instruments and manual entry
+              {q ? ` · filter “${q}”` : ""}.
+              {split ? " Click a patient row to focus; Esc closes." : ""}{" "}
+              Expand a patient row to see test-level values. New accessions with
+              no results yet show as waiting when you search by accession.
+            </p>
+          ) : (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {q ? `Filter “${q}” · ` : ""}
+              Tap a patient for details · expand rows for tests
+            </p>
+          )}
         </div>
         <span className="text-xs text-muted-foreground">
           {isFetching
@@ -709,9 +763,14 @@ function BenchPage() {
         </div>
       )}
 
-      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
+      <div
+        className={cn(
+          "flex shrink-0 flex-wrap items-center justify-between",
+          isCompactWorkstation ? "gap-2" : "gap-3",
+        )}
+      >
         <Tabs value={tab} onValueChange={(v) => setTab(v as TabFilter)}>
-          <TabsList>
+          <TabsList className={isCompactWorkstation ? "h-8" : undefined}>
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="pending">Pending review</TabsTrigger>
             <TabsTrigger value="released">Released</TabsTrigger>
@@ -723,7 +782,12 @@ function BenchPage() {
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
             placeholder="Search accession, patient, test…"
-            className="h-8 w-[min(100%,16rem)] text-sm"
+            className={cn(
+              "h-8 text-sm",
+              isCompactWorkstation
+                ? "w-[min(100%,12rem)]"
+                : "w-[min(100%,16rem)]",
+            )}
             aria-label="Filter bench results"
           />
           {groupSummaries.size > 0 ? (
@@ -740,7 +804,7 @@ function BenchPage() {
                       : { id: "observedAt", desc: true },
                   ])
                 }
-                className="md:hidden"
+                className={useListLayout ? undefined : "md:hidden"}
               >
                 <TabsList>
                   <TabsTrigger value="newest">Newest</TabsTrigger>
@@ -809,69 +873,47 @@ function BenchPage() {
 
       <div
         className={cn(
-          "gap-4",
-          split &&
-            "grid min-h-0 grid-cols-1 xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.9fr)] xl:items-stretch",
-          (splitDocked || !isWide) && "min-h-0 flex-1",
-          !isWide && "flex flex-col",
+          "min-h-0 flex-1",
+          splitDocked &&
+            cn(
+              "grid items-stretch gap-3",
+              isCompactWorkstation
+                ? "grid-cols-[minmax(0,1fr)_minmax(16rem,42%)]"
+                : "grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)] lg:gap-4",
+            ),
+          !splitDocked && "flex flex-col",
         )}
       >
-        {!isDesktop ? (
-          modelRows.length === 0 ? (
-            emptyState
-          ) : (
-            <ScrollContainer className="min-h-0 flex-1">
-            <div className="space-y-3 p-1 pb-4">
-            <BenchMobileList
-              rows={modelRows}
-              groupSummaries={groupSummaries}
-              selectedPatientId={selectedPatientId}
-              focusedResultId={focusedResultId}
-              focusedRef={focusedRowRef}
-              onSelectPatient={setSelectedPatientId}
-              onToggleGroup={(row) => row.toggleExpanded()}
-              onJumpToFlag={(row, summary) => {
-                row.toggleExpanded(true);
-                const target = row.subRows.find(
-                  (sr) => sr.original.flag === summary.worstFlag,
-                );
-                setFocusedResultId(target?.original.id ?? null);
-              }}
-            />
-            </div>
-            </ScrollContainer>
-          )
+        {useListLayout ? (
+          benchList
         ) : (
-        /* Grey canvas: the gaps between patient blocks are this showing through. */
-        <div
-          className={cn(
-            "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-muted shadow-sm",
-            splitDocked
-              ? "flex-1"
-              : "max-h-[calc(100svh-11rem)]",
-          )}
-        >
-          <ScrollContainer className="min-h-0 flex-1" axes="both">
-            {benchTable}
-          </ScrollContainer>
-        </div>
+          /* Grey canvas: the gaps between patient blocks are this showing through. */
+          <div
+            className={cn(
+              "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-muted shadow-sm",
+              splitDocked ? "min-h-0 flex-1" : "max-h-[calc(100svh-11rem)]",
+            )}
+          >
+            <ScrollContainer className="min-h-0 flex-1" axes="both">
+              {benchTable}
+            </ScrollContainer>
+          </div>
         )}
 
-        {/* Docked beside the table only when there is room for both; below lg
-            it would otherwise strand the panel under a long list. */}
-        {selectedPatientId && isWide && (
+        {/* Docked beside the list/table from lg+ (workstation). Phone uses Sheet. */}
+        {splitDocked ? (
           <BenchPatientPanel
-            patientId={selectedPatientId}
+            patientId={selectedPatientId!}
             summary={selectedSummary}
             results={selectedResults}
             onClose={() => setSelectedPatientId(null)}
-            className="min-h-0"
+            className="min-h-0 min-w-0"
           />
-        )}
+        ) : null}
       </div>
 
       <Sheet
-        open={Boolean(selectedPatientId) && !isWide}
+        open={Boolean(selectedPatientId) && !isWorkstation}
         onOpenChange={(open) => !open && setSelectedPatientId(null)}
       >
         <SheetContent side="bottom" label="Patient results" className="p-0">

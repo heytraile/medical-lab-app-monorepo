@@ -1,7 +1,10 @@
 import type { ReactNode } from "react";
 import { AccessioningTabs } from "./accessioning-tabs";
 import { PrinterStatusPill } from "./printer-status-pill";
-import { useIsWide } from "../../lib/use-media-query";
+import {
+  useIsWorkstation,
+  useWorkstationViewportClass,
+} from "../../lib/use-media-query";
 import { cn } from "../../lib/utils";
 
 type Props = {
@@ -18,20 +21,24 @@ export function AccessioningShell({
   children,
   wide = false,
 }: Props) {
-  const isWide = useIsWide();
+  const isWorkstation = useIsWorkstation();
+  const workstationViewportClass = useWorkstationViewportClass();
 
   return (
     <div
       className={cn(
         "mx-auto w-full min-w-0 overflow-x-hidden",
         wide
-          ? "flex max-w-[min(100%,96rem)] min-h-0 flex-col lg:h-[calc(100svh-7rem)]"
+          ? cn(
+              "flex max-w-[min(100%,96rem)] min-h-0 flex-col",
+              workstationViewportClass,
+            )
           : "max-w-6xl space-y-4 lg:space-y-6",
       )}
     >
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 lg:items-end lg:gap-4">
         <div className="min-w-0 space-y-2 lg:space-y-3">
-          {isWide ? (
+          {isWorkstation ? (
             <div>
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Accessioning

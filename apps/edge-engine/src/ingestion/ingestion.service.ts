@@ -15,14 +15,20 @@ import {
   parseE1394,
   parseOru,
   parseProlyteBlock,
+  parseProlyteNetworkLis,
   unwrapMllp,
   type ParsedInstrumentMessage,
 } from "@drax-lis/protocols";
 
 export type IngestInput = {
   analyzerId: string;
-  transport: "serial" | "tcp";
-  protocol: "astm_e1381" | "astm_e1394" | "hl7_mllp" | "ascii_delimited";
+  transport: "serial" | "tcp" | "http";
+  protocol:
+    | "astm_e1381"
+    | "astm_e1394"
+    | "hl7_mllp"
+    | "ascii_delimited"
+    | "prolyte_network_lis";
   payload: Buffer | string;
   /** When TCP/serial drivers already ran protocol engines */
   parsed?: ParsedInstrumentMessage;
@@ -345,6 +351,14 @@ export class IngestionService {
 
     if (input.protocol === "ascii_delimited") {
       return parseProlyteBlock(payloadStr);
+    }
+
+    if (input.protocol === "prolyte_network_lis") {
+      try {
+        return parseProlyteNetworkLis(JSON.parse(payloadStr));
+      } catch {
+        return parseProlyteNetworkLis(payloadStr);
+      }
     }
 
     return { analytes: [], rawRecords: [] };

@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 
 export type AnalyzerRuntimeStatus = {
   analyzerId: string;
-  transport: "tcp" | "serial";
+  transport: "tcp" | "serial" | "http";
   protocol: string;
   listening: boolean;
   listenTarget?: string;
@@ -24,7 +24,7 @@ export class AnalyzerStatusService {
   upsert(
     analyzerId: string,
     patch: Partial<AnalyzerRuntimeStatus> & {
-      transport: "tcp" | "serial";
+      transport: "tcp" | "serial" | "http";
       protocol: string;
     },
   ) {
@@ -43,7 +43,7 @@ export class AnalyzerStatusService {
   markListening(
     analyzerId: string,
     opts: {
-      transport: "tcp" | "serial";
+      transport: "tcp" | "serial" | "http";
       protocol: string;
       listenTarget: string;
       listening: boolean;

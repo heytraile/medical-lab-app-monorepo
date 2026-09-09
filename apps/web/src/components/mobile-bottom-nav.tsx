@@ -20,8 +20,8 @@ type Props = {
 };
 
 /**
- * Phone/tablet portrait primary nav. Desktop (lg+) uses the sidebar instead.
- * "More" opens the existing nav sheet for secondary destinations.
+ * Primary nav below xl (phone, tablet portrait, tablet landscape).
+ * Desktop xl+ uses the sidebar instead. "More" opens the nav drawer.
  */
 export function MobileBottomNav({ onMore }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -33,7 +33,7 @@ export function MobileBottomNav({ onMore }: Props) {
   return (
     <nav
       aria-label="Primary"
-      className="shrink-0 border-t border-border bg-card/95 backdrop-blur-md lg:hidden"
+      className="shrink-0 border-t border-border bg-card/95 backdrop-blur-md xl:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <ul className="grid h-14 grid-cols-5">

@@ -74,13 +74,20 @@ Measures **electrolytes** — important minerals dissolved in blood that affect 
 Usually **serum or plasma** (blood after the liquid part is separated from cells), often from the same draw as other chemistry tests.
 
 **How it works (simplified)**  
-The ProLyte uses **Ion Selective Electrodes (ISE)** — sensors that respond to each ion type. When a sample completes, it **broadcasts** a simple text block over **RS-232 serial** (one-way; it does not use the same back-and-forth “handshake” as Sysmex/Mindray). The message includes a `SAMPLE:` line with either a **scanned accession** or an internal sequence number.
+The ProLyte uses **Ion Selective Electrodes (ISE)** — sensors that respond to each ion type. When a sample completes, it sends results to the LIS using **one of two transports** (both supported by this app):
+
+| Method | When to use | Edge listens on |
+| --- | --- | --- |
+| **Network LIS (LAN)** | ProLyte on Ethernet/Wi‑Fi; **best for MacBook field tests** — no USB‑serial adapter | HTTP **POST** on port **5002** (default) |
+| **RS‑232 serial** | Legacy cable / USB serial hub on mini PC | `PROLYTE_SERIAL_PATH` (e.g. `/dev/prolyte`) |
+
+Network LIS is **not** the same as Sysmex TCP ASTM — the ProLyte **POSTs JSON** to your host IP and port. Serial sends a **multi-line ASCII block** (one-way; no ASTM handshake) with a `SAMPLE:` line.
 
 **Barcode scanning**  
-Depends on site setup — often a small serial-linked workflow or manual sample ID entry on the ProLyte side. The result message must still carry the ID that matches our tube label.
+Depends on site setup — often manual sample ID entry on the ProLyte (`pId` in Network LIS, `SAMPLE:` on serial). The ID must match our tube accession.
 
 **In our dev simulator**  
-Writes a fake ProLyte text block to a serial path (`PROLYTE_SERIAL_PATH`); see [LOCAL_DEV.md](./LOCAL_DEV.md) for the socat recipe.
+By default, POSTs Network LIS JSON to `http://127.0.0.1:5002/`. For serial dev, set `PROLYTE_NETWORK_LIS_ENABLED=false` and use `PROLYTE_SERIAL_PATH` with the socat recipe in [LOCAL_DEV.md](./LOCAL_DEV.md).
 
 ---
 
@@ -172,7 +179,7 @@ Sends a fake TSH result over TCP port **5004**.
            │
            │  ASTM / HL7 / ASCII over TCP or serial
            ▼
-  [Edge engine on lab PC]  ← listens on ports 5001, 5003, 5004, serial for ProLyte
+  [Edge engine on lab PC]  ← TCP 5001/5003/5004; ProLyte HTTP :5002 or serial
            │
            │  stores in SQLite, syncs to cloud when online
            ▼
@@ -199,12 +206,15 @@ Printer: **Zebra ZD411** → raw ZPL TCP **9100**. See [HARDWARE.md](./HARDWARE.
 
 Confirm baud rates and LIS host settings against vendor manuals on site before cutover. Defaults below are for **local simulation**.
 
+**Code map** (drivers, parsers, Bench display files): [TANSTACK_START.md — Part A](./TANSTACK_START.md#part-a--machine-data-which-files-to-look-at).  
+**Line-by-line Nest + `net` walkthrough** of the TCP driver: [TCP_INGESTION_DRIVER.md](./TCP_INGESTION_DRIVER.md).
+
 ### Matrix
 
 | ID (`analyzerId`) | Model | Discipline | Transport (sim first) | Application protocol | Default port / path |
 | --- | --- | --- | --- | --- | --- |
 | `sysmex_xs1000i` | Sysmex XS-1000i | Hematology (CBC) | TCP ASTM (+ PTY serial later) | ASTM E1381 + E1394 | TCP `5001` |
-| `diamond_prolyte` | Diamond ProLyte | Electrolytes (ISE) | RS-232 serial (PTY sim) | Unidirectional multi-line ASCII | `PROLYTE_SERIAL_PATH` |
+| `diamond_prolyte` | Diamond ProLyte | Electrolytes (ISE) | **HTTP Network LIS** (default) or RS-232 serial | JSON `ionData` POST or ASCII block | HTTP **5002** or `PROLYTE_SERIAL_PATH` |
 | `mindray_bs240` | Mindray BS-240 | Chemistry | TCP ASTM | ASTM E1394 (+ host query) | TCP `5003` |
 | `yhlo_iflash1200` | YHLO iFlash 1200 | Immunoassay | TCP MLLP | HL7 v2.3.1 | TCP `5004` |
 
@@ -217,7 +227,9 @@ Confirm baud rates and LIS host settings against vendor manuals on site before c
 | Mindray BS-240 | 9600 / TCP | 8 | None | 1 | — |
 | iFlash | TCP preferred | — | — | — | — |
 
-ProLyte physical: DB9 female (RS-232 DTE). Null-modem or straight cable depending on host adapter gender. **Unidirectional** broadcast on sample complete — no ASTM ENQ/ACK.
+ProLyte **serial**: DB9 (RS-232 DTE). Null-modem or straight cable depending on adapter. **Unidirectional** ASCII on sample complete.
+
+ProLyte **Network LIS**: instrument connects to lab LAN; configure **Instrument Settings → LIS Setup → Network LIS** with host IP + port **5002**. Instrument POSTs JSON (`pId`, `ionData.Na/K/Cl/Li.conc`). Enable with `PROLYTE_NETWORK_LIS_ENABLED=true` (default).
 
 ### Sample message shapes (simulators)
 
@@ -265,12 +277,30 @@ Li+:    0.85 mmol/L
 
 Keys: `Na+/Na`, `K+/K`, `Cl-/Cl`, `Li+/Li` (Li optional). Line ends CRLF. Edge reassembles the block after `PROLYTE_BLOCK_IDLE_MS` quiet time (default 400ms).
 
+#### Diamond ProLyte Network LIS (HTTP POST)
+
+```json
+{
+  "pId": "DH20260125001",
+  "sampleType": "10",
+  "ionData": {
+    "Na": { "conc": "140.2", "strUnits": "mmol/L", "min": "136", "max": "145" },
+    "K":  { "conc": "4.15",  "strUnits": "mmol/L" },
+    "Cl": { "conc": "102.0", "strUnits": "mmol/L" },
+    "Li": { "conc": "0.85",  "strUnits": "mmol/L" }
+  }
+}
+```
+
+`pId` → accession on Bench. Calibration/QC sample types are ignored. Parser: `parseProlyteNetworkLis` in `@drax-lis/protocols`.
+
 ### Edge env knobs
 
 See [`apps/edge-engine/.env.example`](../apps/edge-engine/.env.example):
 
 - `SYSMEX_TCP_PORT`, `MINDRAY_TCP_PORT`, `IFLASH_TCP_PORT`
-- `PROLYTE_SERIAL_PATH`, `PROLYTE_BAUD` (default 9600), `PROLYTE_BLOCK_IDLE_MS` (default 400)
+- `PROLYTE_NETWORK_LIS_ENABLED` (default **true**), `PROLYTE_NETWORK_LIS_PORT` (default **5002**), `PROLYTE_NETWORK_LIS_HOST` (default `0.0.0.0`)
+- `PROLYTE_SERIAL_PATH`, `PROLYTE_BAUD` (default 9600), `PROLYTE_BLOCK_IDLE_MS` (default 400) — optional when using serial instead of Network LIS
 - `SYSMEX_SERIAL_PATH` (optional ASTM over serial)
 - `ZEBRA_PRINTER_HOST`, `ZEBRA_PRINTER_PORT`
 

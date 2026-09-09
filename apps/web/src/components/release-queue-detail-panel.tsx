@@ -1,7 +1,7 @@
 import type { ActorSnapshot, ReleaseQueueGroup } from "@drax-lis/contracts";
 import { analyzerLabel } from "../lib/analyzers";
 import { usePatientNameOrder } from "../lib/patient-name-order";
-import { useIsWide } from "../lib/use-media-query";
+import { useIsWorkstation } from "../lib/use-media-query";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import {
@@ -39,8 +39,8 @@ export function ReleaseQueueDetailPanel({
   className,
   embedded = false,
 }: Props) {
-  const isWide = useIsWide();
-  const useCards = !isWide;
+  const isWorkstation = useIsWorkstation();
+  const useCards = !isWorkstation;
   const { formatName } = usePatientNameOrder();
   const parts = group.patient.displayName.trim().split(/\s+/);
   const patientName = formatName({

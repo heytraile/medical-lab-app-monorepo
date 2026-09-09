@@ -64,9 +64,10 @@ type Props = {
 };
 
 /**
- * Two presentations of one nav: a persistent rail from lg up, and a drawer
- * below it. The drawer is always expanded — an icon-only rail inside a sheet
- * would be pointless — so the collapse control is desktop-only.
+ * Two presentations of one nav: a persistent rail from xl up, and a drawer
+ * below xl (phone + tablet landscape). The drawer is always expanded — an
+ * icon-only rail inside a sheet would be pointless — so the collapse control
+ * is desktop-only.
  */
 export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -96,7 +97,7 @@ export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
     <>
       <aside
         className={cn(
-          "hidden h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 lg:flex",
+          "hidden h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 xl:flex",
           collapsed ? "w-[4.25rem]" : "w-64",
         )}
       >
@@ -113,7 +114,7 @@ export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
         <SheetContent
           side="left"
           label="Navigation"
-          className="border-sidebar-border bg-sidebar text-sidebar-foreground lg:hidden"
+          className="border-sidebar-border bg-sidebar text-sidebar-foreground xl:hidden"
         >
           <SidebarBody
             collapsed={false}

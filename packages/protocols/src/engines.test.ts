@@ -14,6 +14,8 @@ import {
   buildOrderResponse,
   parseProlyteLine,
   parseProlyteBlock,
+  parseProlyteNetworkLis,
+  formatProlyteNetworkLis,
   formatProlyteBlock,
   wrapMllp,
   unwrapMllp,
@@ -221,5 +223,52 @@ describe("ProLyte ASCII", () => {
     const msg = parseProlyteBlock(text);
     expect(msg.barcode).toBe("SEQ-99");
     expect(msg.analytes).toHaveLength(4);
+  });
+});
+
+describe("ProLyte Network LIS", () => {
+  it("parses ionData JSON with patient sample", () => {
+    const body = formatProlyteNetworkLis({
+      barcode: "DH20260826042",
+      na: 140.2,
+      k: 4.15,
+      cl: 102.0,
+      li: 0.85,
+    });
+    const msg = parseProlyteNetworkLis(body);
+    expect(msg.barcode).toBe("DH20260826042");
+    expect(msg.analytes.map((a) => a.testCode)).toEqual([
+      "NA",
+      "K",
+      "CL",
+      "LI",
+    ]);
+    expect(msg.analytes[0]).toMatchObject({
+      value: "140.2",
+      units: "mmol/L",
+    });
+  });
+
+  it("skips calibration sampleType", () => {
+    const msg = parseProlyteNetworkLis({
+      pId: "",
+      sampleType: "1",
+      ionData: {
+        Na: { conc: "70.49", strUnits: "mmol/L" },
+      },
+    });
+    expect(msg.analytes).toHaveLength(0);
+  });
+
+  it("ignores invalid conc values", () => {
+    const msg = parseProlyteNetworkLis({
+      pId: "ACC-1",
+      sampleType: "10",
+      ionData: {
+        Na: { conc: "140.0", strUnits: "mmol/L" },
+        Cl: { conc: "*****" },
+      },
+    });
+    expect(msg.analytes.map((a) => a.testCode)).toEqual(["NA"]);
   });
 });

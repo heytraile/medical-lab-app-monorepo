@@ -6,6 +6,7 @@ import {
   wrapMllp,
   unwrapMllp,
   formatProlyteBlock,
+  formatProlyteNetworkLis,
 } from "@drax-lis/protocols";
 import {
   analytesForOrder,
@@ -21,6 +22,12 @@ const MINDRAY_PORT = Number(process.env.MINDRAY_TCP_PORT ?? 5003);
 const IFLASH_PORT = Number(process.env.IFLASH_TCP_PORT ?? 5004);
 const BARCODE = process.env.SIM_BARCODE ?? "DHDEMO0001";
 const PROLYTE_PATH = process.env.PROLYTE_SERIAL_PATH ?? "";
+const PROLYTE_NETWORK_PORT = Number(
+  process.env.PROLYTE_NETWORK_LIS_PORT ?? 5002,
+);
+const PROLYTE_NETWORK_ENABLED =
+  process.env.PROLYTE_NETWORK_LIS_ENABLED?.trim().toLowerCase() !== "false" &&
+  process.env.PROLYTE_NETWORK_LIS_ENABLED?.trim() !== "0";
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
@@ -290,6 +297,62 @@ export async function sendIflashOru(
   );
 }
 
+/** POST ProLyte Network LIS JSON to the edge HTTP listener. */
+export async function sendProlyteNetwork(
+  barcode = BARCODE,
+  orderedCatalogCodes?: string[],
+) {
+  if (!PROLYTE_NETWORK_ENABLED) return;
+
+  const ordered =
+    orderedCatalogCodes ?? (await resolveOrderForBarcode(barcode));
+  if (isSimStrict() && ordered.length === 0) {
+    console.log(`[sim] ProLyte network skipped — no order for ${barcode}`);
+    return;
+  }
+  if (!analyzerHasWork("diamond_prolyte", ordered)) {
+    console.log(
+      `[sim] ProLyte network skipped — no electrolytes on order for ${barcode}`,
+    );
+    return;
+  }
+
+  const analytes = analytesForOrder("diamond_prolyte", ordered);
+  const ionMap: Record<string, number> = {
+    NA: 140.2,
+    K: 4.15,
+    CL: 102.0,
+    LI: 0.85,
+  };
+  for (const a of analytes) {
+    const num = Number(a.value);
+    if (!Number.isNaN(num)) {
+      ionMap[a.instrumentCode] = num;
+    }
+  }
+
+  const body = formatProlyteNetworkLis({
+    barcode,
+    na: ionMap.NA ?? 140.2,
+    k: ionMap.K ?? 4.15,
+    cl: ionMap.CL ?? 102.0,
+    li: ionMap.LI,
+  });
+
+  const url = `http://${EDGE_HOST}:${PROLYTE_NETWORK_PORT}/`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`ProLyte network POST ${res.status}: ${await res.text()}`);
+  }
+  console.log(
+    `[sim] ProLyte network electrolytes (${analytes.length} ions) for ${barcode} → ${url}`,
+  );
+}
+
 /** Write ProLyte multi-line ASCII block to a PTY path. */
 export async function sendProlyte(
   barcode = BARCODE,
@@ -345,7 +408,7 @@ export async function runLoop() {
     "[sim] Analyzer simulators ready. Sending order-aware results every 30s…",
   );
   console.log(
-    `[sim] Edge host=${EDGE_HOST} sysmex=${SYSMEX_PORT} mindray=${MINDRAY_PORT} iflash=${IFLASH_PORT} strict=${isSimStrict()}`,
+    `[sim] Edge host=${EDGE_HOST} sysmex=${SYSMEX_PORT} mindray=${MINDRAY_PORT} iflash=${IFLASH_PORT} prolyteNetwork=${PROLYTE_NETWORK_ENABLED ? PROLYTE_NETWORK_PORT : "off"} strict=${isSimStrict()}`,
   );
   await sleep(2000);
   for (;;) {
@@ -362,7 +425,9 @@ export async function runLoop() {
         await sleep(800);
         await sendIflashOru(BARCODE, { orderedCatalogCodes: ordered });
         await sleep(800);
-        if (PROLYTE_PATH) {
+        if (PROLYTE_NETWORK_ENABLED) {
+          await sendProlyteNetwork(BARCODE, ordered);
+        } else if (PROLYTE_PATH) {
           await sendProlyte(BARCODE, ordered);
         }
       }
@@ -378,7 +443,9 @@ export async function sendAllForBarcode(barcode: string) {
   await sendSysmexCbc(barcode, ordered);
   await sendMindrayChem(barcode, ordered);
   await sendIflashOru(barcode, { orderedCatalogCodes: ordered });
-  if (PROLYTE_PATH) {
+  if (PROLYTE_NETWORK_ENABLED) {
+    await sendProlyteNetwork(barcode, ordered);
+  } else if (PROLYTE_PATH) {
     await sendProlyte(barcode, ordered);
   }
 }

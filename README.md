@@ -67,7 +67,7 @@ See [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md) for the Supabase workflow, migrations
 | Machine | Protocol |
 | --- | --- |
 | Sysmex XS-1000i | ASTM E1381 / E1394 |
-| Diamond ProLyte | RS-232 multi-line ASCII (Na/K/Cl/Li) |
+| Diamond ProLyte | Network LIS HTTP POST (LAN :5002) or RS-232 ASCII (Na/K/Cl/Li) |
 | Mindray BS-240 | ASTM E1394 |
 | YHLO iFlash 1200 | HL7 v2.3.1 over MLLP |
 

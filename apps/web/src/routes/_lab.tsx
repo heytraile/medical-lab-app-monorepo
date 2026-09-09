@@ -50,8 +50,8 @@ function LabLayout() {
                 onNavOpenChange={setNavOpen}
               />
               <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <header className="flex min-h-14 shrink-0 items-center gap-2.5 border-b border-border px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-4 md:px-6 lg:min-h-12 lg:gap-2 lg:px-6 lg:py-0">
-                  <div className="flex min-w-0 items-center gap-2.5 lg:hidden">
+                <header className="flex min-h-14 shrink-0 items-center gap-2.5 border-b border-border px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-8 xl:min-h-12 xl:gap-2 xl:px-6 xl:py-0">
+                  <div className="flex min-w-0 items-center gap-2.5 xl:hidden">
                     <div className="grid size-8 shrink-0 place-items-center rounded-md bg-accent text-accent-foreground">
                       <FlaskConical className="size-4" aria-hidden />
                     </div>
@@ -69,7 +69,7 @@ function LabLayout() {
                       type="button"
                       onClick={() => setSearchOpen(true)}
                       aria-label="Search"
-                      className="grid size-10 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground lg:hidden"
+                      className="grid size-10 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground xl:hidden"
                     >
                       <Search className="size-4" />
                     </button>
@@ -80,8 +80,8 @@ function LabLayout() {
                   className={cn(
                     "min-h-0 flex-1",
                     fillViewport
-                      ? "overflow-hidden p-0"
-                      : "overflow-y-auto p-4 sm:p-6 md:p-8",
+                      ? "overflow-hidden p-0 max-xl:px-6 max-xl:pt-3 lg:max-xl:px-8"
+                      : "overflow-y-auto p-4 sm:p-6 md:p-8 lg:px-8",
                   )}
                 >
                   <div

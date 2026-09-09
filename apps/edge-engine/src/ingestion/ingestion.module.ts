@@ -4,6 +4,7 @@ import { IngestionController } from "./ingestion.controller";
 import { AnalyzersController } from "./analyzers.controller";
 import { TcpIngestionDriver } from "./tcp-ingestion.driver";
 import { SerialIngestionDriver } from "./serial-ingestion.driver";
+import { ProlyteNetworkIngestionDriver } from "./prolyte-network-ingestion.driver";
 import { AnalyzerStatusService } from "./analyzer-status.service";
 import { HostQueryService } from "./host-query.service";
 import { SyncModule } from "../sync/sync.module";
@@ -25,6 +26,7 @@ import { AuthModule } from "../auth/auth.module";
     HostQueryService,
     TcpIngestionDriver,
     SerialIngestionDriver,
+    ProlyteNetworkIngestionDriver,
   ],
   exports: [IngestionService, AnalyzerStatusService, HostQueryService],
 })

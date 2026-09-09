@@ -131,6 +131,8 @@ Many other **blood chemistry** lines on the form (lipids, HbA1c, etc.) can run o
 
 **What it is for:** Salts in blood — sodium, potassium, chloride; lithium on some setups.
 
+**How it connects:** Network LIS (HTTP POST to port **5002**, field `pId` = accession) or RS-232 serial (`SAMPLE:` line). See [ANALYZERS.md](./ANALYZERS.md).
+
 **What it sends:**
 
 | Machine code | Remaps to form code | Plain English |

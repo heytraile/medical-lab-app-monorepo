@@ -9,7 +9,12 @@ import { ConfirmAccessionActionDialog } from "../../components/confirm-accession
 import { ReleaseQueueEmptyState } from "../../components/release-queue-empty-state";
 import { ReleaseQueueMasterDetail } from "../../components/release-queue-master-detail";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { useIsWide } from "../../lib/use-media-query";
+import {
+  useIsCompactWorkstation,
+  useIsWorkstation,
+  useShowWorkstationChrome,
+  useWorkstationViewportClass,
+} from "../../lib/use-media-query";
 import { cn } from "../../lib/utils";
 
 export const Route = createFileRoute("/_lab/release")({
@@ -54,7 +59,10 @@ function storeReleaseQueueTab(tab: ReleaseQueueTab) {
 function ReleasePage() {
   const auth = useAuth();
   const qc = useQueryClient();
-  const isWide = useIsWide();
+  const showWorkstationChrome = useShowWorkstationChrome();
+  const isWorkstation = useIsWorkstation();
+  const isCompactWorkstation = useIsCompactWorkstation();
+  const workstationViewportClass = useWorkstationViewportClass();
   const allowed = canAuthorize(auth.role);
   const [activeTab, setActiveTabState] = useState<ReleaseQueueTab>(
     readStoredReleaseQueueTab,
@@ -240,13 +248,16 @@ function ReleasePage() {
   return (
     <div
       className={cn(
-        "mx-auto w-full",
-        isWide
+        "mx-auto w-full max-w-none",
+        showWorkstationChrome
           ? "max-w-7xl space-y-6"
-          : "flex h-full min-h-0 max-w-none flex-col",
+          : cn(
+              "flex min-h-0 flex-col",
+              isWorkstation && workstationViewportClass,
+            ),
       )}
     >
-      {isWide ? (
+      {showWorkstationChrome ? (
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -275,12 +286,35 @@ function ReleasePage() {
             )}
           </div>
         </div>
+      ) : isWorkstation ? (
+        <div className="flex shrink-0 flex-wrap items-end justify-between gap-3 px-3 pt-1 lg:px-0">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Authorization
+            </p>
+            <h2
+              className={cn(
+                "font-display font-semibold tracking-tight",
+                isCompactWorkstation ? "text-xl sm:text-2xl" : "text-2xl",
+              )}
+            >
+              Release queue
+            </h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Tap a patient for details · sign off when ready
+            </p>
+          </div>
+          {auth.role ? (
+            <Badge variant="muted">{auth.role}</Badge>
+          ) : null}
+        </div>
       ) : null}
 
       <div
         className={cn(
           "space-y-3",
-          !isWide && "flex min-h-0 flex-1 flex-col space-y-2 p-3",
+          !showWorkstationChrome &&
+            "flex min-h-0 flex-1 flex-col space-y-2 p-3",
         )}
       >
       {!auth.accessToken && (
@@ -292,7 +326,7 @@ function ReleasePage() {
         </p>
       )}
 
-      {auth.accessToken && allowed && isAdmin(auth.role) && isWide && (
+      {auth.accessToken && allowed && isAdmin(auth.role) && showWorkstationChrome && (
         <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
           You can sign off on results and manage who else can. Use{" "}
           <Link to="/staff" className="font-medium text-foreground underline-offset-2 hover:underline">
@@ -337,12 +371,14 @@ function ReleasePage() {
         <Tabs
           value={activeTab}
           onValueChange={(value) => setActiveTab(value as ReleaseQueueTab)}
-          className={cn(!isWide && "flex min-h-0 flex-1 flex-col")}
+          className={cn(
+            !showWorkstationChrome && "flex min-h-0 flex-1 flex-col",
+          )}
         >
           <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
             <TabsList>
               <TabsTrigger value="authorization">
-                {isWide ? "Authorization queue" : "Authorize"}
+                {showWorkstationChrome ? "Authorization queue" : "Authorize"}
                 {authorizationGroups.length > 0 ? (
                   <Badge variant="muted" className="ml-2 text-[10px]">
                     {authorizationGroups.length}
@@ -350,7 +386,7 @@ function ReleasePage() {
                 ) : null}
               </TabsTrigger>
               <TabsTrigger value="ready">
-                {isWide ? "Ready to send" : "Ready"}
+                {showWorkstationChrome ? "Ready to send" : "Ready"}
                 {readyGroups.length > 0 ? (
                   <Badge variant="muted" className="ml-2 text-[10px]">
                     {readyGroups.length}
@@ -374,14 +410,22 @@ function ReleasePage() {
 
           <TabsContent
             value="authorization"
-            className={cn("mt-4", !isWide && "mt-2 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden")}
+            className={cn(
+              "mt-4",
+              !showWorkstationChrome &&
+                "mt-2 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden",
+            )}
           >
             {renderGroupList(authorizationGroups, "authorization", "authorization")}
           </TabsContent>
 
           <TabsContent
             value="ready"
-            className={cn("mt-4", !isWide && "mt-2 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden")}
+            className={cn(
+              "mt-4",
+              !showWorkstationChrome &&
+                "mt-2 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden",
+            )}
           >
             {renderGroupList(readyGroups, "ready", "ready")}
           </TabsContent>

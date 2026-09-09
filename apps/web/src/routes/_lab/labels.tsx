@@ -242,8 +242,8 @@ function LabelsPage() {
       title="Labels"
       description="Reprint tube labels, verify accessions, and check printer alignment."
     >
-      <div className="grid gap-4 lg:grid-cols-2 lg:gap-6">
-        <div className="order-2 space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm lg:order-1 lg:p-5">
+      <div className="grid gap-4 xl:grid-cols-2 xl:gap-6">
+        <div className="order-2 space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm xl:order-1 xl:p-5">
           <label className="block space-y-1.5">
             <span className="flex items-center gap-2 text-sm font-medium">
               <ScanLine className="size-4" />
@@ -403,7 +403,7 @@ function LabelsPage() {
           </div>
         </div>
 
-        <div className="order-1 lg:order-2">
+        <div className="order-1 xl:order-2">
           <MultiLabelPreviewPanel
             phase={previewPhase}
             labels={previewLabels}

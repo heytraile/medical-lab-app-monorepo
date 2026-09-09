@@ -1,7 +1,7 @@
 import * as React from "react";
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 import { cn } from "../../lib/utils";
-import { useIsWide } from "../../lib/use-media-query";
+import { useNativeScroll } from "../../lib/use-media-query";
 import { ScrollBar } from "./scroll-area";
 
 /** Must match ScrollBar track size (`w-2.5` / `h-2.5`). */
@@ -16,20 +16,20 @@ type ScrollContainerProps =
 /**
  * Scroll region used across the lab UI.
  *
- * Below lg: native overflow — Radix ScrollArea frequently swallows touch
- * gestures when nested (Accession pickers, Bench lists). Native scrolling with
- * overscroll-contain + visible thin bars works reliably on phones.
+ * Below xl (no sidebar): native overflow — Radix ScrollArea frequently swallows
+ * touch gestures when nested (Accession pickers, Release lists). Native scrolling
+ * with overscroll-contain works reliably on phones and tablet landscape.
  *
- * lg+: Radix type="always" with viewport gutters so custom bars never overlay
- * content (desktop / trackpad).
+ * xl+ sidebar: Radix type="always" with viewport gutters so custom bars never
+ * overlay content (desktop / trackpad).
  */
 export const ScrollContainer = React.forwardRef<
   HTMLDivElement,
   ScrollContainerProps
 >(({ className, children, axes = "vertical", ...props }, ref) => {
-  const isWide = useIsWide();
+  const nativeScroll = useNativeScroll();
 
-  if (!isWide) {
+  if (nativeScroll) {
     const {
       type: _type,
       scrollHideDelay: _delay,

@@ -49,7 +49,7 @@ So we run an **edge gateway** on an Ubuntu mini PC next to the instruments, and 
 | --- | --- |
 | [`apps/edge-engine`](../apps/edge-engine) | NestJS bridge: TCP/serial ingest, Prisma+SQLite, ZPL, outbox **push**, Socket.IO |
 | [`apps/api`](../apps/api) | NestJS cloud API: sync ingest, release APIs, Supabase, notifications |
-| [`apps/web`](../apps/web) | TanStack Start: Bench Review, Register, Sync, Release queue |
+| [`apps/web`](../apps/web) | TanStack Start: Bench Review, Register, Sync, Release queue — file layout & Next.js comparison: [TANSTACK_START.md](./TANSTACK_START.md) |
 | [`apps/simulators`](../apps/simulators) | Fake Sysmex ASTM, iFlash MLLP, Zebra :9100 |
 | [`packages/contracts`](../packages/contracts) | Zod schemas: Specimen, CanonicalResult, OutboxEvent |
 | [`packages/protocols`](../packages/protocols) | ASTM frame checksum, MLLP wrap/unwrap, ASCII helpers |
@@ -115,7 +115,7 @@ SQLite is opened with:
 | Instrument | Transport | Framing | Records |
 | --- | --- | --- | --- |
 | Sysmex XS-1000i | RS-232 or TCP | ASTM E1381 (ENQ/ACK/STX/ETX/EOT) | ASTM E1394 H/P/O/R/L |
-| Diamond ProLyte | RS-232 | unidirectional | Multi-line ASCII (`SAMPLE:` + Na/K/Cl/Li); 9600 8N1; no ASTM handshake |
+| Diamond ProLyte | **HTTP Network LIS** (LAN :5002) or RS-232 | unidirectional | JSON `ionData` POST or multi-line ASCII (`SAMPLE:` + Na/K/Cl/Li) |
 | Mindray BS-240 | Serial or TCP | ASTM | E1394 + host query |
 | YHLO iFlash 1200 | TCP | MLLP (`VT`…`FS CR`) | HL7 v2.3.1 ORU^R01 / QRY^Q02 |
 
