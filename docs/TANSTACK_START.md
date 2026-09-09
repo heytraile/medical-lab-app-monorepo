@@ -386,26 +386,28 @@ This looks like a copy-paste bug. It is **not**. It is **responsive UI**: the sa
 **How `AppSidebar` is shown (same file, ~lines 97–110 and 112–117):**
 
 ```tsx
-<aside className="hidden … xl:flex">   {/* desktop rail only (xl+) */}
+const showSidebar = useShowSidebar();   // pointer-aware — not width-only xl:
+
+<aside className={cn(…, showSidebar ? "flex" : "hidden")}>
   <SidebarBody … />                   {/* includes Flask + Drax Hall LIS */}
 </aside>
 
-<Sheet …>                             {/* phone + tablet landscape drawer */}
-  <SheetContent className="… xl:hidden">
+<Sheet …>                             {/* compact chrome drawer */}
+  <SheetContent className={cn(…, showSidebar && "hidden")}>
     <SidebarBody … />                 {/* same brand, only when drawer is open */}
   </SheetContent>
 </Sheet>
 ```
 
-| Breakpoint | Persistent left rail (`<aside>`) | What the user sees for “where is the app name?” |
+| Input / viewport | Persistent left rail (`<aside>`) | What the user sees for “where is the app name?” |
 | --- | --- | --- |
-| **`xl` and up** (desktop) | **Visible** (`xl:flex`) | Brand lives in the **sidebar** top. The main header brand is hidden. |
-| **Below `xl`** (phone, tablet portrait, **tablet landscape**) | **Hidden** | Rail is gone. Nav is **bottom bar** + drawer. Brand in main **header** (`xl:hidden`). |
+| **Mouse workstation** (`useShowSidebar()` — fine pointer + hover, ≥ 1100px, not compact chrome) | **Visible** | Brand lives in the **sidebar** top. The main header brand is hidden. |
+| **Compact chrome** (`useIsCompactChrome()` — touch-primary or hybrid tablet ≤ 1535px) | **Hidden** | Rail is gone. Nav is **bottom bar** + drawer. Brand in main **header**. |
 
-**The duplicate block in `_lab.tsx` is intentionally below-xl only:**
+**The duplicate block in `_lab.tsx` is intentionally compact-chrome only:**
 
 ```tsx
-<div className="flex min-w-0 items-center gap-2.5 xl:hidden">
+<div className={cn(…, showSidebar ? "hidden" : "flex")}>
   {/* FlaskConical + “Drax Hall LIS” / “Workbench” */}
 </div>
 ```
@@ -413,14 +415,14 @@ This looks like a copy-paste bug. It is **not**. It is **responsive UI**: the sa
 So at desktop width you do **not** see two brands at once:
 
 ```
-Desktop (xl+):
+Mouse workstation (sidebar):
 ┌─────────────┬──────────────────────────────┐
 │ Sidebar     │ main <header>                │
 │ Flask+title │ (brand div hidden)  [bell]   │
 │ nav links   │ <Outlet /> page content      │
 └─────────────┴──────────────────────────────┘
 
-Tablet landscape + phone (< xl):
+Compact chrome (phone, tablet, iPad Pro landscape):
 ┌────────────────────────────────────────────┐
 │ main <header>: Flask+title  [search][bell] │  ← brand lives HERE
 │ <Outlet />  (full width — no sidebar)      │
@@ -428,9 +430,9 @@ Tablet landscape + phone (< xl):
 └────────────────────────────────────────────┘
 ```
 
-**Also in that same `_lab` header (below-xl):**
+**Also in that same `_lab` header (compact chrome):**
 
-- Search button also has `xl:hidden` — sidebar search is xl+ only.
+- Search button hidden when sidebar is shown — sidebar search is desktop-only.
 - `NotificationCenter` stays in the main header on all sizes.
 
 **`AppSidebar` props from `LabLayout` (why the layout owns drawer state):**
@@ -453,25 +455,34 @@ Comment in [`app-sidebar.tsx`](../apps/web/src/components/app-sidebar.tsx) (abou
 
 Hooks live in [`apps/web/src/lib/use-media-query.ts`](../apps/web/src/lib/use-media-query.ts).
 
-| Tier | Width | Hooks | Chrome | Data layout |
+| Tier | Width / input | Hooks | Chrome | Data layout |
 | --- | --- | --- | --- | --- |
 | **Mobile** | &lt; 1024 | `!useIsWorkstation()` | Bottom nav, drawer, compact header | Card lists, bottom Sheet detail |
-| **Tablet workstation** | 1024–1279 (`lg`–`xl-1`) | `useIsWorkstation()` + `!useShowSidebar()` | **No sidebar** — full width; bottom nav + header | Tables, side-by-side master-detail, Accession 2-col |
-| **Desktop** | ≥ 1280 (`xl+`) | `useShowSidebar()` | Persistent sidebar, no bottom nav | Full multi-column workstations |
+| **Tablet workstation** | ≥ 1024 + compact chrome | `useIsWorkstation()` + `useIsCompactChrome()` | **No sidebar** — full width; bottom nav + header | Tables, side-by-side master-detail, Accession wizard |
+| **Desktop** | Fine pointer + hover, ≥ 1100px, not compact | `useShowSidebar()` | Persistent sidebar, no bottom nav | Full multi-column workstations |
 
-| Hook / token | CSS | Job |
+| Hook / token | Signal | Job |
 | --- | --- | --- |
 | `useIsDesktop()` / `md:` | ≥ 768px | Tables instead of card lists |
 | `useIsWorkstation()` / `lg:` | ≥ 1024px | Workstation pages, docked splits (**not** sidebar) |
 | `useIsWide()` | same as workstation | Deprecated alias |
-| `useShowSidebar()` / `xl:` | ≥ 1280px | Sidebar rail only |
+| `useIsCompactChrome()` | `(pointer: coarse)` **or** `(any-pointer: coarse) and (max-width: 1535px)` | Bottom nav, mobile header, native scroll, Accession wizard |
+| `useShowSidebar()` | `!useIsCompactChrome()` **and** `(pointer: fine) and (hover: hover) and (min-width: 1100px)` | Sidebar rail only |
 | `useWorkstationViewportClass()` | — | `100svh` minus header, or header + bottom nav on tablet |
 
-**Rules:**
+**Pointer rules (why iPad Pro landscape stays compact at 1366px):**
 
-1. **Do not tie sidebar to workstation.** Sidebar at **`xl`** only (`AppSidebar` `xl:flex`). Tablet landscape gets **full width** for Bench/Accession data.
-2. **Dock + grid at the same breakpoint.** When `useIsWorkstation()` docks a panel, CSS must use **`lg:grid-cols-[…]`** beside the list — not `xl:` only.
-3. **Accession at lg–xl:** 2 columns (patient | tests+session stacked), not 3–4 narrow columns. Four columns at **`xl+`** only.
+1. **`(pointer: coarse)`** — touch-primary phones/tablets → compact chrome at any width.
+2. **`(any-pointer: coarse) and (max-width: 1535px)`** — hybrid tablet backstop (iPad Pro + Magic Keyboard still has a touchscreen).
+3. **`(pointer: fine) and (hover: hover) and (min-width: 1100px)`** — mouse/trackpad laptops get sidebar without penalizing 1280px screens.
+
+Chrome DevTools device profiles set `(pointer: coarse)` for iPad — good for local QA. Test Magic Keyboard on real hardware when possible (iPadOS versions vary).
+
+**Layout rules:**
+
+1. **Do not tie sidebar to width alone.** Sidebar follows `useShowSidebar()` in JS (`AppSidebar`, `_lab`, bottom nav). iPad Pro landscape gets **full width** for Bench/Accession data.
+2. **Dock + grid at the same breakpoint.** When `useIsWorkstation()` docks a panel, CSS must use **`lg:grid-cols-[…]`** beside the list — not width-only `xl:` in page components.
+3. **Accession on compact chrome:** mobile wizard (`!useShowWorkstationChrome()`). Four-column desktop shell only when `useShowSidebar()` is true.
 
 Phone / tablet **portrait** stay below `lg` → unchanged mobile UX.
 
@@ -906,7 +917,7 @@ Instrument → TCP/serial → edge drivers → packages/protocols → IngestionS
 | --- | --- | --- |
 | Understand sidebar layout | Read `LabLayout` + find `<Outlet />` | [`_lab.tsx`](../apps/web/src/routes/_lab.tsx) |
 | Why Flask/title is in sidebar **and** main header | Responsive: sidebar brand on desktop; `lg:hidden` brand in `_lab` header on mobile | [`_lab.tsx`](../apps/web/src/routes/_lab.tsx) header + [`app-sidebar.tsx`](../apps/web/src/components/app-sidebar.tsx) `SidebarBody` |
-| Tablet landscape layout | No sidebar until `xl`; workstation data at `lg`; `useWorkstationViewportClass()` | [`use-media-query.ts`](../apps/web/src/lib/use-media-query.ts), [`_lab.tsx`](../apps/web/src/routes/_lab.tsx), [`bench.tsx`](../apps/web/src/routes/_lab/bench.tsx) |
+| Tablet landscape layout | `useIsCompactChrome()` / `useShowSidebar()` (pointer-aware); workstation data at `lg`; `useWorkstationViewportClass()` | [`use-media-query.ts`](../apps/web/src/lib/use-media-query.ts), [`_lab.tsx`](../apps/web/src/routes/_lab.tsx), [`bench.tsx`](../apps/web/src/routes/_lab/bench.tsx) |
 | Understand `<html>` / auth wrap | Read `RootComponent` + `RootDocument` | [`__root.tsx`](../apps/web/src/routes/__root.tsx) |
 | Understand a page registration | Read `export const Route = createFileRoute…` | e.g. [`_lab/bench.tsx`](../apps/web/src/routes/_lab/bench.tsx) |
 | Add a new lab page `/foo` | Add `src/routes/_lab/foo.tsx` with `createFileRoute("/_lab/foo")({ component: FooPage })` | new file under `_lab/` |

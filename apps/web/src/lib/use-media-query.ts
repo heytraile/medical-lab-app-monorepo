@@ -1,5 +1,19 @@
 import { useCallback, useSyncExternalStore } from "react";
 
+/** Touch-primary input (phones, tablets). */
+export const MEDIA_TOUCH_PRIMARY = "(pointer: coarse)";
+
+/**
+ * Hybrid tablets (e.g. iPad Pro + keyboard) — touchscreen still available even
+ * when primary pointer reports fine.
+ */
+export const MEDIA_HYBRID_TABLET =
+  "(any-pointer: coarse) and (max-width: 1535px)";
+
+/** Mouse/trackpad workstation — sidebar from ~1100px up. */
+export const MEDIA_FINE_POINTER_DESKTOP =
+  "(pointer: fine) and (hover: hover) and (min-width: 1100px)";
+
 /**
  * Tracks a CSS media query.
  *
@@ -33,7 +47,7 @@ export function useIsDesktop(): boolean {
 
 /**
  * Tailwind lg: workstation data layouts — tables, docked master-detail, desktop
- * accession form. Does **not** imply the persistent sidebar (that is xl+).
+ * accession form. Does **not** imply the persistent sidebar.
  */
 export function useIsWorkstation(): boolean {
   return useMediaQuery("(min-width: 1024px)");
@@ -44,12 +58,25 @@ export function useIsWide(): boolean {
   return useIsWorkstation();
 }
 
-/** Tailwind xl: persistent sidebar rail; bottom nav hidden. */
-export function useShowSidebar(): boolean {
-  return useMediaQuery("(min-width: 1280px)");
+/**
+ * Bottom nav, mobile header brand, native touch scroll, Accession wizard.
+ * True for touch-primary devices (any width) and hybrid tablets up to 1535px
+ * (covers iPad Pro landscape even with Magic Keyboard attached).
+ */
+export function useIsCompactChrome(): boolean {
+  const touchPrimary = useMediaQuery(MEDIA_TOUCH_PRIMARY);
+  const hybridTablet = useMediaQuery(MEDIA_HYBRID_TABLET);
+  return touchPrimary || hybridTablet;
 }
 
-/** Workstation tier without persistent sidebar — tablet landscape (lg–xl). */
+/** Persistent sidebar rail; bottom nav hidden. Requires precise pointer input. */
+export function useShowSidebar(): boolean {
+  const compactChrome = useIsCompactChrome();
+  const fineDesktop = useMediaQuery(MEDIA_FINE_POINTER_DESKTOP);
+  return !compactChrome && fineDesktop;
+}
+
+/** Workstation tier without persistent sidebar — tablet landscape, touch laptops. */
 export function useIsCompactWorkstation(): boolean {
   const workstation = useIsWorkstation();
   const sidebar = useShowSidebar();
@@ -57,21 +84,21 @@ export function useIsCompactWorkstation(): boolean {
 }
 
 /**
- * Full multi-column workstation chrome (sidebar + wide grids). Below xl: bottom
- * nav, stacked/card flows, and native touch scrolling.
+ * Full multi-column workstation chrome (sidebar + wide grids). Compact chrome:
+ * bottom nav, stacked/card flows, and native touch scrolling.
  */
 export function useShowWorkstationChrome(): boolean {
   return useShowSidebar();
 }
 
-/** Native overflow — reliable on touch. Radix ScrollArea only at xl+ sidebar. */
+/** Native overflow — reliable on touch. Radix ScrollArea only with sidebar. */
 export function useNativeScroll(): boolean {
   return !useShowSidebar();
 }
 
 /**
  * Fill-height class for workstation pages (/bench, /accession, …).
- * Tablet landscape (lg–xl) keeps bottom nav — subtract extra chrome height.
+ * Tablet landscape keeps bottom nav — subtract extra chrome height.
  */
 export function useWorkstationViewportClass(): string {
   const workstation = useIsWorkstation();

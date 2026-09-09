@@ -7,6 +7,7 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { cn } from "../lib/utils";
+import { useShowSidebar } from "../lib/use-media-query";
 
 const PRIMARY_TABS = [
   { to: "/bench", label: "Bench", icon: Microscope },
@@ -20,20 +21,23 @@ type Props = {
 };
 
 /**
- * Primary nav below xl (phone, tablet portrait, tablet landscape).
- * Desktop xl+ uses the sidebar instead. "More" opens the nav drawer.
+ * Primary nav on compact chrome (phone, tablet, touch-primary wide viewports).
+ * Mouse workstations use the sidebar instead. "More" opens the nav drawer.
  */
 export function MobileBottomNav({ onMore }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const showSidebar = useShowSidebar();
 
   const isPrimaryActive = PRIMARY_TABS.some(
     (tab) => pathname === tab.to || pathname.startsWith(`${tab.to}/`),
   );
 
+  if (showSidebar) return null;
+
   return (
     <nav
       aria-label="Primary"
-      className="shrink-0 border-t border-border bg-card/95 backdrop-blur-md xl:hidden"
+      className="shrink-0 border-t border-border bg-card/95 backdrop-blur-md"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
       <ul className="grid h-14 grid-cols-5">

@@ -24,6 +24,7 @@ import { api } from "../lib/api";
 import { analyzerLabel } from "../lib/analyzers";
 import { useAuth, isAdmin } from "../lib/auth";
 import { cn } from "../lib/utils";
+import { useShowSidebar } from "../lib/use-media-query";
 import { Button } from "./ui/button";
 import { ScrollContainer } from "./ui/scroll-container";
 import { Sheet, SheetContent, SheetCloseButton } from "./ui/sheet";
@@ -64,13 +65,14 @@ type Props = {
 };
 
 /**
- * Two presentations of one nav: a persistent rail from xl up, and a drawer
- * below xl (phone + tablet landscape). The drawer is always expanded — an
- * icon-only rail inside a sheet would be pointless — so the collapse control
- * is desktop-only.
+ * Two presentations of one nav: a persistent rail on mouse workstations, and a
+ * drawer on compact chrome (phone, tablet, touch-primary wide viewports). The
+ * drawer is always expanded — an icon-only rail inside a sheet would be
+ * pointless — so the collapse control is desktop-only.
  */
 export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const showSidebar = useShowSidebar();
   const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
@@ -97,7 +99,8 @@ export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
     <>
       <aside
         className={cn(
-          "hidden h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 xl:flex",
+          "h-svh shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200",
+          showSidebar ? "flex" : "hidden",
           collapsed ? "w-[4.25rem]" : "w-64",
         )}
       >
@@ -114,7 +117,10 @@ export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
         <SheetContent
           side="left"
           label="Navigation"
-          className="border-sidebar-border bg-sidebar text-sidebar-foreground xl:hidden"
+          className={cn(
+            "border-sidebar-border bg-sidebar text-sidebar-foreground",
+            showSidebar && "hidden",
+          )}
         >
           <SidebarBody
             collapsed={false}

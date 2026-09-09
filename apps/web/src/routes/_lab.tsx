@@ -13,6 +13,7 @@ import { NotificationProvider } from "../lib/notification-store";
 import { PatientNameOrderProvider } from "../lib/patient-name-order";
 import { MobileBottomNav } from "../components/mobile-bottom-nav";
 import { cn } from "../lib/utils";
+import { useShowSidebar } from "../lib/use-media-query";
 
 export const Route = createFileRoute("/_lab")({
   component: LabLayout,
@@ -37,6 +38,7 @@ function LabLayout() {
   const [navOpen, setNavOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const fillViewport = isFillViewportPath(pathname);
+  const showSidebar = useShowSidebar();
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -50,8 +52,20 @@ function LabLayout() {
                 onNavOpenChange={setNavOpen}
               />
               <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-                <header className="flex min-h-14 shrink-0 items-center gap-2.5 border-b border-border px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-8 xl:min-h-12 xl:gap-2 xl:px-6 xl:py-0">
-                  <div className="flex min-w-0 items-center gap-2.5 xl:hidden">
+                <header
+                  className={cn(
+                    "flex shrink-0 items-center border-b border-border",
+                    showSidebar
+                      ? "min-h-12 gap-2 px-6 py-0"
+                      : "min-h-14 gap-2.5 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-8",
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "min-w-0 items-center gap-2.5",
+                      showSidebar ? "hidden" : "flex",
+                    )}
+                  >
                     <div className="grid size-8 shrink-0 place-items-center rounded-md bg-accent text-accent-foreground">
                       <FlaskConical className="size-4" aria-hidden />
                     </div>
@@ -69,7 +83,10 @@ function LabLayout() {
                       type="button"
                       onClick={() => setSearchOpen(true)}
                       aria-label="Search"
-                      className="grid size-10 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground xl:hidden"
+                      className={cn(
+                        "grid size-10 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                        showSidebar && "hidden",
+                      )}
                     >
                       <Search className="size-4" />
                     </button>
@@ -80,7 +97,10 @@ function LabLayout() {
                   className={cn(
                     "min-h-0 flex-1",
                     fillViewport
-                      ? "overflow-hidden p-0 max-xl:px-6 max-xl:pt-3 lg:max-xl:px-8"
+                      ? cn(
+                          "overflow-hidden p-0",
+                          !showSidebar && "px-6 pt-3 lg:px-8",
+                        )
                       : "overflow-y-auto p-4 sm:p-6 md:p-8 lg:px-8",
                   )}
                 >
