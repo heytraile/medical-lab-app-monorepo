@@ -1,6 +1,11 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useMemo,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { api, ApiError } from "../../lib/api";
 import { canAuthorize, isAdmin, useAuth } from "../../lib/auth";
 import { Badge } from "../../components/ui/badge";
@@ -16,6 +21,11 @@ import {
   useWorkstationViewportClass,
 } from "../../lib/use-media-query";
 import { cn } from "../../lib/utils";
+import {
+  reconcileReleasedMirror,
+  type MirrorReconcileOutcome,
+} from "../../lib/reconcile-released-mirror";
+import { BenchAlignmentBanner } from "../../components/bench-alignment-banner";
 
 export const Route = createFileRoute("/_lab/release")({
   component: ReleasePage,
@@ -25,20 +35,88 @@ const RELEASE_QUEUE_TAB_KEY = "release-queue-tab";
 
 type ReleaseQueueTab = "authorization" | "ready";
 
-async function mirrorReleasedAccession(accessionNumber: string) {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      await api.markAccessionReleased(accessionNumber);
-      return;
-    } catch (error) {
-      lastError = error;
-      if (attempt < 2) {
-        await new Promise((resolve) => setTimeout(resolve, 300 * (attempt + 1)));
-      }
-    }
+type MirrorNotice = {
+  id: string;
+  kind: "warning" | "info";
+  message: string;
+};
+
+function applyMirrorOutcome(
+  outcome: MirrorReconcileOutcome,
+  accessionNumber: string,
+  setNotices: Dispatch<SetStateAction<MirrorNotice[]>>,
+) {
+  setNotices((prev) =>
+    prev.filter(
+      (notice) =>
+        !notice.id.startsWith(`warn:${accessionNumber}:`) &&
+        !notice.id.startsWith(`info:${accessionNumber}:`),
+    ),
+  );
+
+  if (outcome.status === "mirrored") return;
+
+  if (outcome.status === "bench-not-found") {
+    setNotices((prev) => [
+      ...prev,
+      {
+        id: `warn:${accessionNumber}:${Date.now()}`,
+        kind: "warning",
+        message: `${accessionNumber} is released in cloud but was not found on the Bench (edge may have been reset). Ready to send and export still work from cloud.`,
+      },
+    ]);
+    return;
   }
-  throw lastError;
+
+  if (outcome.status === "dismissed-stale") return;
+
+  if (outcome.status !== "failed") return;
+
+  setNotices((prev) => [
+    ...prev,
+    {
+      id: `warn:${accessionNumber}:${Date.now()}`,
+      kind: "warning",
+      message: outcome.retryable
+        ? `${accessionNumber} is released in cloud, but Bench has not confirmed yet. Stay on Ready or tap Refresh — do not resubmit or recall.`
+        : `${accessionNumber} could not sync to Bench and could not be cleared automatically. Ask an admin to remove it from Ready.`,
+    },
+  ]);
+}
+
+function MirrorNoticesPanel({
+  notices,
+  onDismiss,
+}: {
+  notices: MirrorNotice[];
+  onDismiss: (id: string) => void;
+}) {
+  if (notices.length === 0) return null;
+
+  return (
+    <div className="mb-3 space-y-2">
+      {notices.map((notice) => (
+        <div
+          key={notice.id}
+          className={cn(
+            "flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm",
+            notice.kind === "info"
+              ? "border-border bg-muted/50 text-muted-foreground"
+              : "border-amber-500/40 bg-amber-500/10 text-amber-900 dark:text-amber-100",
+          )}
+        >
+          <p className="min-w-0">{notice.message}</p>
+          <button
+            type="button"
+            className="shrink-0 text-xs font-medium underline-offset-2 hover:underline"
+            onClick={() => onDismiss(notice.id)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function readStoredReleaseQueueTab(): ReleaseQueueTab {
@@ -83,8 +161,7 @@ function ReleasePage() {
   const [dismissingAccession, setDismissingAccession] = useState<string | null>(
     null,
   );
-  const [mirrorWarning, setMirrorWarning] = useState<string | null>(null);
-  const mirrorAttempts = useRef(new Set<string>());
+  const [mirrorNotices, setMirrorNotices] = useState<MirrorNotice[]>([]);
 
   const queueQ = useQuery({
     queryKey: ["release-queue"],
@@ -98,26 +175,22 @@ function ReleasePage() {
   const releaseM = useMutation({
     mutationFn: async (accessionNumber: string) => {
       const released = await api.releaseAccession(accessionNumber);
-      try {
-        await mirrorReleasedAccession(accessionNumber);
-        return { released, mirrorFailed: false, accessionNumber };
-      } catch {
-        return { released, mirrorFailed: true, accessionNumber };
-      }
+      const mirror = await reconcileReleasedMirror({
+        accessionNumber,
+        canDismissStale: allowed,
+      });
+      return { released, mirror, accessionNumber };
     },
     onMutate: (accessionNumber) => setReleasingAccession(accessionNumber),
     onSettled: () => setReleasingAccession(null),
-    onSuccess: ({ mirrorFailed, accessionNumber }) => {
-      setMirrorWarning(
-        mirrorFailed
-          ? `${accessionNumber} was released in cloud, but the bench mirror has not confirmed yet. The system will retry; do not resubmit or recall it.`
-          : null,
-      );
+    onSuccess: ({ mirror, accessionNumber }) => {
+      applyMirrorOutcome(mirror, accessionNumber, setMirrorNotices);
       setActiveTab("ready");
       void qc.invalidateQueries({ queryKey: ["release-queue"] });
       void qc.invalidateQueries({ queryKey: ["cloud-results"] });
       void qc.invalidateQueries({ queryKey: ["results"] });
       void qc.invalidateQueries({ queryKey: ["patient-report-summary"] });
+      void qc.invalidateQueries({ queryKey: ["bench-alignment"] });
     },
   });
 
@@ -181,25 +254,6 @@ function ReleasePage() {
     () => groups.filter((group) => group.queuePhase === "released"),
     [groups],
   );
-
-  // Reconcile cloud-authoritative released accessions back to edge whenever an
-  // authorizer opens the Ready tab. The edge endpoint is idempotent.
-  useEffect(() => {
-    if (!auth.accessToken) return;
-    for (const group of readyGroups) {
-      if (mirrorAttempts.current.has(group.accessionNumber)) continue;
-      mirrorAttempts.current.add(group.accessionNumber);
-      void mirrorReleasedAccession(group.accessionNumber)
-        .then(() => {
-          void qc.invalidateQueries({ queryKey: ["results"] });
-        })
-        .catch(() => {
-          setMirrorWarning(
-            `${group.accessionNumber} is released in cloud, but the bench mirror is still pending. It will retry when this page is reopened.`,
-          );
-        });
-    }
-  }, [auth.accessToken, qc, readyGroups]);
 
   function renderGroupList(
     tabGroups: typeof groups,
@@ -349,6 +403,12 @@ function ReleasePage() {
         </p>
       )}
 
+      {auth.accessToken && auth.hasCloudSession && (
+        <BenchAlignmentBanner
+          variant={showWorkstationChrome ? "default" : "compact"}
+        />
+      )}
+
       {auth.accessToken && queueQ.isError && (
         <p className="text-sm text-lab-danger">
           {queueQ.error instanceof ApiError && queueQ.error.status === 401 ? (
@@ -427,6 +487,12 @@ function ReleasePage() {
                 "mt-2 flex min-h-0 flex-1 flex-col data-[state=inactive]:hidden",
             )}
           >
+            <MirrorNoticesPanel
+              notices={mirrorNotices}
+              onDismiss={(id) =>
+                setMirrorNotices((prev) => prev.filter((n) => n.id !== id))
+              }
+            />
             {renderGroupList(readyGroups, "ready", "ready")}
           </TabsContent>
         </Tabs>
@@ -459,12 +525,6 @@ function ReleasePage() {
           {releaseM.error instanceof ApiError
             ? releaseM.error.message
             : "Release failed"}
-        </p>
-      )}
-
-      {mirrorWarning && (
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
-          {mirrorWarning}
         </p>
       )}
 

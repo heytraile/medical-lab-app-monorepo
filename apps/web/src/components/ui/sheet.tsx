@@ -36,6 +36,7 @@ export const SheetContent = React.forwardRef<
       className={cn(
         "fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]",
         "data-[state=open]:sheet-overlay-open data-[state=closed]:sheet-overlay-closed",
+        "data-[state=closed]:pointer-events-none",
       )}
     />
     <RadixDialog.Content

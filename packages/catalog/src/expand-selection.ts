@@ -19,6 +19,7 @@ export type OrderSelection =
 export type ExpandedOrderedTest = {
   code: string;
   name: string;
+  category?: string;
   sourcePanel?: string;
   fastingRequired?: boolean;
   specimenHint?: string;
@@ -80,6 +81,7 @@ export function expandSelections(
     out.set(key, {
       code: item.code,
       name: item.name,
+      category: item.category,
       sourcePanel,
       fastingRequired: item.fastingRequired,
       specimenHint: item.specimenHint,

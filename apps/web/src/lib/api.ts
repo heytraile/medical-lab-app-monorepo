@@ -10,6 +10,8 @@ import type {
   LabDevice,
   LabRequisition,
   PatientReportPayload,
+  BenchCloudAlignment,
+  BenchCloudReconcileResult,
   ReleaseQueueGroup,
   RegisterSpecimenRequest,
   RegisterSpecimensBatchRequest,
@@ -255,6 +257,13 @@ export type BenchResult = {
   manualLastEditedBy?: string | null;
   manualLastEditedBySnapshot?: ActorSnapshot | string | null;
   manualLastEditedAt?: string | null;
+  submittedAt?: string | null;
+  submittedBy?: string | null;
+  submittedBySnapshot?: ActorSnapshot | string | null;
+  releasedAt?: string | null;
+  releasedBy?: string | null;
+  releasedBySnapshot?: ActorSnapshot | string | null;
+  manualPayloadJson?: string | Record<string, string> | null;
   /** False when result catalog code was not on the accession order. */
   expectedOnOrder?: boolean;
   patient?: BenchPatientSummary | null;
@@ -307,11 +316,15 @@ export type SpecimenOrderedTest = {
 
 export type SpecimenRow = {
   id: string;
+  accessionId?: string;
   accessionNumber: string;
   barcode: string;
   patientId?: string | null;
   patientJson: string | null;
   identityConfirmationJson?: string | null;
+  departmentKey?: string;
+  departmentLabel?: string;
+  collectionType?: string;
   specimenType?: string;
   orderedTestsJson?: string;
   /** Parsed ordered tests when provided by the edge list API. */
@@ -342,6 +355,7 @@ export type LabelPreviewFields = {
   dateOfBirth: string;
   orderedTests: string;
   specimenType: string;
+  departmentLabel?: string;
   mrn?: string;
   printedAt: string;
   widthDots?: number;
@@ -533,6 +547,7 @@ export const api = {
     dateOfBirth?: string | null;
     orderedTests?: string[];
     specimenType?: string;
+    departmentLabel?: string;
     mrn?: string;
   }) =>
     request<{ zpl: string; fields: LabelPreviewFields }>("/print/preview", {
@@ -555,15 +570,28 @@ export const api = {
       body: JSON.stringify(body),
       auth: false,
     }),
-  reprintLabel: (body: { accessionNumber: string; copies?: number }) =>
-    request<PrintResult & { fields: LabelPreviewFields; specimenId?: string }>(
-      "/print/reprint",
-      {
-        method: "POST",
-        body: JSON.stringify(body),
-        auth: false,
-      },
-    ),
+  reprintLabel: (body: {
+    accessionNumber: string;
+    copies?: number;
+    departmentKey?: string;
+  }) =>
+    request<
+      PrintResult & {
+        fields: LabelPreviewFields;
+        specimenId?: string;
+        labels?: Array<
+          PrintResult & {
+            fields: LabelPreviewFields;
+            specimenId?: string;
+            departmentKey?: string;
+          }
+        >;
+      }
+    >("/print/reprint", {
+      method: "POST",
+      body: JSON.stringify(body),
+      auth: false,
+    }),
   printTestLabel: (copies?: number) =>
     request<PrintResult & { fields: LabelPreviewFields }>("/print/test", {
       method: "POST",
@@ -626,6 +654,20 @@ export const api = {
         auth: true,
       },
     ),
+  benchCloudAlignment: () =>
+    request<BenchCloudAlignment>("/cloud/bench-alignment", {
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  reconcileBenchCloud: (dryRun = false) =>
+    request<BenchCloudReconcileResult>(
+      `/cloud/bench-alignment/reconcile${dryRun ? "?dryRun=true" : ""}`,
+      {
+        method: "POST",
+        baseUrl: CLOUD_API_URL,
+        auth: true,
+      },
+    ),
   patientReport: (edgePatientId: string, accessionNumber?: string) =>
     request<PatientReportPayload>(
       `/cloud/patients/${encodeURIComponent(edgePatientId)}/report${
@@ -662,6 +704,7 @@ export const api = {
     referenceLow?: number;
     referenceHigh?: number;
     observedAt?: string;
+    manualPayloadJson?: Record<string, string>;
   }) =>
     request<{ id: string; accessionNumber: string; testCode: string; value: string }>(
       "/results/manual",

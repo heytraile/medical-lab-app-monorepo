@@ -123,21 +123,15 @@ export function ReleaseQueueListItem({
           className="flex flex-col gap-2 border-t border-border/60 px-3 py-2"
           onClick={(e) => e.stopPropagation()}
         >
-          {patientId ? (
-            <PatientReportExportMenu
-              patientId={patientId}
-              patientLabel={patientName}
-              accessionNumber={group.accessionNumber}
-              releaseEligible
-              variant="default"
-              size="sm"
-              className="w-full"
-            />
-          ) : (
-            <p className="text-xs text-muted-foreground">
-              Cannot send report from here — open this patient on the Bench.
-            </p>
-          )}
+          <PatientReportExportMenu
+            patientId={patientId ?? group.accessionNumber}
+            patientLabel={patientName}
+            accessionNumber={group.accessionNumber}
+            releaseEligible
+            variant="default"
+            size="sm"
+            className="w-full"
+          />
           <Button
             variant="outline"
             size="sm"

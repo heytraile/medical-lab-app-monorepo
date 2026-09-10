@@ -30,6 +30,7 @@ model Patient {
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
   specimens      Specimen[]
+  accessions     Accession[]
 
   @@index([lastName, firstName])
   @@index([suspectGroupId])
@@ -65,27 +66,59 @@ model IdentityReviewItem {
   @@index([suspectGroupId])
 }
 
+/// One doctor form / visit — single accession number for all routing labels.
+model Accession {
+  id                       String     @id @default(cuid())
+  accessionNumber          String     @unique
+  patientId                String?
+  patientJson              String?
+  identityConfirmationJson String?
+  /// Full expanded test list for the form (all departments).
+  orderedTestsJson         String     @default("[]")
+  orderedSelectionsJson    String     @default("[]")
+  requisitionId            String?
+  status                   String     @default("registered")
+  collectedAt              DateTime?
+  collectedByStaffId       String?
+  collectedBySnapshot      String?
+  registeredAt             DateTime   @default(now())
+  registeredBy             String?
+  registeredBySnapshot     String?
+  createdAt                DateTime   @default(now())
+  updatedAt                DateTime   @updatedAt
+  specimens                Specimen[]
+  results                  Result[]
+  patient                  Patient?   @relation(fields: [patientId], references: [id])
+
+  @@index([patientId])
+  @@index([requisitionId])
+}
+
+/// Physical routing label / container (one per department on the form).
 model Specimen {
   id                     String    @id @default(cuid())
-  accessionNumber        String    @unique
-  barcode                String    @unique
+  accessionId            String
+  /// Denormalized from parent Accession — same on every container label.
+  accessionNumber        String
+  barcode                String
+  /// Requisition category key, e.g. haematology, blood_chemistry.
+  departmentKey          String    @default("general")
+  departmentLabel        String    @default("General")
+  /// Physical collection: blood | urine | stool | other (not serum).
+  collectionType         String    @default("blood")
   patientId              String?
   patientJson            String?
-  /// Audit of identity confirmation when patient was in a suspect group
   identityConfirmationJson String?
+  /// @deprecated Alias of collectionType — kept for API compat.
   specimenType           String    @default("blood")
+  /// Tests routed to this department label only.
   orderedTestsJson       String    @default("[]")
-  /// Point-in-time missing-result snapshot acknowledged at last submit.
   submitMissingExpectedJson String?
-  /// Cloud requisition id when reception created an order before accession.
   requisitionId          String?
-  /// Shared across every tube created in one Accession submit (multi-specimen).
   registrationBatchId    String?
-  /// Original panel/test ticks from Accession (not expanded tube members).
   orderedSelectionsJson  String    @default("[]")
   status                 String    @default("registered")
   collectedAt            DateTime?
-  /// Staff assigned to collect (from Accession collector dropdown).
   collectedByStaffId     String?
   collectedBySnapshot    String?
   registeredAt           DateTime  @default(now())
@@ -93,9 +126,11 @@ model Specimen {
   registeredBySnapshot   String?
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
-  results                Result[]
+  accession              Accession @relation(fields: [accessionId], references: [id], onDelete: Cascade)
   patient                Patient?  @relation(fields: [patientId], references: [id])
 
+  @@unique([accessionId, departmentKey])
+  @@index([accessionNumber])
   @@index([barcode])
   @@index([patientId])
   @@index([requisitionId])
@@ -138,8 +173,10 @@ model Result {
   manualLastEditedBy String?
   manualLastEditedBySnapshot String?
   manualLastEditedAt DateTime?
+  /// Structured field values for catalog-driven manual entry forms.
+  manualPayloadJson String?
   createdAt       DateTime @default(now())
-  specimen        Specimen? @relation(fields: [accessionNumber], references: [accessionNumber])
+  accession       Accession? @relation(fields: [accessionNumber], references: [accessionNumber])
   rawMessage      RawMessage? @relation(fields: [rawMessageId], references: [id])
 
   @@index([barcode])

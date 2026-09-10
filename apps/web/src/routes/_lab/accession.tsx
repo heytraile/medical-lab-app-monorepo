@@ -8,7 +8,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { OrderSelection } from "@drax-lis/catalog";
 import {
   buildPanelsWithMembers,
-  groupTestsBySpecimenBucket,
+  groupTestsByDepartment,
   selectionsNeedFasting,
 } from "@drax-lis/catalog";
 import {
@@ -71,6 +71,8 @@ const EMPTY_SELECTIONS: OrderSelection[] = [];
 
 type RegisteredSpecimenLabel = {
   accessionNumber: string;
+  departmentKey: string;
+  departmentLabel: string;
   specimenType: string;
   labelPreview: LabelPreviewFields;
   printStatus?: { ok: boolean; error?: string };
@@ -117,7 +119,8 @@ function AccessionPage() {
         name: i.name,
         category: i.category,
         specimenHint:
-          (i.specimenHint as "serum" | "urine" | "blood") ?? undefined,
+          (i.specimenHint as "urine" | "blood" | "stool" | "other") ??
+          undefined,
         fastingRequired: i.fastingRequired,
       })),
     );
@@ -137,8 +140,8 @@ function AccessionPage() {
   const panelCount = selections.filter((s) => s.kind === "panel").length;
   const individualCount = selections.filter((s) => s.kind === "test").length;
 
-  const specimenGroups = useMemo(
-    () => groupTestsBySpecimenBucket(expandedTests),
+  const departmentGroups = useMemo(
+    () => groupTestsByDepartment(expandedTests),
     [expandedTests],
   );
 
@@ -146,11 +149,11 @@ function AccessionPage() {
   const primaryAccession = registeredSpecimens[0]?.accessionNumber ?? null;
 
   const previewQueries = useQueries({
-    queries: specimenGroups.map((group) => ({
+    queries: departmentGroups.map((group) => ({
       queryKey: [
         "print-preview",
         selected?.id,
-        group.specimenType,
+        group.departmentKey,
         group.tests.map((t) => t.code).join(","),
         selected?.mrn,
       ],
@@ -160,8 +163,8 @@ function AccessionPage() {
           patientName: selected!.displayName,
           barcode: selected!.mrn,
           dateOfBirth: selected!.dateOfBirth,
-          orderedTests: group.tests.map((t) => t.code),
-          specimenType: group.specimenType,
+          specimenType: group.collectionType,
+          departmentLabel: group.departmentLabel,
           mrn: selected!.mrn,
         }),
       enabled:
@@ -171,22 +174,25 @@ function AccessionPage() {
   });
 
   const reprintMutation = useMutation({
-    mutationFn: (accessions: string[]) =>
-      Promise.all(
-        accessions.map((accession) =>
-          api.reprintLabel({ accessionNumber: accession, copies }),
-        ),
-      ),
-    onSuccess: (results) => {
+    mutationFn: (accessionNumber: string) =>
+      api.reprintLabel({ accessionNumber, copies }),
+    onSuccess: (result) => {
+      const byDepartment = new Map(
+        (result.labels ?? []).map((l) => [l.departmentKey ?? "", l]),
+      );
       setRegisteredSpecimens((prev) =>
-        prev.map((item, i) => ({
-          ...item,
-          labelPreview: results[i]?.fields ?? item.labelPreview,
-          printStatus: {
-            ok: results[i]?.ok ?? false,
-            error: results[i]?.error,
-          },
-        })),
+        prev.map((item) => {
+          const match = byDepartment.get(item.departmentKey);
+          if (!match) return item;
+          return {
+            ...item,
+            labelPreview: match.fields ?? item.labelPreview,
+            printStatus: {
+              ok: match.ok ?? false,
+              error: match.error,
+            },
+          };
+        }),
       );
     },
   });
@@ -223,8 +229,10 @@ function AccessionPage() {
         requisitionId = req.id;
       }
 
-      const batchSpecimens = specimenGroups.map((group) => ({
-        specimenType: group.specimenType,
+      const batchSpecimens = departmentGroups.map((group) => ({
+        departmentKey: group.departmentKey,
+        departmentLabel: group.departmentLabel,
+        collectionType: group.collectionType,
         orderedTests: group.tests.map((t) => ({ code: t.code, name: t.name })),
       }));
 
@@ -238,15 +246,15 @@ function AccessionPage() {
         collectedAt: specimenInfo.collectedAt,
         collectedByStaffId: specimenInfo.collectedByStaffId,
         collectedBy: specimenInfo.collectedBy,
+        collectedByJobTitle: specimenInfo.collectedByJobTitle,
         selections: deferredSelections,
         specimens: batchSpecimens,
       });
 
-      // Cloud requisition stores one primary accession; all edge specimens share requisitionId.
-      if (requisitionId && data.specimens[0]?.accessionNumber) {
+      if (requisitionId && data.accessionNumber) {
         await api.linkRequisition(requisitionId, {
-          accessionNumber: data.specimens[0].accessionNumber,
-          edgeSpecimenId: data.specimens[0].id ?? "",
+          accessionNumber: data.accessionNumber,
+          edgeSpecimenId: data.specimens[0]?.id ?? "",
         });
       }
 
@@ -256,13 +264,15 @@ function AccessionPage() {
       setRegisteredSpecimens(
         data.specimens.map((specimen, i) => {
           const group = batchSpecimens[i];
-          const codes = group?.orderedTests.map((t) => t.code) ?? [];
-          const acc = specimen.accessionNumber;
+          const acc = data.accessionNumber ?? specimen.accessionNumber;
           const printResult = data.printResults?.[i];
+          const collectionType =
+            group?.collectionType ?? specimen.specimenType ?? "blood";
           return {
             accessionNumber: acc,
-            specimenType:
-              specimen.specimenType ?? group?.specimenType ?? "blood",
+            departmentKey: group?.departmentKey ?? "general",
+            departmentLabel: group?.departmentLabel ?? "General",
+            specimenType: collectionType,
             labelPreview:
               data.labelPreviews[i] ??
               printResult?.fields ??
@@ -271,19 +281,21 @@ function AccessionPage() {
                 ? {
                     ...buildDraftLabelPreview(
                       selected,
-                      codes,
-                      group?.specimenType ?? "blood",
+                      group?.departmentLabel ?? "General",
+                      collectionType,
                     ),
                     accessionNumber: acc,
                     barcode: acc,
+                    departmentLabel: group?.departmentLabel,
                   }
                 : {
                     accessionNumber: acc,
                     patientName: "",
                     barcode: acc,
                     dateOfBirth: "",
-                    orderedTests: codes.join(", "),
-                    specimenType: group?.specimenType ?? "blood",
+                    orderedTests: "",
+                    specimenType: collectionType,
+                    departmentLabel: group?.departmentLabel,
                     printedAt: new Date().toISOString(),
                   }),
             printStatus: printResult
@@ -383,28 +395,31 @@ function AccessionPage() {
   const previewLabels = useMemo((): LabelPreviewItem[] => {
     if (registeredSpecimens.length > 0) {
       return registeredSpecimens.map((item, i) => ({
-        id: `${item.specimenType}-${i}`,
+        id: `${item.departmentKey}-${i}`,
         specimenType: item.specimenType,
         fields: item.labelPreview,
         accessionNumber: item.accessionNumber,
         printStatus: item.printStatus ?? null,
       }));
     }
-    if (!selected || specimenGroups.length === 0) return [];
-    return specimenGroups.map((group, i) => {
-      const codes = group.tests.map((t) => t.code);
+    if (!selected || departmentGroups.length === 0) return [];
+    return departmentGroups.map((group, i) => {
       return {
-        id: `${group.specimenType}-${i}`,
-        specimenType: group.specimenType,
+        id: `${group.departmentKey}-${i}`,
+        specimenType: group.collectionType,
         fields:
           previewQueries[i]?.data?.fields ??
-          buildDraftLabelPreview(selected, codes, group.specimenType),
+          buildDraftLabelPreview(
+            selected,
+            group.departmentLabel,
+            group.collectionType,
+          ),
         accessionNumber: null,
         printStatus: null,
         testCount: group.tests.length,
       };
     });
-  }, [registeredSpecimens, selected, specimenGroups, previewQueries]);
+  }, [registeredSpecimens, selected, departmentGroups, previewQueries]);
 
   const previewPhase = isRegistered
     ? "registered"
@@ -460,14 +475,12 @@ function AccessionPage() {
       previewPhase={previewPhase}
       previewLoading={previewLoading}
       previewWarning={previewWarning}
-      specimenGroupCount={specimenGroups.length}
+      specimenGroupCount={departmentGroups.length}
       mutation={mutation}
       reprintPending={reprintMutation.isPending}
-      onReprint={() =>
-        reprintMutation.mutate(
-          registeredSpecimens.map((s) => s.accessionNumber),
-        )
-      }
+      onReprint={() => {
+        if (primaryAccession) reprintMutation.mutate(primaryAccession);
+      }}
       onStartNew={startNewAccession}
       onRequestStartOver={requestStartOver}
       draftDirty={draftDirty}
@@ -712,10 +725,10 @@ function AccessionPage() {
                 {mutation.isPending
                   ? "Accessioning…"
                   : printLabel
-                    ? specimenGroups.length > 1
+                    ? departmentGroups.length > 1
                       ? "Accession & Print Labels"
                       : "Accession & Print Label"
-                    : specimenGroups.length > 1
+                    : departmentGroups.length > 1
                       ? "Accession specimens"
                       : "Accession specimen"}
               </Button>
@@ -754,20 +767,18 @@ function AccessionPage() {
                   >
                     {copied === "barcode"
                       ? "Copied"
-                      : registeredSpecimens.length > 1
-                        ? "Copy barcodes"
-                        : "Copy barcode"}
+                      : "Copy accession"}
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     variant="secondary"
                     disabled={reprintMutation.isPending}
-                    onClick={() =>
-                      reprintMutation.mutate(
-                        registeredSpecimens.map((s) => s.accessionNumber),
-                      )
-                    }
+                    onClick={() => {
+                      if (primaryAccession) {
+                        reprintMutation.mutate(primaryAccession);
+                      }
+                    }}
                   >
                     {reprintMutation.isPending
                       ? "Printing…"

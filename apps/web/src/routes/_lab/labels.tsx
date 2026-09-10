@@ -1,13 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScanLine } from "lucide-react";
 import { accessionInputField } from "@drax-lis/contracts";
 import { ApiError, api, type LabelPreviewFields } from "../../lib/api";
 import {
   buildLabelPreviewFromSpecimen,
   fetchEdgeLabelPreviewForSpecimen,
-  findSpecimenByAccession,
+  findContainersByAccession,
   PRINT_API_UNAVAILABLE_MSG,
   TEST_LABEL_PREVIEW,
 } from "../../lib/label-preview-from-specimen";
@@ -21,13 +21,19 @@ import { Button } from "../../components/ui/button";
 import { ScrollContainer } from "../../components/ui/scroll-container";
 import { ClearableInput } from "../../components/ui/clearable-input";
 import { Select } from "../../components/ui/select";
-import { Badge } from "../../components/ui/badge";
+import { SpecimenAccessionStatusChip } from "../../components/result-status";
 import { cn } from "../../lib/utils";
+import {
+  useIsWorkstation,
+  useShowWorkstationChrome,
+} from "../../lib/use-media-query";
 import {
   actorDisplayName,
   patientDisplayNameFromJson,
 } from "../../lib/specimen-display";
 import { groupSpecimensIntoSessions } from "../../lib/accession-sessions";
+import { findExactSpecimenMatch } from "../../lib/ordered-tests";
+import { useDebouncedValue } from "../../lib/use-debounced-value";
 
 type LabelsSearch = {
   accession?: string;
@@ -48,19 +54,24 @@ export const Route = createFileRoute("/_lab/labels")({
 });
 
 function LabelsPage() {
+  const isWorkstation = useIsWorkstation();
+  const showWorkstationChrome = useShowWorkstationChrome();
   const { accession: accessionFromUrl } = Route.useSearch();
   const navigate = useNavigate();
-  const [accessionInput, setAccessionInput] = useState(accessionFromUrl ?? "");
-  const [accessionInputError, setAccessionInputError] = useState<string | null>(
-    null,
-  );
+  /** Filters the left list — not tied to the selected preview row. */
+  const [filterQuery, setFilterQuery] = useState("");
+  const [lookupError, setLookupError] = useState<string | null>(null);
   const [activeAccession, setActiveAccession] = useState(
     accessionFromUrl?.trim() ?? "",
   );
+  const debouncedFilter = useDebouncedValue(filterQuery, 200);
   const [printStatus, setPrintStatus] = useState<{
     ok: boolean;
     error?: string;
   } | null>(null);
+  const [reprintStatuses, setReprintStatuses] = useState<
+    Record<string, { ok: boolean; error?: string }>
+  >({});
   const [copies, setCopies] = useState(1);
   const [testPreview, setTestPreview] = useState<LabelPreviewFields | null>(
     null,
@@ -68,13 +79,12 @@ function LabelsPage() {
   const selectedRowRef = useRef<HTMLButtonElement | null>(null);
 
   const specimensQ = useQuery({
-    queryKey: ["specimens"],
-    queryFn: () => api.specimens(),
+    queryKey: ["specimens", debouncedFilter.trim()],
+    queryFn: () => api.specimens(debouncedFilter.trim() || undefined),
   });
 
   useEffect(() => {
     if (accessionFromUrl) {
-      setAccessionInput(accessionFromUrl);
       setActiveAccession(accessionFromUrl.trim());
       setTestPreview(null);
     }
@@ -86,40 +96,34 @@ function LabelsPage() {
     selectedRowRef.current?.scrollIntoView({ block: "nearest" });
   }, [activeAccession, specimensQ.dataUpdatedAt]);
 
-  const specimenRow = useMemo(() => {
-    if (!activeAccession.trim() || !specimensQ.data) return undefined;
-    return findSpecimenByAccession(specimensQ.data, activeAccession);
+  const containerRows = useMemo(() => {
+    if (!activeAccession.trim() || !specimensQ.data) return [];
+    return findContainersByAccession(specimensQ.data, activeAccession);
   }, [activeAccession, specimensQ.data]);
 
-  const clientPreview = useMemo(
-    () => (specimenRow ? buildLabelPreviewFromSpecimen(specimenRow) : null),
-    [specimenRow],
-  );
-
-  const edgePreviewQ = useQuery({
-    queryKey: [
-      "print-preview",
-      "specimen",
-      activeAccession,
-      specimenRow?.id,
-      specimenRow?.orderedTestsJson,
-      specimensQ.dataUpdatedAt,
-    ],
-    queryFn: async () => {
-      if (!specimenRow) return null;
-      return fetchEdgeLabelPreviewForSpecimen(specimenRow);
-    },
-    enabled: Boolean(specimenRow),
-    staleTime: 400,
+  const edgePreviewQueries = useQueries({
+    queries: containerRows.map((row) => ({
+      queryKey: [
+        "print-preview",
+        "labels",
+        row.id,
+        row.departmentKey,
+        row.accessionNumber,
+        specimensQ.dataUpdatedAt,
+      ],
+      queryFn: () => fetchEdgeLabelPreviewForSpecimen(row),
+      enabled: Boolean(row.id),
+      staleTime: 400,
+    })),
   });
 
-  const lookupError = useMemo(() => {
+  const previewLookupError = useMemo(() => {
     if (!activeAccession.trim()) return null;
     if (specimensQ.isLoading) return null;
     if (specimensQ.isError) {
       return "Could not load specimens. Please try again.";
     }
-    if (specimensQ.isSuccess && !specimenRow) {
+    if (specimensQ.isSuccess && containerRows.length === 0) {
       return "Accession not found";
     }
     return null;
@@ -128,69 +132,129 @@ function LabelsPage() {
     specimensQ.isLoading,
     specimensQ.isError,
     specimensQ.isSuccess,
-    specimenRow,
+    containerRows.length,
   ]);
 
-  const preview =
-    testPreview ??
-    edgePreviewQ.data?.fields ??
-    clientPreview ??
-    null;
-
   const previewLabels = useMemo((): LabelPreviewItem[] => {
-    if (!preview) return [];
-    return [
-      {
-        id: preview.accessionNumber,
-        specimenType: preview.specimenType,
-        fields: preview,
-        accessionNumber: preview.accessionNumber,
-        printStatus,
-      },
-    ];
-  }, [preview, printStatus]);
+    if (testPreview && containerRows.length === 0) {
+      return [
+        {
+          id: "test-label",
+          specimenType: testPreview.specimenType,
+          fields: testPreview,
+          accessionNumber: testPreview.accessionNumber,
+          printStatus,
+        },
+      ];
+    }
+    return containerRows.map((row, i) => {
+      const key = row.departmentKey ?? row.id;
+      return {
+        id: key,
+        specimenType: row.collectionType ?? row.specimenType ?? "blood",
+        fields:
+          edgePreviewQueries[i]?.data?.fields ??
+          buildLabelPreviewFromSpecimen(row),
+        accessionNumber: row.accessionNumber,
+        printStatus: reprintStatuses[key] ?? null,
+      };
+    });
+  }, [
+    containerRows,
+    edgePreviewQueries,
+    reprintStatuses,
+    testPreview,
+    printStatus,
+  ]);
 
-  const previewPhase = preview ? "registered" : "idle";
+  const previewPhase =
+    previewLabels.length > 0 || testPreview ? "registered" : "idle";
 
   const previewWarning =
-    edgePreviewQ.data?.edgeFailed && preview
+    edgePreviewQueries.some((q) => q.data?.edgeFailed) &&
+    previewLabels.length > 0
       ? "Could not load the label preview — showing the last saved preview."
       : undefined;
 
-  function selectAccession(acc: string) {
-    const trimmed = acc.trim();
-    if (!trimmed) {
-      setAccessionInput("");
-      setActiveAccession("");
-      setAccessionInputError(null);
+  const previewLoading =
+    containerRows.length > 0 &&
+    edgePreviewQueries.some((q) => q.isFetching && !q.data);
+
+  const selectAccession = useCallback(
+    (acc: string) => {
+      const trimmed = acc.trim();
+      if (!trimmed) {
+        setActiveAccession("");
+        setLookupError(null);
+        setTestPreview(null);
+        setPrintStatus(null);
+        setReprintStatuses({});
+        void navigate({ to: "/labels", search: {} });
+        return;
+      }
+
+      const parsed = accessionInputField.safeParse(trimmed);
+      if (!parsed.success) {
+        setLookupError(
+          parsed.error.issues[0]?.message ?? "Invalid accession",
+        );
+        return;
+      }
+
+      setActiveAccession(parsed.data);
+      setLookupError(null);
       setTestPreview(null);
       setPrintStatus(null);
-      void navigate({ to: "/labels", search: {} });
+      setReprintStatuses({});
+      void navigate({ to: "/labels", search: { accession: parsed.data } });
+    },
+    [navigate],
+  );
+
+  const resolveSearch = useCallback(() => {
+    const trimmed = filterQuery.trim();
+    if (!trimmed) return;
+
+    const specimens = specimensQ.data ?? [];
+    const exact = findExactSpecimenMatch(specimens, trimmed);
+    if (exact) {
+      setFilterQuery("");
+      selectAccession(exact.accessionNumber);
       return;
     }
 
     const parsed = accessionInputField.safeParse(trimmed);
-    if (!parsed.success) {
-      setAccessionInput(trimmed);
-      setAccessionInputError(
-        parsed.error.issues[0]?.message ?? "Invalid accession",
-      );
+    if (parsed.success) {
+      setFilterQuery("");
+      selectAccession(parsed.data);
       return;
     }
 
-    setAccessionInput(parsed.data);
-    setActiveAccession(parsed.data);
-    setAccessionInputError(null);
-    setTestPreview(null);
-    setPrintStatus(null);
-    void navigate({ to: "/labels", search: { accession: parsed.data } });
-  }
+    const sessions = groupSpecimensIntoSessions(specimens);
+    if (sessions.length === 1) {
+      const acc =
+        sessions[0]?.accessionNumbers[0] ??
+        sessions[0]?.primary.accessionNumber;
+      if (acc) {
+        setFilterQuery("");
+        selectAccession(acc);
+      }
+    }
+  }, [filterQuery, specimensQ.data, selectAccession]);
 
   const reprintMutation = useMutation({
     mutationFn: (acc: string) =>
       api.reprintLabel({ accessionNumber: acc, copies }),
     onSuccess: (data) => {
-      setTestPreview(data.fields);
+      const statuses: Record<string, { ok: boolean; error?: string }> = {};
+      for (const label of data.labels ?? []) {
+        const key = label.departmentKey ?? label.specimenId ?? "label";
+        statuses[key] = { ok: label.ok, error: label.error };
+      }
+      if (!data.labels?.length && data.fields) {
+        statuses.default = { ok: data.ok, error: data.error };
+      }
+      setReprintStatuses(statuses);
       setPrintStatus({ ok: data.ok, error: data.error });
     },
     onError: (err) => {
@@ -207,7 +271,7 @@ function LabelsPage() {
     mutationFn: () => api.printTestLabel(copies),
     onSuccess: (data) => {
       setActiveAccession("");
-      setAccessionInput("");
+      setFilterQuery("");
       setTestPreview(data.fields);
       setPrintStatus({ ok: data.ok, error: data.error });
       void navigate({ to: "/labels", search: {} });
@@ -215,7 +279,7 @@ function LabelsPage() {
     onError: (err) => {
       if (isPrintApiMissing(err)) {
         setActiveAccession("");
-        setAccessionInput("");
+        setFilterQuery("");
         setTestPreview(TEST_LABEL_PREVIEW);
         setPrintStatus({
           ok: false,
@@ -229,49 +293,48 @@ function LabelsPage() {
   });
 
   const scanHandlers = useScanInput((value) => {
-    selectAccession(value);
+    setFilterQuery("");
+    const exact = findExactSpecimenMatch(specimensQ.data ?? [], value);
+    selectAccession(exact?.accessionNumber ?? value);
   });
 
   const recentSessions = useMemo(
-    () => groupSpecimensIntoSessions(specimensQ.data ?? []).slice(0, 20),
+    () => groupSpecimensIntoSessions(specimensQ.data ?? []).slice(0, 50),
     [specimensQ.data],
   );
 
-  return (
-    <AccessioningShell
-      title="Labels"
-      description="Reprint tube labels, verify accessions, and check printer alignment."
-    >
-      <div className="grid gap-4 xl:grid-cols-2 xl:gap-6">
-        <div className="order-2 space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm xl:order-1 xl:p-5">
+  const leftPanelControls = (
+    <>
           <label className="block space-y-1.5">
             <span className="flex items-center gap-2 text-sm font-medium">
               <ScanLine className="size-4" />
               Scan or enter accession
             </span>
             <ClearableInput
-              value={accessionInput}
+              value={filterQuery}
               onChange={(e) => {
-                setAccessionInputError(null);
-                setAccessionInput(e.target.value);
+                setLookupError(null);
+                setFilterQuery(e.target.value);
               }}
-              placeholder="Scan barcode or type accession…"
+              onClear={() => setFilterQuery("")}
+              placeholder="Patient, MRN, or accession…"
               autoComplete="off"
               autoFocus
-              maxLength={64}
-              aria-invalid={Boolean(accessionInputError)}
+              maxLength={200}
+              aria-invalid={Boolean(lookupError)}
               leftSlot={<ScanLine className="size-4 text-muted-foreground" />}
               {...scanHandlers}
               onKeyDown={(e) => {
                 scanHandlers.onKeyDown(e);
                 if (e.key === "Enter" && !e.defaultPrevented) {
-                  selectAccession(e.currentTarget.value);
+                  e.preventDefault();
+                  resolveSearch();
                 }
               }}
             />
-            {accessionInputError ? (
+            {lookupError ? (
               <p className="text-xs text-lab-danger" role="alert">
-                {accessionInputError}
+                {lookupError}
               </p>
             ) : null}
           </label>
@@ -295,7 +358,11 @@ function LabelsPage() {
               disabled={!activeAccession.trim() || reprintMutation.isPending}
               onClick={() => reprintMutation.mutate(activeAccession.trim())}
             >
-              {reprintMutation.isPending ? "Printing…" : "Reprint label"}
+              {reprintMutation.isPending
+                ? "Printing…"
+                : containerRows.length > 1
+                  ? "Reprint all labels"
+                  : "Reprint label"}
             </Button>
             <Button
               type="button"
@@ -306,12 +373,10 @@ function LabelsPage() {
               Test label
             </Button>
           </div>
+    </>
+  );
 
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Recent registrations
-            </p>
-            <ScrollContainer className="max-h-64 rounded-md border border-border">
+  const recentRegistrationsList = (
             <ul className="divide-y divide-border">
               {specimensQ.isLoading && (
                 <li className="px-3 py-2 text-sm text-muted-foreground">
@@ -320,13 +385,19 @@ function LabelsPage() {
               )}
               {!specimensQ.isLoading && recentSessions.length === 0 && (
                 <li className="px-3 py-3 text-sm text-muted-foreground">
-                  No specimens yet.{" "}
-                  <Link
-                    to="/accession"
-                    className="font-medium text-foreground underline-offset-4 hover:underline"
-                  >
-                    Register a new specimen →
-                  </Link>
+                  {debouncedFilter.trim() ? (
+                    <>No accessions match “{debouncedFilter.trim()}”.</>
+                  ) : (
+                    <>
+                      No specimens yet.{" "}
+                      <Link
+                        to="/accession"
+                        className="font-medium text-foreground underline-offset-4 hover:underline"
+                      >
+                        Register a new specimen →
+                      </Link>
+                    </>
+                  )}
                 </li>
               )}
               {recentSessions.map((session) => {
@@ -344,9 +415,11 @@ function LabelsPage() {
                   null;
                 const collector = s.collectedByName?.trim() || null;
                 const tubeLabel =
-                  session.tubes.length === 1
-                    ? session.specimenTypes[0] ?? "blood"
-                    : `${session.tubes.length} tubes · ${session.specimenTypes.join(", ")}`;
+                  session.departmentLabels.length > 0
+                    ? `${session.tubes.length} label${session.tubes.length === 1 ? "" : "s"} · ${session.departmentLabels.join(", ")}`
+                    : session.tubes.length === 1
+                      ? session.specimenTypes[0] ?? "blood"
+                      : `${session.tubes.length} labels · ${session.specimenTypes.join(", ")}`;
                 return (
                   <li key={session.key}>
                     <button
@@ -382,9 +455,7 @@ function LabelsPage() {
                             {session.accessionNumbers.join(" · ")}
                           </span>
                         </span>
-                        <Badge variant="muted" className="shrink-0">
-                          {s.status}
-                        </Badge>
+                        <SpecimenAccessionStatusChip status={s.status} />
                       </span>
                       <span className="text-xs capitalize text-muted-foreground">
                         {tubeLabel}
@@ -399,24 +470,20 @@ function LabelsPage() {
                 );
               })}
             </ul>
-            </ScrollContainer>
-          </div>
-        </div>
+  );
 
-        <div className="order-1 xl:order-2">
+  const previewPanel = (
           <MultiLabelPreviewPanel
             phase={previewPhase}
             labels={previewLabels}
             emptyContext="labels"
-            loading={
-              Boolean(specimenRow) &&
-              edgePreviewQ.isFetching &&
-              !edgePreviewQ.data &&
-              !testPreview
-            }
+            loading={previewLoading}
             previewWarning={previewWarning}
+            className={cn(
+              isWorkstation && "min-h-0 flex-1 lg:static lg:self-stretch",
+            )}
             actions={
-              preview && !lookupError ? (
+              activeAccession.trim() && !previewLookupError ? (
                 <Button
                   type="button"
                   variant="secondary"
@@ -425,19 +492,87 @@ function LabelsPage() {
                   onClick={() =>
                     void navigate({
                       to: "/bench",
-                      search: { q: preview.accessionNumber },
+                      search: { q: activeAccession.trim() },
                     })
                   }
                 >
                   Open in Bench
                 </Button>
-              ) : lookupError ? (
-                <p className="text-xs text-lab-danger">{lookupError}</p>
+              ) : previewLookupError ? (
+                <p className="text-xs text-lab-danger">{previewLookupError}</p>
               ) : undefined
             }
           />
+  );
+
+  const layout = (
+      <div
+        className={cn(
+          "grid min-h-0 min-w-0 gap-4",
+          isWorkstation
+            ? "flex-1 overflow-hidden lg:grid-cols-2 lg:grid-rows-1 xl:gap-6"
+            : "grid-cols-1 xl:grid-cols-2",
+          !showWorkstationChrome && isWorkstation && "h-full",
+        )}
+      >
+        <div
+          className={cn(
+            "flex min-h-0 min-w-0 flex-col gap-4 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm lg:order-1 xl:p-5",
+            isWorkstation ? "order-2 h-full lg:order-1" : "order-2",
+            !isWorkstation && "space-y-4",
+          )}
+        >
+          <div className="shrink-0 space-y-4">{leftPanelControls}</div>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+            <p className="mb-2 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {debouncedFilter.trim()
+                ? "Matching registrations"
+                : "Recent registrations"}
+            </p>
+            <ScrollContainer
+              className={cn(
+                "min-h-0 flex-1 rounded-md border border-border",
+                !isWorkstation && "max-h-64",
+              )}
+            >
+              {recentRegistrationsList}
+            </ScrollContainer>
+          </div>
+        </div>
+
+        <div
+          className={cn(
+            "min-h-0 min-w-0",
+            isWorkstation
+              ? "order-1 flex min-h-0 flex-col overflow-hidden lg:order-2"
+              : "order-1 xl:order-2",
+          )}
+        >
+          {previewPanel}
         </div>
       </div>
+  );
+
+  if (!isWorkstation) {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+        <AccessioningShell
+          title="Labels"
+          description="Reprint tube labels, verify accessions, and check printer alignment."
+        >
+          {layout}
+        </AccessioningShell>
+      </div>
+    );
+  }
+
+  return (
+    <AccessioningShell
+      wide
+      title="Labels"
+      description="Reprint tube labels, verify accessions, and check printer alignment."
+    >
+      {layout}
     </AccessioningShell>
   );
 }

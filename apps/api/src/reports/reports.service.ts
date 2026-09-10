@@ -128,43 +128,90 @@ export class ReportsService {
   ): Promise<PatientReportPayload> {
     const client = this.supabase.client!;
 
-    const { data: patient, error: patientErr } = await client
-      .from("patients")
-      .select(
-        "id, edge_patient_id, mrn, first_name, middle_name, last_name, date_of_birth, sex",
-      )
-      .eq("edge_patient_id", edgePatientId)
-      .maybeSingle();
+    const patientSelect =
+      "id, edge_patient_id, mrn, first_name, middle_name, last_name, date_of_birth, sex";
+    const specimenSelect =
+      "accession_number, barcode, specimen_type, registered_at, ordered_tests, patient_id, patient_json";
 
-    if (patientErr) throw patientErr;
-    if (!patient) {
+    let p: CloudPatientRow | null = null;
+    let specRows: CloudSpecimenRow[] = [];
+
+    if (accessionNumber?.trim()) {
+      const { data: specByAccession, error: accSpecErr } = await client
+        .from("specimens")
+        .select(specimenSelect)
+        .eq("accession_number", accessionNumber.trim())
+        .maybeSingle();
+      if (accSpecErr) throw accSpecErr;
+
+      if (specByAccession) {
+        specRows = [specByAccession as CloudSpecimenRow];
+        const linkedPatientId = (specByAccession as { patient_id?: string | null })
+          .patient_id;
+        if (linkedPatientId) {
+          const { data: linkedPatient, error: linkedErr } = await client
+            .from("patients")
+            .select(patientSelect)
+            .eq("id", linkedPatientId)
+            .maybeSingle();
+          if (linkedErr) throw linkedErr;
+          p = (linkedPatient as CloudPatientRow | null) ?? null;
+        }
+        if (!p) {
+          p = this.patientFromSpecimenJson(
+            (specByAccession as { patient_json?: unknown }).patient_json,
+          );
+        }
+      }
+    }
+
+    if (!p) {
+      const { data: patient, error: patientErr } = await client
+        .from("patients")
+        .select(patientSelect)
+        .eq("edge_patient_id", edgePatientId)
+        .maybeSingle();
+      if (patientErr) throw patientErr;
+      p = (patient as CloudPatientRow | null) ?? null;
+    }
+
+    if (!p) {
       throw new NotFoundException(`Patient ${edgePatientId} not found in cloud`);
     }
 
-    const p = patient as CloudPatientRow;
     const displayName = [p.first_name, p.middle_name, p.last_name]
       .filter(Boolean)
       .join(" ");
 
-    let specimensQuery = client
-      .from("specimens")
-      .select(
-        "accession_number, barcode, specimen_type, registered_at, ordered_tests",
-      )
-      .eq("patient_id", p.id);
+    if (specRows.length === 0) {
+      let specimensQuery = client
+        .from("specimens")
+        .select(
+          "accession_number, barcode, specimen_type, registered_at, ordered_tests",
+        )
+        .eq("patient_id", p.id);
 
-    if (accessionNumber) {
-      specimensQuery = specimensQuery.eq("accession_number", accessionNumber);
+      if (accessionNumber) {
+        specimensQuery = specimensQuery.eq("accession_number", accessionNumber);
+      }
+
+      const { data: specimens, error: specErr } = await specimensQuery.order(
+        "registered_at",
+        { ascending: false },
+      );
+
+      if (specErr) throw specErr;
+      specRows = (specimens ?? []) as CloudSpecimenRow[];
+    } else {
+      specRows = specRows.map((row) => ({
+        accession_number: row.accession_number,
+        barcode: row.barcode,
+        specimen_type: row.specimen_type,
+        registered_at: row.registered_at,
+        ordered_tests: row.ordered_tests,
+      }));
     }
 
-    const { data: specimens, error: specErr } = await specimensQuery.order(
-      "registered_at",
-      { ascending: false },
-    );
-
-    if (specErr) throw specErr;
-
-    const specRows = (specimens ?? []) as CloudSpecimenRow[];
     if (accessionNumber && specRows.length === 0) {
       throw new NotFoundException(
         `Accession ${accessionNumber} not found for patient ${edgePatientId}`,
@@ -236,6 +283,23 @@ export class ReportsService {
         includedAccessions.has(result.accession_number),
       ),
     });
+  }
+
+  private patientFromSpecimenJson(raw: unknown): CloudPatientRow | null {
+    if (!raw || typeof raw !== "object") return null;
+    const patient = raw as Record<string, unknown>;
+    const mrn = String(patient.mrn ?? "").trim();
+    if (!mrn) return null;
+    return {
+      id: String(patient.id ?? ""),
+      edge_patient_id: String(patient.id ?? ""),
+      mrn,
+      first_name: String(patient.firstName ?? "Unknown"),
+      middle_name: (patient.middleName as string | null) ?? null,
+      last_name: String(patient.lastName ?? ""),
+      date_of_birth: (patient.dateOfBirth as string | null) ?? null,
+      sex: (patient.sex as string | null) ?? null,
+    };
   }
 
   assemblePayload(input: {

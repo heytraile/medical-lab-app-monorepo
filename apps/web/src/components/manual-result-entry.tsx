@@ -1,6 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Pencil, Trash2 } from "lucide-react";
+import {
+  composeManualResultValue,
+  computeAutoFlag,
+  getManualEntrySchema,
+  parseManualPayload,
+  schemaDefaultUnits,
+  schemaReferenceRange,
+  type ManualEntryField,
+  type ManualEntrySchema,
+} from "@drax-lis/catalog";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Button } from "./ui/button";
@@ -30,6 +40,63 @@ function flagOptionValue(flag: string | undefined): string {
     : "unknown";
 }
 
+function emptyFieldValues(schema: ManualEntrySchema): Record<string, string> {
+  return Object.fromEntries(schema.fields.map((field) => [field.id, ""]));
+}
+
+function SchemaField({
+  field,
+  value,
+  onChange,
+  disabled,
+}: {
+  field: ManualEntryField;
+  value: string;
+  onChange: (next: string) => void;
+  disabled: boolean;
+}) {
+  if (field.type === "select") {
+    return (
+      <Select
+        id={`manual-${field.id}`}
+        value={value}
+        onValueChange={onChange}
+        options={[
+          { value: "", label: `Select ${field.label.toLowerCase()}…` },
+          ...(field.options ?? []),
+        ]}
+        disabled={disabled}
+      />
+    );
+  }
+
+  if (field.type === "textarea") {
+    return (
+      <textarea
+        id={`manual-${field.id}`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={field.placeholder}
+        disabled={disabled}
+        rows={3}
+        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+      />
+    );
+  }
+
+  return (
+    <Input
+      id={`manual-${field.id}`}
+      type={field.type === "number" ? "number" : "text"}
+      step={field.type === "number" ? "any" : undefined}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={field.placeholder}
+      disabled={disabled}
+    />
+  );
+}
+
 export function ManualResultEntryDialog({
   accessionNumber,
   testCode,
@@ -45,6 +112,7 @@ export function ManualResultEntryDialog({
   initialFlag,
   initialReferenceLow,
   initialReferenceHigh,
+  initialManualPayloadJson,
 }: {
   accessionNumber: string;
   testCode: string;
@@ -60,9 +128,16 @@ export function ManualResultEntryDialog({
   initialFlag?: string;
   initialReferenceLow?: number | null;
   initialReferenceHigh?: number | null;
+  initialManualPayloadJson?: string | Record<string, string> | null;
 }) {
   const auth = useAuth();
   const queryClient = useQueryClient();
+  const schema = useMemo(
+    () => getManualEntrySchema(testCode, resultComponentCode),
+    [testCode, resultComponentCode],
+  );
+
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [value, setValue] = useState(initialValue ?? "");
   const [units, setUnits] = useState(initialUnits ?? "");
   const [flag, setFlag] = useState(flagOptionValue(initialFlag));
@@ -75,28 +150,43 @@ export function ManualResultEntryDialog({
   const [error, setError] = useState<string | null>(null);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
 
-  // Always hydrate from the saved result when the dialog opens so edits
-  // never start from a blank form after a prior enter/cancel cycle.
   useEffect(() => {
     if (!open) return;
-    setValue(initialValue ?? "");
-    setUnits(initialUnits ?? "");
-    setFlag(flagOptionValue(initialFlag));
-    setReferenceLow(
-      initialReferenceLow != null ? String(initialReferenceLow) : "",
-    );
-    setReferenceHigh(
-      initialReferenceHigh != null ? String(initialReferenceHigh) : "",
-    );
+    if (schema) {
+      const payload = parseManualPayload(initialManualPayloadJson);
+      const next = emptyFieldValues(schema);
+      for (const field of schema.fields) {
+        next[field.id] = payload[field.id] ?? "";
+      }
+      if (!Object.values(next).some(Boolean) && initialValue?.trim()) {
+        const firstField = schema.fields[0];
+        if (firstField && schema.fields.length === 1) {
+          next[firstField.id] = initialValue.trim();
+        }
+      }
+      setFieldValues(next);
+    } else {
+      setValue(initialValue ?? "");
+      setUnits(initialUnits ?? "");
+      setFlag(flagOptionValue(initialFlag));
+      setReferenceLow(
+        initialReferenceLow != null ? String(initialReferenceLow) : "",
+      );
+      setReferenceHigh(
+        initialReferenceHigh != null ? String(initialReferenceHigh) : "",
+      );
+    }
     setError(null);
     setClearConfirmOpen(false);
   }, [
     open,
+    schema,
     initialValue,
     initialUnits,
     initialFlag,
     initialReferenceLow,
     initialReferenceHigh,
+    initialManualPayloadJson,
   ]);
 
   const invalidateAfterWrite = async () => {
@@ -111,8 +201,36 @@ export function ManualResultEntryDialog({
   };
 
   const save = useMutation({
-    mutationFn: () =>
-      api.enterManualResult({
+    mutationFn: () => {
+      if (schema) {
+        const composedValue = composeManualResultValue(schema, fieldValues);
+        const numericField = schema.fields.find(
+          (field) => field.type === "number",
+        );
+        const range = schemaReferenceRange(schema);
+        const autoFlag =
+          numericField && schema.hideFlag
+            ? computeAutoFlag(
+                fieldValues[numericField.id] ?? "",
+                range.referenceLow,
+                range.referenceHigh,
+              )
+            : "unknown";
+        return api.enterManualResult({
+          accessionNumber,
+          orderedTestCode: testCode,
+          resultComponentCode,
+          testCode,
+          value: composedValue,
+          units: schemaDefaultUnits(schema),
+          flag: autoFlag,
+          referenceLow: range.referenceLow,
+          referenceHigh: range.referenceHigh,
+          manualPayloadJson: fieldValues,
+        });
+      }
+
+      return api.enterManualResult({
         accessionNumber,
         orderedTestCode: testCode,
         resultComponentCode,
@@ -126,7 +244,8 @@ export function ManualResultEntryDialog({
         referenceHigh: referenceHigh.trim()
           ? Number(referenceHigh)
           : undefined,
-      }),
+      });
+    },
     onSuccess: async () => {
       setError(null);
       onOpenChange(false);
@@ -170,6 +289,37 @@ export function ManualResultEntryDialog({
   const busy = save.isPending || clear.isPending;
   const canClear = Boolean(isEdit && resultId && auth.accessToken);
 
+  const schemaValid = schema
+    ? schema.fields
+        .filter((field) => field.required)
+        .every((field) => fieldValues[field.id]?.trim())
+    : Boolean(value.trim());
+
+  const schemaHasContent = schema
+    ? schema.fields.some((field) => fieldValues[field.id]?.trim())
+    : Boolean(value.trim());
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (schema) {
+      const missing = schema.fields.filter(
+        (field) => field.required && !fieldValues[field.id]?.trim(),
+      );
+      if (missing.length > 0) {
+        setError(`${missing[0]?.label ?? "A field"} is required`);
+        return;
+      }
+      if (!schemaHasContent) {
+        setError("Enter at least one value");
+        return;
+      }
+    } else if (!value.trim()) {
+      setError("Value is required");
+      return;
+    }
+    save.mutate();
+  }
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -194,85 +344,117 @@ export function ManualResultEntryDialog({
             </DialogDescription>
           </DialogHeader>
 
-          <form
-            className="space-y-3 px-4 pb-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!value.trim()) {
-                setError("Value is required");
-                return;
-              }
-              save.mutate();
-            }}
-          >
-            <div className="space-y-1.5">
-              <label htmlFor="manual-value" className="text-sm font-medium">
-                Value
-              </label>
-              <Input
-                id="manual-value"
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                placeholder="e.g. 12, O Positive, No growth"
-                autoFocus
-                disabled={!auth.accessToken || busy}
-              />
-            </div>
+          <form className="space-y-3 px-4 pb-2" onSubmit={handleSubmit}>
+            {schema ? (
+              <>
+                {schema.fields.map((field) => (
+                  <div key={field.id} className="space-y-1.5">
+                    <label
+                      htmlFor={`manual-${field.id}`}
+                      className="text-sm font-medium"
+                    >
+                      {field.label}
+                      {field.required ? (
+                        <span className="text-lab-danger"> *</span>
+                      ) : null}
+                      {field.defaultUnits ? (
+                        <span className="ml-1 text-xs font-normal text-muted-foreground">
+                          ({field.defaultUnits})
+                        </span>
+                      ) : null}
+                    </label>
+                    <SchemaField
+                      field={field}
+                      value={fieldValues[field.id] ?? ""}
+                      onChange={(next) =>
+                        setFieldValues((current) => ({
+                          ...current,
+                          [field.id]: next,
+                        }))
+                      }
+                      disabled={!auth.accessToken || busy}
+                    />
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <label htmlFor="manual-value" className="text-sm font-medium">
+                    Value
+                  </label>
+                  <Input
+                    id="manual-value"
+                    value={value}
+                    onChange={(e) => setValue(e.target.value)}
+                    placeholder="e.g. 12, O Positive, No growth"
+                    autoFocus
+                    disabled={!auth.accessToken || busy}
+                  />
+                </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="manual-units" className="text-sm font-medium">
-                Units (optional)
-              </label>
-              <Input
-                id="manual-units"
-                value={units}
-                onChange={(e) => setUnits(e.target.value)}
-                placeholder="e.g. mm/hr, %"
-                disabled={!auth.accessToken || busy}
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="manual-units" className="text-sm font-medium">
+                    Units (optional)
+                  </label>
+                  <Input
+                    id="manual-units"
+                    value={units}
+                    onChange={(e) => setUnits(e.target.value)}
+                    placeholder="e.g. mm/hr, %"
+                    disabled={!auth.accessToken || busy}
+                  />
+                </div>
 
-            <div className="space-y-1.5">
-              <label htmlFor="manual-flag" className="text-sm font-medium">
-                Flag
-              </label>
-              <Select
-                id="manual-flag"
-                value={flag}
-                onValueChange={setFlag}
-                options={FLAG_OPTIONS}
-                disabled={!auth.accessToken || busy}
-              />
-            </div>
+                <div className="space-y-1.5">
+                  <label htmlFor="manual-flag" className="text-sm font-medium">
+                    Flag
+                  </label>
+                  <Select
+                    id="manual-flag"
+                    value={flag}
+                    onValueChange={setFlag}
+                    options={FLAG_OPTIONS}
+                    disabled={!auth.accessToken || busy}
+                  />
+                </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <div className="space-y-1.5">
-                <label htmlFor="manual-ref-low" className="text-sm font-medium">
-                  Ref low (optional)
-                </label>
-                <Input
-                  id="manual-ref-low"
-                  type="number"
-                  step="any"
-                  value={referenceLow}
-                  onChange={(e) => setReferenceLow(e.target.value)}
-                  disabled={!auth.accessToken || busy}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <label htmlFor="manual-ref-high" className="text-sm font-medium">
-                  Ref high (optional)
-                </label>
-                <Input
-                  id="manual-ref-high"
-                  type="number"
-                  step="any"
-                  value={referenceHigh}
-                  onChange={(e) => setReferenceHigh(e.target.value)}
-                  disabled={!auth.accessToken || busy}
-                />
-              </div>
-            </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="manual-ref-low"
+                      className="text-sm font-medium"
+                    >
+                      Ref low (optional)
+                    </label>
+                    <Input
+                      id="manual-ref-low"
+                      type="number"
+                      step="any"
+                      value={referenceLow}
+                      onChange={(e) => setReferenceLow(e.target.value)}
+                      disabled={!auth.accessToken || busy}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label
+                      htmlFor="manual-ref-high"
+                      className="text-sm font-medium"
+                    >
+                      Ref high (optional)
+                    </label>
+                    <Input
+                      id="manual-ref-high"
+                      type="number"
+                      step="any"
+                      value={referenceHigh}
+                      onChange={(e) => setReferenceHigh(e.target.value)}
+                      disabled={!auth.accessToken || busy}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             {error ? (
               <p className="text-sm text-lab-danger" role="alert">
@@ -306,7 +488,7 @@ export function ManualResultEntryDialog({
                 </Button>
                 <Button
                   type="submit"
-                  disabled={!auth.accessToken || busy || !value.trim()}
+                  disabled={!auth.accessToken || busy || !schemaValid}
                 >
                   {save.isPending ? (
                     <Loader2
@@ -358,6 +540,7 @@ export function ManualResultEntryButton({
     flag?: string;
     referenceLow?: number | null;
     referenceHigh?: number | null;
+    manualPayloadJson?: string | Record<string, string> | null;
   };
 }) {
   const [open, setOpen] = useState(false);
@@ -390,6 +573,7 @@ export function ManualResultEntryButton({
           initialFlag={existingResult?.flag}
           initialReferenceLow={existingResult?.referenceLow}
           initialReferenceHigh={existingResult?.referenceHigh}
+          initialManualPayloadJson={existingResult?.manualPayloadJson}
         />
       ) : null}
     </>

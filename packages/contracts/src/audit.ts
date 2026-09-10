@@ -75,6 +75,7 @@ export const ManualResultEntrySchema = z.object({
   referenceLow: z.number().optional(),
   referenceHigh: z.number().optional(),
   observedAt: z.string().datetime().optional(),
+  manualPayloadJson: z.record(z.string(), z.string()).optional(),
 });
 export type ManualResultEntry = z.infer<typeof ManualResultEntrySchema>;
 

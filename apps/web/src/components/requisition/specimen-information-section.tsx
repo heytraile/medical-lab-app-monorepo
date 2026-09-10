@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  groupTestsBySpecimenBucket,
+  groupTestsByDepartment,
   type ExpandedOrderedTest,
 } from "@drax-lis/catalog";
 import type { SpecimenInfo, StaffCollector } from "@drax-lis/contracts";
@@ -92,8 +92,8 @@ export function SpecimenInformationSection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUserId, collectors, value.collectedByStaffId]);
 
-  const requiredTubes = useMemo(
-    () => groupTestsBySpecimenBucket(expandedTests),
+  const requiredLabels = useMemo(
+    () => groupTestsByDepartment(expandedTests),
     [expandedTests],
   );
 
@@ -103,6 +103,7 @@ export function SpecimenInformationSection({
         ...value,
         collectedByStaffId: undefined,
         collectedBy: undefined,
+        collectedByJobTitle: undefined,
       });
       return;
     }
@@ -111,6 +112,7 @@ export function SpecimenInformationSection({
       ...value,
       collectedByStaffId: staffId,
       collectedBy: match?.fullName,
+      collectedByJobTitle: match?.jobTitle,
     });
   }
 
@@ -125,25 +127,28 @@ export function SpecimenInformationSection({
 
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground">
-          Required tubes
+          Routing labels
         </p>
-        {requiredTubes.length === 0 ? (
+        {requiredLabels.length === 0 ? (
           <p className="text-sm text-muted-foreground">
-            Select tests to see required collection tubes.
+            Select tests to see required department labels.
           </p>
         ) : (
           <ul className="space-y-2">
-            {requiredTubes.map((group) => (
+            {requiredLabels.map((group) => (
               <li
-                key={group.specimenType}
+                key={group.departmentKey}
                 className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/20 px-3 py-2"
               >
+                <Badge variant="muted" className="text-[10px]">
+                  {group.departmentLabel}
+                </Badge>
                 <Badge variant="muted" className="text-[10px] capitalize">
-                  {specimenTypeLabel(group.specimenType)}
+                  {specimenTypeLabel(group.collectionType)}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
                   {group.tests.length} test
-                  {group.tests.length === 1 ? "" : "s"} · separate accession
+                  {group.tests.length === 1 ? "" : "s"} · same accession
                 </span>
               </li>
             ))}

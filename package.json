@@ -8,7 +8,10 @@
   "scripts": {
     "dev": "scripts/with-doppler.sh turbo run dev --parallel",
     "dev:bare": "turbo run dev --parallel",
-    "dev:local": "scripts/with-local-supabase.sh bash -c 'pnpm db:push:bare && turbo run dev --parallel'",
+    "dev:local": "scripts/with-local-supabase.sh bash -c 'supabase migration up && pnpm db:push:bare && pnpm reconcile:cloud:bare && turbo run dev --parallel'",
+    "reconcile:cloud": "scripts/with-local-supabase.sh pnpm --filter @drax-lis/api reconcile:cloud",
+    "reconcile:cloud:bare": "pnpm --filter @drax-lis/api reconcile:cloud",
+    "reconcile:cloud:dry-run": "scripts/with-local-supabase.sh bash -c 'pnpm --filter @drax-lis/api run build && node apps/api/dist/scripts/reconcile-cloud-with-edge.js --dry-run'",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
@@ -27,6 +30,7 @@
     "supabase:status": "supabase status",
     "supabase:reset": "supabase db reset",
     "supabase:migration": "supabase migration new",
+    "supabase:migrate:local": "supabase migration up",
     "supabase:types": "supabase gen types typescript --local"
   },
   "devDependencies": {

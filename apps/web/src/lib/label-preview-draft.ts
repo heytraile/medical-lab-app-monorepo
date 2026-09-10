@@ -17,7 +17,7 @@ export {
 /** Instant client-side preview before accession is issued. */
 export function buildDraftLabelPreview(
   patient: PatientListItem,
-  testCodes: string[],
+  departmentLabel: string,
   specimenType = "blood",
 ): LabelPreviewFields {
   const formatted = formatSpecimenLabel(
@@ -26,8 +26,8 @@ export function buildDraftLabelPreview(
       patientName: patient.displayName,
       barcode: patient.mrn,
       dateOfBirth: patient.dateOfBirth,
-      orderedTests: testCodes,
       specimenType,
+      departmentLabel,
       mrn: patient.mrn,
     },
     LABEL_SIZES[DEFAULT_LABEL_SIZE_ID],

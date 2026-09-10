@@ -51,6 +51,20 @@ export class CloudReadController {
     return this.sync.listReleaseQueue();
   }
 
+  @Get("bench-alignment")
+  benchAlignment() {
+    return this.sync.getBenchCloudAlignment();
+  }
+
+  @Post("bench-alignment/reconcile")
+  @Roles("admin")
+  async reconcileBenchAlignment(@Query("dryRun") dryRun?: string) {
+    return this.sync.reconcileCloudWithEdgeBench({
+      dryRun: dryRun === "1" || dryRun === "true",
+      source: "api",
+    });
+  }
+
   @Post("release-queue/dismiss-accession")
   @UseGuards(LabDeviceGuard)
   @Roles("authorizer", "admin")

@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { Link, useRouterState, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "next-themes";
 import {
   ChevronLeft,
@@ -87,6 +87,13 @@ export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
+  // Drawer content is hidden when the persistent sidebar shows, but the sheet
+  // overlay would still dim the whole app unless we close it here (e.g. iPad +
+  // Magic Keyboard crossing into desktop pointer mode while "More" is open).
+  useEffect(() => {
+    if (showSidebar) onNavOpenChange(false);
+  }, [showSidebar, onNavOpenChange]);
+
   const toggle = () => {
     setCollapsed((c) => {
       const next = !c;
@@ -113,14 +120,14 @@ export function AppSidebar({ onOpenSearch, navOpen, onNavOpenChange }: Props) {
         </TooltipProvider>
       </aside>
 
-      <Sheet open={navOpen} onOpenChange={onNavOpenChange}>
+      <Sheet
+        open={navOpen && !showSidebar}
+        onOpenChange={onNavOpenChange}
+      >
         <SheetContent
           side="left"
           label="Navigation"
-          className={cn(
-            "border-sidebar-border bg-sidebar text-sidebar-foreground",
-            showSidebar && "hidden",
-          )}
+          className="border-sidebar-border bg-sidebar text-sidebar-foreground"
         >
           <SidebarBody
             collapsed={false}
@@ -171,6 +178,7 @@ function SidebarBody({
       ? (search as { analyzer?: string }).analyzer
       : undefined;
 
+  const queryClient = useQueryClient();
   const signedIn = Boolean(auth.accessToken);
   const initials = auth.displayName
     .split(/\s+/)
@@ -181,7 +189,8 @@ function SidebarBody({
 
   async function onSignOut() {
     await auth.signOut();
-    void navigate({ to: "/login" });
+    queryClient.clear();
+    void navigate({ to: "/login", replace: true });
   }
 
   return (

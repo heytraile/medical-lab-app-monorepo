@@ -5,12 +5,13 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { DRAX_HALL_LAB } from "@drax-lis/catalog";
-import type {
-  Conversation,
-  ConversationUpsertEventPayload,
-  CreateMessageRequest,
-  Message,
-  MessageCreatedEventPayload,
+import {
+  normalizeIsoDateTime,
+  type Conversation,
+  type ConversationUpsertEventPayload,
+  type CreateMessageRequest,
+  type Message,
+  type MessageCreatedEventPayload,
 } from "@drax-lis/contracts";
 import { SupabaseService } from "../supabase/supabase.module";
 import type { AuthUser } from "../auth/auth.guard";
@@ -127,8 +128,8 @@ export class MessagingCloudService {
           staffId: m.staff_id as string,
           role: m.role as "member" | "admin",
         })),
-        createdAt: c.created_at as string,
-        updatedAt: c.updated_at as string,
+        createdAt: normalizeIsoDateTime(c.created_at),
+        updatedAt: normalizeIsoDateTime(c.updated_at),
       });
     }
 
@@ -148,7 +149,7 @@ export class MessagingCloudService {
       conversationId: m.conversation_id as string,
       senderStaffId: m.sender_staff_id as string,
       body: m.body as string,
-      createdAt: m.created_at as string,
+      createdAt: normalizeIsoDateTime(m.created_at),
       localSequence: Number(m.local_sequence ?? 0),
       origin: "cloud" as const,
       edgeNodeId: (m.edge_node_id as string | null) ?? null,
@@ -159,7 +160,7 @@ export class MessagingCloudService {
       if (c.updatedAt > cursor) cursor = c.updatedAt;
     }
     for (const m of msgRows ?? []) {
-      const inserted = m.inserted_at as string;
+      const inserted = normalizeIsoDateTime(m.inserted_at);
       if (inserted > cursor) cursor = inserted;
     }
 
@@ -223,11 +224,13 @@ export class MessagingCloudService {
               (p?.role as Conversation["members"][0]["staffRole"]) ?? null,
           };
         }),
-        lastMessageAt: (last?.created_at as string | undefined) ?? null,
+        lastMessageAt: last?.created_at
+          ? normalizeIsoDateTime(last.created_at)
+          : null,
         lastMessagePreview:
           (last?.body as string | undefined)?.slice(0, 120) ?? null,
-        createdAt: c.created_at as string,
-        updatedAt: c.updated_at as string,
+        createdAt: normalizeIsoDateTime(c.created_at),
+        updatedAt: normalizeIsoDateTime(c.updated_at),
       });
     }
     return out;
@@ -268,7 +271,7 @@ export class MessagingCloudService {
       senderStaffId: m.sender_staff_id as string,
       senderFullName: nameById.get(m.sender_staff_id as string) ?? null,
       body: m.body as string,
-      createdAt: m.created_at as string,
+      createdAt: normalizeIsoDateTime(m.created_at),
       localSequence: Number(m.local_sequence ?? 0),
       synced: "synced" as const,
       origin: (m.origin as "edge" | "cloud") ?? "cloud",

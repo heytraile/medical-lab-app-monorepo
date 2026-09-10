@@ -1,22 +1,54 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState, useEffect, useDeferredValue, useCallback } from "react";
-import { ScanLine } from "lucide-react";
-import { api } from "../../lib/api";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import {
-  filterSpecimensByAccessionQuery,
+  useMemo,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from "react";
+import { ScanLine } from "lucide-react";
+import { api, type SpecimenRow } from "../../lib/api";
+import {
   findExactSpecimenMatch,
   mergeOrderedTestsLookup,
   parseOrderedTestsJson,
   type ParsedOrderedTest,
 } from "../../lib/ordered-tests";
+import {
+  findSessionByAccession,
+  groupSpecimensIntoSessions,
+  type AccessionSession,
+  type OrderSelectionSnapshot,
+} from "../../lib/accession-sessions";
+import {
+  buildLabelPreviewFromSpecimen,
+  fetchEdgeLabelPreviewForSpecimen,
+  findContainersByAccession,
+} from "../../lib/label-preview-from-specimen";
+import {
+  MultiLabelPreviewPanel,
+  type LabelPreviewItem,
+} from "../../components/accessioning/multi-label-preview-panel";
+import { AccessionPeopleBlockForAccession } from "../../components/accession-people-block";
+import {
+  actorDisplayName,
+  parseOrderedTests,
+  parsePatientJson,
+} from "../../lib/specimen-display";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 import { useScanInput } from "../../lib/use-barcode-scanner";
 import { AccessioningShell } from "../../components/accessioning/accessioning-shell";
 import { Button } from "../../components/ui/button";
 import { ClearableInput } from "../../components/ui/clearable-input";
+import { SpecimenAccessionStatusChip } from "../../components/result-status";
 import { Badge } from "../../components/ui/badge";
 import { ScrollContainer } from "../../components/ui/scroll-container";
+import {
+  useIsWorkstation,
+  useShowWorkstationChrome,
+} from "../../lib/use-media-query";
+import { patientDisplayNameFromJson } from "../../lib/specimen-display";
 import { cn } from "../../lib/utils";
 
 type OrdersSearch = { accession?: string };
@@ -31,284 +63,596 @@ export const Route = createFileRoute("/_lab/orders")({
   component: OrdersLookupPage,
 });
 
-function patientFromJson(json: string | null): string {
-  if (!json) return "—";
-  try {
-    const p = JSON.parse(json) as { firstName?: string; lastName?: string };
-    return [p.firstName, p.lastName].filter(Boolean).join(" ") || "—";
-  } catch {
-    return "—";
-  }
-}
-
 function OrdersLookupPage() {
   const navigate = useNavigate();
+  const isWorkstation = useIsWorkstation();
+  const showWorkstationChrome = useShowWorkstationChrome();
   const { accession: routeAccession } = Route.useSearch();
-  const [query, setQuery] = useState(routeAccession ?? "");
-  const [lookupAccession, setLookupAccession] = useState(
+  /** Filters the left list only — never tied to the selected row. */
+  const [filterQuery, setFilterQuery] = useState("");
+  const [selectedAccession, setSelectedAccession] = useState(
     routeAccession?.trim() ?? "",
   );
+  const selectedRowRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    if (routeAccession) {
-      setQuery(routeAccession);
-      setLookupAccession(routeAccession.trim());
-    } else {
-      setQuery("");
-      setLookupAccession("");
-    }
+    setSelectedAccession(routeAccession?.trim() ?? "");
   }, [routeAccession]);
 
   useEffect(() => {
-    const trimmed = query.trim();
-    if (
-      lookupAccession &&
-      trimmed.toLowerCase() !== lookupAccession.toLowerCase()
-    ) {
-      setLookupAccession("");
-    }
-  }, [query, lookupAccession]);
+    selectedRowRef.current?.scrollIntoView({ block: "nearest" });
+  }, [selectedAccession]);
 
-  const debouncedQuery = useDebouncedValue(query, 150);
-  const deferredFilter = useDeferredValue(debouncedQuery.trim().toLowerCase());
+  const debouncedFilter = useDebouncedValue(filterQuery, 200);
 
-  const clearSearch = useCallback(() => {
-    setQuery("");
-    setLookupAccession("");
-    void navigate({ to: "/orders", search: {}, replace: true });
-  }, [navigate]);
+  const clearFilter = useCallback(() => {
+    setFilterQuery("");
+  }, []);
 
   const specimensQ = useQuery({
-    queryKey: ["specimens"],
-    queryFn: () => api.specimens(),
+    queryKey: ["specimens", debouncedFilter.trim()],
+    queryFn: () => api.specimens(debouncedFilter.trim() || undefined),
     staleTime: 10_000,
   });
 
-  const suggestions = useMemo(() => {
-    const specimens = specimensQ.data ?? [];
-    if (deferredFilter) {
-      return filterSpecimensByAccessionQuery(specimens, deferredFilter);
-    }
-    return specimens.slice(0, 20);
-  }, [specimensQ.data, deferredFilter]);
+  const suggestions = useMemo(
+    () => groupSpecimensIntoSessions(specimensQ.data ?? []).slice(0, 50),
+    [specimensQ.data],
+  );
 
-  const confirmLookup = useCallback(
+  const selectedSession = useMemo(
+    () =>
+      selectedAccession.trim()
+        ? findSessionByAccession(suggestions, selectedAccession)
+        : undefined,
+    [selectedAccession, suggestions],
+  );
+
+  const selectAccession = useCallback(
     (acc: string) => {
       const trimmed = acc.trim();
       if (!trimmed) {
-        setQuery("");
-        setLookupAccession("");
+        setSelectedAccession("");
         void navigate({ to: "/orders", search: {} });
         return;
       }
-      setQuery(trimmed);
-      setLookupAccession(trimmed);
+      setSelectedAccession(trimmed);
       void navigate({ to: "/orders", search: { accession: trimmed } });
     },
     [navigate],
   );
 
   const confirmFromInput = useCallback(() => {
-    const trimmed = query.trim();
+    const trimmed = filterQuery.trim();
     if (!trimmed) return;
-    const exact = findExactSpecimenMatch(specimensQ.data ?? [], trimmed);
-    confirmLookup(exact?.accessionNumber ?? trimmed);
-  }, [query, specimensQ.data, confirmLookup]);
 
-  useEffect(() => {
-    const trimmed = debouncedQuery.trim();
-    // Ignore stale debounced value after the user cleared the field.
-    if (!query.trim() || !trimmed) return;
-    const exact = findExactSpecimenMatch(specimensQ.data ?? [], trimmed);
-    if (exact && exact.accessionNumber !== lookupAccession) {
-      confirmLookup(exact.accessionNumber);
+    const specimens = specimensQ.data ?? [];
+    const exact = findExactSpecimenMatch(specimens, trimmed);
+    if (exact) {
+      setFilterQuery("");
+      selectAccession(exact.accessionNumber);
+      return;
     }
-  }, [
-    query,
-    debouncedQuery,
-    specimensQ.data,
-    lookupAccession,
-    confirmLookup,
-  ]);
 
-  const cloudSpecimenQ = useQuery({
-    queryKey: ["cloud-specimen", lookupAccession],
-    queryFn: () => api.cloudSpecimenByAccession(lookupAccession),
-    enabled: Boolean(lookupAccession),
-    retry: false,
-  });
+    const sessions = groupSpecimensIntoSessions(specimens);
+    if (sessions.length === 1) {
+      const acc =
+        sessions[0]?.accessionNumbers[0] ??
+        sessions[0]?.primary.accessionNumber;
+      if (acc) {
+        setFilterQuery("");
+        selectAccession(acc);
+      }
+      return;
+    }
 
-  const cloudRequisitionQ = useQuery({
-    queryKey: ["requisition", lookupAccession],
-    queryFn: () => api.getRequisitionByAccession(lookupAccession),
-    enabled: Boolean(lookupAccession),
-    retry: false,
-  });
-
-  const edgeSpecimenQ = useQuery({
-    queryKey: ["edge-specimen", lookupAccession],
-    queryFn: () => api.specimenByAccession(lookupAccession),
-    enabled: Boolean(lookupAccession),
-    retry: false,
-  });
-
-  const tests: ParsedOrderedTest[] = useMemo(
-    () =>
-      mergeOrderedTestsLookup({
-        cloudSpecimen: cloudSpecimenQ.data?.orderedTests,
-        cloudRequisition: cloudRequisitionQ.data?.orderedTests?.map((t) => ({
-          code: t.code,
-          name: t.name,
-        })),
-        edgeSpecimen: parseOrderedTestsJson(
-          edgeSpecimenQ.data?.orderedTestsJson,
-        ),
-      }),
-    [cloudSpecimenQ.data, cloudRequisitionQ.data, edgeSpecimenQ.data],
-  );
-
-  const isLoading =
-    Boolean(lookupAccession) &&
-    (cloudSpecimenQ.isLoading ||
-      cloudRequisitionQ.isLoading ||
-      edgeSpecimenQ.isLoading);
+    if (/^[A-Za-z0-9._-]+$/.test(trimmed)) {
+      setFilterQuery("");
+      selectAccession(trimmed);
+    }
+  }, [filterQuery, specimensQ.data, selectAccession]);
 
   useScanInput((value) => {
     const v = value.trim();
     if (!v) return;
-    confirmLookup(v);
+    setFilterQuery("");
+    const exact = findExactSpecimenMatch(specimensQ.data ?? [], v);
+    selectAccession(exact?.accessionNumber ?? v);
   });
+
+  const searchForm = (
+    <form
+      className="flex shrink-0 gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        confirmFromInput();
+      }}
+    >
+      <ClearableInput
+        value={filterQuery}
+        onChange={(e) => setFilterQuery(e.target.value)}
+        onClear={clearFilter}
+        placeholder="Patient, MRN, or accession…"
+        wrapperClassName="flex-1"
+        leftSlot={<ScanLine className="size-4 text-muted-foreground" />}
+      />
+      <Button
+        type="submit"
+        variant="secondary"
+        size="lg"
+        className="min-h-10 shrink-0 lg:h-9 lg:min-h-0 lg:px-3 lg:text-sm"
+      >
+        Look up
+      </Button>
+    </form>
+  );
+
+  const accessionList = (
+    <ScrollContainer className="min-h-0 flex-1 rounded-md border border-border">
+      <ul className="divide-y divide-border">
+        {specimensQ.isLoading && (
+          <li className="px-3 py-2 text-sm text-muted-foreground">Loading…</li>
+        )}
+        {!specimensQ.isLoading && suggestions.length === 0 && (
+          <li className="px-3 py-3 text-sm text-muted-foreground">
+            {debouncedFilter.trim()
+              ? `No accessions match “${debouncedFilter.trim()}”.`
+              : "No specimens yet."}
+          </li>
+        )}
+        {suggestions.map((session) => {
+          const s = session.primary;
+          const accessionNumber =
+            session.accessionNumbers[0] ?? s.accessionNumber;
+          const isSelected =
+            accessionNumber.toUpperCase() ===
+            selectedAccession.trim().toUpperCase();
+          const tubeHint =
+            session.tubes.length > 1
+              ? `${session.tubes.length} labels`
+              : null;
+          const patientName =
+            s.patientDisplayName?.trim() ||
+            patientDisplayNameFromJson(s.patientJson);
+          return (
+            <li key={session.key}>
+              <button
+                ref={isSelected ? selectedRowRef : undefined}
+                type="button"
+                aria-current={isSelected ? "true" : undefined}
+                className={cn(
+                  "flex w-full flex-col items-start gap-1 border-l-2 px-3 py-3 text-left text-sm transition-colors lg:py-2.5",
+                  isSelected
+                    ? "border-l-accent bg-accent/10"
+                    : "border-l-transparent hover:bg-muted",
+                )}
+                onClick={() => selectAccession(accessionNumber)}
+              >
+                <span className="flex w-full items-start justify-between gap-2">
+                  <span className="min-w-0 truncate font-medium">
+                    {patientName}
+                  </span>
+                  <SpecimenAccessionStatusChip
+                    status={s.status}
+                    className="shrink-0 text-[10px]"
+                  />
+                </span>
+                <span
+                  className={cn(
+                    "font-mono text-xs tracking-tight",
+                    isSelected ? "text-accent" : "text-muted-foreground",
+                  )}
+                >
+                  {accessionNumber}
+                </span>
+                {tubeHint ? (
+                  <span className="text-xs text-muted-foreground">
+                    {tubeHint}
+                    {session.departmentLabels.length > 0
+                      ? ` · ${session.departmentLabels.join(", ")}`
+                      : ""}
+                  </span>
+                ) : null}
+                {session.orderedTests.length > 0 ? (
+                  <span className="line-clamp-2 text-xs text-muted-foreground">
+                    {session.orderedTests
+                      .slice(0, 6)
+                      .map((t) => t.code)
+                      .join(", ")}
+                    {session.orderedTests.length > 6
+                      ? ` +${session.orderedTests.length - 6}`
+                      : ""}
+                  </span>
+                ) : null}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </ScrollContainer>
+  );
+
+  const layout = (
+    <div
+      className={cn(
+        "grid min-h-0 min-w-0 flex-1 gap-4",
+        isWorkstation
+          ? "overflow-hidden lg:grid-cols-2 lg:grid-rows-1 xl:gap-6"
+          : "grid-cols-1 xl:grid-cols-2",
+        showWorkstationChrome && isWorkstation && "h-full",
+      )}
+    >
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden rounded-xl border border-border bg-card p-4 shadow-sm lg:order-1 xl:p-5",
+          isWorkstation ? "order-2 h-full lg:order-1" : "order-2 min-h-[14rem] xl:min-h-0",
+        )}
+      >
+        <div className="shrink-0 space-y-3">
+          {searchForm}
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            {debouncedFilter.trim() ? "Matching accessions" : "Recent accessions"}
+          </p>
+        </div>
+        {accessionList}
+      </div>
+
+      <div
+        className={cn(
+          "flex min-h-0 min-w-0 flex-col overflow-hidden",
+          isWorkstation
+            ? "order-1 h-full lg:order-2"
+            : "order-1 min-h-[16rem] xl:order-2 xl:min-h-0",
+        )}
+      >
+        <OrdersLookupDetail
+          accessionNumber={selectedAccession}
+          session={selectedSession}
+          specimens={specimensQ.data ?? []}
+          className="min-h-0 flex-1"
+        />
+      </div>
+    </div>
+  );
+
+  if (!isWorkstation) {
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <AccessioningShell
+          wide
+          title="Test lookup"
+          description="Read-only view of what was ordered for an accession — for phlebotomy and collection."
+        >
+          {layout}
+        </AccessioningShell>
+      </div>
+    );
+  }
 
   return (
     <AccessioningShell
+      wide
       title="Test lookup"
       description="Read-only view of what was ordered for an accession — for phlebotomy and collection."
     >
-      <div className="mx-auto max-w-xl space-y-4">
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            confirmFromInput();
-          }}
-        >
-          <ClearableInput
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onClear={clearSearch}
-            placeholder="Scan or type accession…"
-            wrapperClassName="flex-1"
-            leftSlot={<ScanLine className="size-4 text-muted-foreground" />}
-          />
-          <Button type="submit" variant="secondary" size="lg" className="min-h-10 shrink-0 lg:h-9 lg:min-h-0 lg:px-3 lg:text-sm">
-            Look up
-          </Button>
-        </form>
+      {layout}
+    </AccessioningShell>
+  );
+}
 
-        <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            {deferredFilter ? "Matching accessions" : "Recent accessions"}
-          </p>
-            <ScrollContainer className="max-h-[min(50svh,20rem)] rounded-md border border-border lg:max-h-64">
-              <ul className="divide-y divide-border">
-                {specimensQ.isLoading && (
-                  <li className="px-3 py-2 text-sm text-muted-foreground">
-                    Loading…
-                  </li>
-                )}
-                {!specimensQ.isLoading && suggestions.length === 0 && (
-                  <li className="px-3 py-3 text-sm text-muted-foreground">
-                    {deferredFilter
-                      ? `No accessions match “${debouncedQuery.trim()}”.`
-                      : "No specimens yet."}
-                  </li>
-                )}
-                {suggestions.map((s) => {
-                  const isSelected =
-                    s.accessionNumber.toUpperCase() ===
-                    lookupAccession.trim().toUpperCase();
-                  return (
-                    <li key={s.id}>
-                      <button
-                        type="button"
-                        aria-current={isSelected ? "true" : undefined}
-                        className={cn(
-                          "flex w-full flex-col items-start gap-1 border-l-2 px-3 py-3 text-left text-sm transition-colors sm:flex-row sm:items-center sm:justify-between sm:gap-2 lg:py-2.5",
-                          isSelected
-                            ? "border-l-accent bg-accent/10"
-                            : "border-l-transparent hover:bg-muted",
-                        )}
-                        onClick={() => confirmLookup(s.accessionNumber)}
-                      >
-                        <span className="min-w-0">
-                          <span
-                            className={cn(
-                              "font-mono font-medium",
-                              isSelected && "text-accent",
-                            )}
-                          >
-                            {s.accessionNumber}
-                          </span>
-                          <span className="ml-2 text-muted-foreground">
-                            {patientFromJson(s.patientJson)}
-                          </span>
-                        </span>
-                        <Badge variant="muted">{s.status}</Badge>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
-            </ScrollContainer>
+function formatSpecimenType(type: string): string {
+  if (!type) return "Specimen";
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function panelSelections(
+  selections: OrderSelectionSnapshot[],
+): OrderSelectionSnapshot[] {
+  return selections.filter((s) => s.kind === "panel");
+}
+
+function OrdersLookupDetail({
+  accessionNumber,
+  session,
+  specimens,
+  className,
+}: {
+  accessionNumber: string;
+  session?: AccessionSession;
+  specimens: SpecimenRow[];
+  className?: string;
+}) {
+  const trimmed = accessionNumber.trim();
+  const isWideDetail = useIsWorkstation();
+
+  const catalogQ = useQuery({
+    queryKey: ["catalog"],
+    queryFn: () => api.getCatalog(),
+    staleTime: 60_000,
+  });
+
+  const cloudSpecimenQ = useQuery({
+    queryKey: ["cloud-specimen", trimmed],
+    queryFn: () => api.cloudSpecimenByAccession(trimmed),
+    enabled: Boolean(trimmed),
+    retry: false,
+  });
+
+  const cloudRequisitionQ = useQuery({
+    queryKey: ["requisition", trimmed],
+    queryFn: () => api.getRequisitionByAccession(trimmed),
+    enabled: Boolean(trimmed),
+    retry: false,
+  });
+
+  const edgeSpecimenQ = useQuery({
+    queryKey: ["edge-specimen", trimmed],
+    queryFn: () => api.specimenByAccession(trimmed),
+    enabled: Boolean(trimmed),
+    retry: false,
+  });
+
+  const tests: ParsedOrderedTest[] = useMemo(() => {
+    const merged = mergeOrderedTestsLookup({
+      cloudSpecimen: cloudSpecimenQ.data?.orderedTests,
+      cloudRequisition: cloudRequisitionQ.data?.orderedTests?.map((t) => ({
+        code: t.code,
+        name: t.name,
+      })),
+      edgeSpecimen: parseOrderedTestsJson(
+        edgeSpecimenQ.data?.orderedTestsJson,
+      ),
+    });
+    if (merged.length > 0) return merged;
+    return (
+      session?.orderedTests.map((t) => ({
+        code: t.code,
+        name: t.name,
+      })) ?? []
+    );
+  }, [
+    cloudSpecimenQ.data,
+    cloudRequisitionQ.data,
+    edgeSpecimenQ.data,
+    session?.orderedTests,
+  ]);
+
+  const isLoading =
+    Boolean(trimmed) &&
+    (cloudSpecimenQ.isLoading ||
+      cloudRequisitionQ.isLoading ||
+      edgeSpecimenQ.isLoading);
+
+  const row = session?.primary;
+  const patient = parsePatientJson(row?.patientJson ?? null);
+  const patientName =
+    row?.patientDisplayName?.trim() ||
+    patientDisplayNameFromJson(row?.patientJson ?? null);
+  const registeredBy =
+    row?.registeredByName?.trim() ||
+    actorDisplayName(row?.registeredBySnapshot) ||
+    null;
+  const panels = panelSelections(session?.orderedSelections ?? []);
+  const panelNameByCode = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of catalogQ.data?.panels ?? []) {
+      map.set(p.code, p.name);
+    }
+    return map;
+  }, [catalogQ.data]);
+
+  const containerRows = useMemo(() => {
+    if (session?.tubes.length) return session.tubes;
+    if (!trimmed) return [];
+    return findContainersByAccession(specimens, trimmed);
+  }, [session?.tubes, trimmed, specimens]);
+
+  const edgePreviewQueries = useQueries({
+    queries: containerRows.map((tube) => ({
+      queryKey: [
+        "orders-label-preview",
+        tube.id,
+        tube.departmentKey,
+        tube.accessionNumber,
+      ],
+      queryFn: () => fetchEdgeLabelPreviewForSpecimen(tube),
+      enabled: Boolean(tube.id),
+      staleTime: 400,
+    })),
+  });
+
+  const previewLabels = useMemo((): LabelPreviewItem[] => {
+    return containerRows.map((tube, i) => {
+      const key = tube.departmentKey ?? tube.id;
+      const tubeTests = tube.orderedTests?.length
+        ? tube.orderedTests
+        : parseOrderedTests(tube.orderedTestsJson);
+      return {
+        id: key,
+        specimenType: tube.collectionType ?? tube.specimenType ?? "blood",
+        fields:
+          edgePreviewQueries[i]?.data?.fields ??
+          buildLabelPreviewFromSpecimen(tube),
+        accessionNumber: tube.accessionNumber,
+        testCount: tubeTests.length,
+      };
+    });
+  }, [containerRows, edgePreviewQueries]);
+
+  const previewLoading =
+    containerRows.length > 0 &&
+    edgePreviewQueries.some((q) => q.isFetching && !q.data);
+
+  const previewWarning =
+    edgePreviewQueries.some((q) => q.data?.edgeFailed) &&
+    previewLabels.length > 0
+      ? "Showing a client preview — printer preview unavailable."
+      : undefined;
+
+  if (!trimmed) {
+    return (
+      <div
+        className={cn(
+          "flex min-h-0 flex-1 flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 px-6 py-12 text-center",
+          className,
+        )}
+      >
+        <p className="text-sm font-medium text-foreground">
+          Select an accession
+        </p>
+        <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+          Choose a row on the left or scan an accession to see ordered tests
+          here.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm",
+        className,
+      )}
+    >
+      <div className="shrink-0 border-b border-border px-4 py-3 xl:px-5">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="truncate font-display text-lg font-semibold tracking-tight">
+              {patientName}
+            </h3>
+            <p className="mt-0.5 font-mono text-xs text-muted-foreground">
+              {trimmed}
+              {patient?.mrn || row?.patientMrn
+                ? ` · ${patient?.mrn ?? row?.patientMrn}`
+                : ""}
+            </p>
+            {session ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {new Date(session.registeredAt).toLocaleString()}
+                {registeredBy ? ` · Reg: ${registeredBy}` : ""}
+              </p>
+            ) : null}
           </div>
+          {row ? (
+            <SpecimenAccessionStatusChip
+              status={row.status}
+              className="shrink-0 text-[10px]"
+            />
+          ) : null}
+        </div>
+      </div>
 
-        {!lookupAccession ? (
-          <p className="text-sm text-muted-foreground">
-            Enter or select an accession to see ordered work.
-          </p>
-        ) : isLoading ? (
-          <p className="text-sm text-muted-foreground">Loading…</p>
-        ) : tests.length === 0 ? (
-          <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-            No ordered tests found for{" "}
-            <span className="font-mono">{lookupAccession}</span>.
-          </p>
-        ) : (
-          <div className="rounded-xl border border-border bg-card p-4 shadow-sm">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="font-mono text-sm font-medium">{lookupAccession}</p>
-              <Badge variant="muted">{tests.length} ordered</Badge>
-            </div>
-            <ul className="space-y-2 text-sm">
-              {tests.map((t) => (
-                <li
-                  key={t.code}
-                  className="flex items-baseline justify-between gap-2 border-b border-border/50 pb-2 last:border-0"
-                >
-                  <span>
+      <ScrollContainer className="min-h-0 flex-1">
+        <div className="space-y-5 p-4 xl:p-5">
+          <section className="space-y-1 text-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Patient
+            </p>
+            <p>
+              {[patient?.dateOfBirth, patient?.sex].filter(Boolean).join(" · ") ||
+                "No DOB/sex on file"}
+            </p>
+            {session ? (
+              <p className="text-muted-foreground">
+                Tubes:{" "}
+                {session.specimenTypes.map(formatSpecimenType).join(", ")}
+                {session.departmentLabels.length > 0
+                  ? ` · ${session.departmentLabels.join(", ")}`
+                  : ""}
+              </p>
+            ) : null}
+          </section>
+
+          <AccessionPeopleBlockForAccession
+            accessionNumber={trimmed}
+            specimens={containerRows}
+            results={[]}
+          />
+
+          {panels.length > 0 ? (
+            <section>
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Panels selected ({panels.length})
+              </p>
+              <ul className="divide-y divide-border rounded-lg border border-border">
+                {panels.map((p) => (
+                  <li key={`panel-${p.code}`} className="px-3 py-2 text-sm">
+                    <Badge variant="ok" className="mr-2 text-[10px]">
+                      Panel
+                    </Badge>
+                    <span className="font-medium">
+                      {panelNameByCode.get(p.code) ??
+                        p.code.replaceAll("_", " ")}
+                    </span>
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">
+                      {p.code}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          <section>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {panels.length > 0
+                ? `Tests on order (${tests.length})`
+                : `Ordered tests (${tests.length})`}
+            </p>
+            {isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading…</p>
+            ) : tests.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No ordered tests found for this accession.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border rounded-lg border border-border">
+                {tests.map((t) => (
+                  <li key={t.code} className="px-3 py-2 text-sm">
                     <span className="font-mono text-xs text-muted-foreground">
                       {t.code}
                     </span>{" "}
-                    {t.name ?? t.code}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button type="button" size="sm" variant="outline" asChild>
-                <Link to="/labels" search={{ accession: lookupAccession }}>
-                  Labels
-                </Link>
-              </Button>
-              <Button type="button" size="sm" variant="outline" asChild>
-                <Link to="/bench" search={{ q: lookupAccession }}>
-                  Bench
-                </Link>
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-    </AccessioningShell>
+                    <span className="font-medium">{t.name ?? t.code}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Routing labels
+              {containerRows.length > 0
+                ? ` (${containerRows.length})`
+                : ""}
+            </p>
+            <MultiLabelPreviewPanel
+              phase={previewLabels.length > 0 ? "registered" : "idle"}
+              labels={previewLabels}
+              emptyContext="labels"
+              loading={previewLoading}
+              previewWarning={previewWarning}
+              className={cn(
+                isWideDetail && previewLabels.length === 1 && "min-h-[12rem]",
+              )}
+              actions={
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="w-full sm:w-auto"
+                  asChild
+                >
+                  <Link to="/bench" search={{ q: trimmed }}>
+                    Open results on Bench
+                  </Link>
+                </Button>
+              }
+            />
+          </section>
+        </div>
+      </ScrollContainer>
+    </div>
   );
 }

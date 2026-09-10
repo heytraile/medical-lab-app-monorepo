@@ -15,9 +15,11 @@ export function SelectedTestsSummary({
   panelCount: number;
   individualCount: number;
 }) {
-  const blood = expanded.filter((t) => t.specimenHint === "blood").length;
-  const serum = expanded.filter((t) => t.specimenHint === "serum").length;
+  const blood = expanded.filter(
+    (t) => t.specimenHint === "blood" || t.specimenHint === "serum",
+  ).length;
   const urine = expanded.filter((t) => t.specimenHint === "urine").length;
+  const stool = expanded.filter((t) => t.specimenHint === "stool").length;
 
   return (
     <div className="space-y-3 min-w-0">
@@ -57,21 +59,21 @@ export function SelectedTestsSummary({
         </ScrollContainer>
       )}
 
-      {expanded.length > 0 && (blood > 0 || serum > 0 || urine > 0) && (
+      {expanded.length > 0 && (blood > 0 || urine > 0 || stool > 0) && (
         <div className="flex flex-wrap gap-1.5">
           {blood > 0 && (
             <Badge variant="muted" className="text-[10px]">
               Blood ({blood})
             </Badge>
           )}
-          {serum > 0 && (
-            <Badge variant="muted" className="text-[10px]">
-              Serum ({serum})
-            </Badge>
-          )}
           {urine > 0 && (
             <Badge variant="muted" className="text-[10px]">
               Urine ({urine})
+            </Badge>
+          )}
+          {stool > 0 && (
+            <Badge variant="muted" className="text-[10px]">
+              Stool ({stool})
             </Badge>
           )}
         </div>

@@ -140,10 +140,14 @@ export function buildSearchIndex(input: {
     });
   }
 
+  const seenAccessions = new Set<string>();
   for (const s of input.specimens) {
+    const accessionKey = s.accessionNumber.trim().toUpperCase();
+    if (!accessionKey || seenAccessions.has(accessionKey)) continue;
+    seenAccessions.add(accessionKey);
     const patient = patientSnippet(s.patientJson);
     hits.push({
-      id: `specimen-${s.id}`,
+      id: `specimen-${accessionKey}`,
       kind: "specimen",
       title: s.accessionNumber,
       subtitle: patient || s.barcode,

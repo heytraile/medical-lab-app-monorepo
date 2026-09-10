@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   assembleReleaseQueueGroups,
+  filterReleasedResultsVerifiedOnEdge,
   mergeReleaseQueueGroups,
   worstFlag,
 } from "./release-queue.helpers.js";
@@ -298,6 +299,43 @@ describe("assembleReleaseQueueGroups", () => {
     assert.equal(groups[0]?.results[0]?.flag, "normal");
     assert.equal(groups[0]?.results[1]?.flag, "high");
     assert.equal(groups[0]?.worstFlag, "high");
+  });
+});
+
+describe("filterReleasedResultsVerifiedOnEdge", () => {
+  const edge = new Map([
+    ["edge-released", "released"],
+    ["edge-pending-auth", "pending_authorization"],
+    ["edge-pending-review", "pending_review"],
+  ]);
+
+  it("keeps rows verified released or pending authorization on edge", () => {
+    const filtered = filterReleasedResultsVerifiedOnEdge(
+      [
+        { edge_result_id: "edge-released", test_code: "A" },
+        { edge_result_id: "edge-pending-auth", test_code: "B" },
+      ],
+      edge,
+    );
+    assert.equal(filtered.length, 2);
+  });
+
+  it("drops orphan cloud rows and edge pending_review drift", () => {
+    const filtered = filterReleasedResultsVerifiedOnEdge(
+      [
+        { edge_result_id: "orphan-old-generation", test_code: "A" },
+        { edge_result_id: "edge-pending-review", test_code: "B" },
+        { edge_result_id: "edge-released", test_code: "C" },
+      ],
+      edge,
+    );
+    assert.equal(filtered.length, 1);
+    assert.equal(filtered[0]?.test_code, "C");
+  });
+
+  it("hides rows when edge is unreachable", () => {
+    const rows = [{ edge_result_id: "any", test_code: "A" }];
+    assert.deepEqual(filterReleasedResultsVerifiedOnEdge(rows, null), []);
   });
 });
 

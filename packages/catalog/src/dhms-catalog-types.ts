@@ -2,7 +2,7 @@ export type CatalogItemSeed = {
   code: string;
   name: string;
   category: string;
-  specimenHint?: "serum" | "urine" | "blood";
+  specimenHint?: "blood" | "urine" | "stool" | "other";
   fastingRequired?: boolean;
   sortOrder?: number;
 };

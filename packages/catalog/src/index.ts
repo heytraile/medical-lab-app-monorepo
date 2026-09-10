@@ -10,10 +10,25 @@ export {
 } from "./expand-selection";
 
 export {
+  groupTestsByDepartment,
   groupTestsBySpecimenBucket,
+  type DepartmentLabelGroup,
   type SpecimenBucket,
   type SpecimenBucketGroup,
 } from "./group-tests-by-specimen-bucket";
+
+export {
+  CATALOG_CATEGORY_LABELS,
+  CATALOG_CATEGORY_ORDER,
+  categoryLabel,
+  type CatalogCategory,
+} from "./catalog-categories";
+
+export {
+  collectionTypeLabel,
+  normalizeCollectionType,
+  type CollectionType,
+} from "./collection-type";
 
 export {
   CATALOG_CATEGORIES,
@@ -24,6 +39,18 @@ export {
   type CatalogItemSeed,
   type PanelSeed,
 } from "./dhms-catalog";
+
+export {
+  composeManualResultValue,
+  computeAutoFlag,
+  getManualEntrySchema,
+  parseManualPayload,
+  schemaDefaultUnits,
+  schemaReferenceRange,
+  type ManualEntryField,
+  type ManualEntrySchema,
+  type ManualFieldType,
+} from "./manual-entry-schemas";
 
 export {
   ANALYZER_SIM_ANALYTES,

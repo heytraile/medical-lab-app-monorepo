@@ -13,6 +13,7 @@ export type LabelPreviewFields = {
   dateOfBirth: string;
   orderedTests: string;
   specimenType: string;
+  departmentLabel?: string;
   mrn?: string;
   printedAt: string;
   widthDots?: number;
@@ -97,10 +98,10 @@ export function LabelPreview({
   const widthDots = fields.widthDots ?? DEFAULT_LABEL_WIDTH_DOTS;
   const heightDots = fields.heightDots ?? DEFAULT_LABEL_HEIGHT_DOTS;
   const previewWidthPx = labelPreviewWidthPx(widthDots);
-  const testLines =
-    fields.testLines && fields.testLines.length > 0
-      ? fields.testLines
-      : fields.orderedTests.split(/\s+/).filter(Boolean);
+  const routingLabel =
+    fields.departmentLabel?.trim() ||
+    fields.testLines?.[0]?.trim() ||
+    null;
   const barW = 300;
   const barH = 56;
   const isDraft = mode === "draft";
@@ -152,14 +153,11 @@ export function LabelPreview({
             </div>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            {testLines.map((line, i) => (
-              <p
-                key={i}
-                className="truncate text-[9px] leading-tight text-zinc-600 sm:text-[10px]"
-              >
-                {line}
+            {routingLabel ? (
+              <p className="line-clamp-2 text-xs font-semibold leading-snug text-zinc-800 sm:text-sm">
+                {routingLabel}
               </p>
-            ))}
+            ) : null}
           </div>
           <div className="mt-auto shrink-0 px-0.5 pt-0.5">
             <svg
@@ -193,10 +191,7 @@ export function LabelPreview({
         </p>
       )}
       <p className="break-words text-[10px] text-muted-foreground">
-        ZD411 · {sizeLabel} fixed label
-        {fields.testsOverflowCount
-          ? ` · ${fields.testsOverflowCount} more test(s) not on label`
-          : ""}
+        ZD411 · {sizeLabel} routing label
         {isDraft ? " · draft" : ` · ${fields.barcode}`}
       </p>
     </div>

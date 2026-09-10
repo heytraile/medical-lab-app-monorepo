@@ -187,6 +187,7 @@ export const RegisterSpecimenRequestSchema = z.object({
   collectedAt: z.string().datetime().optional(),
   collectedByStaffId: z.string().uuid().optional(),
   collectedBy: z.string().max(200).optional(),
+  collectedByJobTitle: z.string().max(120).optional(),
   /** Original panel/test selections from Accession (before tube split). */
   selections: z
     .array(
@@ -208,6 +209,7 @@ export const LabelPreviewFieldsSchema = z.object({
   dateOfBirth: z.string(),
   orderedTests: z.string(),
   specimenType: z.string(),
+  departmentLabel: z.string().optional(),
   mrn: z.string().optional(),
   printedAt: z.string(),
   widthDots: z.number().optional(),
@@ -229,7 +231,13 @@ export const PrintResultSchema = z.object({
 export type PrintResult = z.infer<typeof PrintResultSchema>;
 
 export const RegisterSpecimensBatchItemSchema = z.object({
-  specimenType: z.string().min(1),
+  /** Requisition category key, e.g. haematology, blood_chemistry. */
+  departmentKey: z.string().min(1).optional(),
+  departmentLabel: z.string().min(1).optional(),
+  /** Physical collection type: blood | urine | stool | other. */
+  collectionType: z.string().min(1).optional(),
+  /** @deprecated Use collectionType — kept for backward compat. */
+  specimenType: z.string().min(1).optional(),
   orderedTests: z.array(OrderedTestSchema).min(1),
 });
 export type RegisterSpecimensBatchItem = z.infer<
@@ -245,6 +253,7 @@ export const RegisterSpecimensBatchRequestSchema = z.object({
   collectedAt: z.string().datetime().optional(),
   collectedByStaffId: z.string().uuid().optional(),
   collectedBy: z.string().max(200).optional(),
+  collectedByJobTitle: z.string().max(120).optional(),
   /** Original panel/test selections from Accession (before tube split). */
   selections: z
     .array(
@@ -261,6 +270,8 @@ export type RegisterSpecimensBatchRequest = z.infer<
 >;
 
 export const RegisterSpecimensBatchResponseSchema = z.object({
+  /** Single accession number shared by every routing label on the form. */
+  accessionNumber: z.string().min(1),
   specimens: z.array(SpecimenSchema),
   labelPreviews: z.array(LabelPreviewFieldsSchema),
   printResults: z.array(PrintResultSchema.optional()).optional(),
@@ -463,6 +474,7 @@ export const SpecimenInfoSchema = z.object({
   collectedAt: z.string().datetime().optional(),
   collectedByStaffId: z.string().uuid().optional(),
   collectedBy: z.string().max(200).optional(),
+  collectedByJobTitle: z.string().max(120).optional(),
 });
 export type SpecimenInfo = z.infer<typeof SpecimenInfoSchema>;
 

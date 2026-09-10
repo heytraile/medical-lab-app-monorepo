@@ -29,6 +29,7 @@ import { SubmitForReleaseButton } from "./submit-for-release-button";
 import { RecallFromReleaseButton } from "./recall-from-release-button";
 import { summarizeGroup } from "./bench-group-row";
 import { ManualResultEntryButton } from "./manual-result-entry";
+import { AccessionPeopleBlockForAccession } from "./accession-people-block";
 import { cn } from "../lib/utils";
 import {
   canEditManualResult,
@@ -311,6 +312,7 @@ export function BenchPatientPanel({
                       flag: r.flag,
                       referenceLow: r.referenceLow,
                       referenceHigh: r.referenceHigh,
+                      manualPayloadJson: r.manualPayloadJson,
                     }}
                   />
                 </div>
@@ -361,6 +363,12 @@ export function BenchPatientPanel({
                     );
                   })}
                 </ul>
+                <AccessionPeopleBlockForAccession
+                  accessionNumber={row.accessionNumber}
+                  specimens={specimensQ.data ?? []}
+                  results={results}
+                  className="mt-3"
+                />
                 {accessionSummary ? (
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     {accessionSummary.allReleased &&

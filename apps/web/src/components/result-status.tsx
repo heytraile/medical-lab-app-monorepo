@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   CircleAlert,
   Clock,
+  FlaskConical,
   ShieldAlert,
   TriangleAlert,
   type LucideIcon,
@@ -90,6 +91,84 @@ function statusVisual(status: string | null | undefined): StatusVisual {
         label: raw.replaceAll("_", " "),
       };
   }
+}
+
+/** Accession / specimen lifecycle — not result review status. */
+function specimenAccessionStatusVisual(
+  status: string | null | undefined,
+): StatusVisual {
+  const raw = (status ?? "registered").trim() || "registered";
+  switch (raw) {
+    case "registered":
+      return {
+        variant: "muted",
+        icon: CheckCircle2,
+        label: "Accessioned",
+      };
+    case "collected":
+      return { variant: "muted", icon: CheckCircle2, label: "Collected" };
+    case "in_progress":
+      return { variant: "warn", icon: FlaskConical, label: "Testing" };
+    case "partial":
+      return { variant: "warn", icon: Clock, label: "Partial results" };
+    case "complete":
+      return { variant: "ok", icon: CheckCircle2, label: "Complete" };
+    case "released":
+      return { variant: "ok", icon: CheckCircle2, label: "Released" };
+    case "cancelled":
+      return { variant: "danger", icon: ShieldAlert, label: "Cancelled" };
+    default:
+      return {
+        variant: "muted",
+        icon: Clock,
+        label: raw.replaceAll("_", " "),
+      };
+  }
+}
+
+export function specimenAccessionStatusHelp(
+  status: string | null | undefined,
+): string {
+  const raw = (status ?? "registered").trim() || "registered";
+  switch (raw) {
+    case "registered":
+      return "Accession completed and tube labels were printed. No analyzer results yet.";
+    case "collected":
+      return "Specimen collected; accession may still be finishing.";
+    case "in_progress":
+      return "At least one analyzer result has arrived for this accession (see Bench).";
+    case "partial":
+      return "Some ordered results are on the bench; others are still expected.";
+    case "complete":
+      return "All expected results are on the bench.";
+    case "released":
+      return "Results for this accession have been released.";
+    case "cancelled":
+      return "This accession was cancelled.";
+    default:
+      return `Accession status: ${raw.replaceAll("_", " ")}`;
+  }
+}
+
+export function SpecimenAccessionStatusChip({
+  status,
+  className,
+}: {
+  status: string | null | undefined;
+  className?: string;
+}) {
+  const { variant, icon: Icon, label } =
+    specimenAccessionStatusVisual(status);
+  return (
+    <Badge
+      variant={variant}
+      className={cn("shrink-0 gap-1 font-normal", className)}
+      title={specimenAccessionStatusHelp(status)}
+    >
+      <Icon className="size-3 shrink-0 opacity-80" aria-hidden />
+      <span>{label}</span>
+    </Badge>
+  );
 }
 
 /** Human-readable flag name, for labels and announcements. */

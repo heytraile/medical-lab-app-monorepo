@@ -2,8 +2,13 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
   UnauthorizedException,
 } from "@nestjs/common";
+import type {
+  BenchCloudAlignment,
+  BenchCloudReconcileResult,
+} from "@drax-lis/contracts";
 import type { ActorSnapshot } from "@drax-lis/contracts";
 import { SupabaseService } from "../supabase/supabase.module";
 import { AuditService } from "../audit/audit.service";
@@ -19,9 +24,21 @@ import type {
 } from "@drax-lis/contracts";
 import {
   assembleReleaseQueueGroups,
+  filterReleasedResultsVerifiedOnEdge,
   mergeReleaseQueueGroups,
   type SpecimenContext,
 } from "./release-queue.helpers";
+import {
+  buildBenchCloudAlignmentPlan,
+  summarizeBenchCloudAlignment,
+  type CloudResultRow,
+  type EdgeBenchRow,
+} from "./bench-cloud-alignment.helpers";
+import {
+  loadEdgeBenchFromApi,
+  loadEdgeBenchFromSqlite,
+} from "./edge-bench-loader";
+import { repairSpecimenPatientLinks } from "./repair-specimen-patient-links";
 import {
   preserveManualEntryAttribution,
   shouldApplyResultBatchUpdate,
@@ -42,9 +59,11 @@ type StoredEvent = {
  * Idempotent ingest of edge outbox events + projection into clinical tables.
  */
 @Injectable()
-export class SyncService {
+export class SyncService implements OnModuleInit {
   private readonly logger = new Logger(SyncService.name);
   private readonly memory = new Map<string, StoredEvent>();
+  /** null until probed; false when local/cloud DB has not run collector migration yet. */
+  private collectorColumnsSupported: boolean | null = null;
 
   constructor(
     private readonly supabase: SupabaseService,
@@ -377,6 +396,9 @@ export class SyncService {
       registeredBy?: string | null;
       registeredBySnapshot?: unknown;
       registeredAt?: string | null;
+      collectedAt?: string | null;
+      collectedByStaffId?: string | null;
+      collectedBySnapshot?: unknown;
     },
   ) {
     const accession = opts.accessionNumber;
@@ -397,30 +419,42 @@ export class SyncService {
         patientUuid = existing.id as string;
       } else if (patient) {
         const mrn = String(patient.mrn ?? `EDGE-${edgePatientId.slice(0, 8)}`);
-        const { data: upserted, error } = await client
+        const patientPatch = {
+          edge_patient_id: edgePatientId,
+          mrn,
+          first_name: String(patient.firstName ?? "Unknown"),
+          middle_name: (patient.middleName as string | null) ?? null,
+          last_name: String(patient.lastName ?? ""),
+          date_of_birth: (patient.dateOfBirth as string | null) ?? null,
+          sex: (patient.sex as string | null) ?? null,
+          identity_origin: String(patient.identityOrigin ?? "upstream"),
+          sync_status: String(patient.syncStatus ?? "n_a"),
+          status: "active",
+          updated_at: new Date().toISOString(),
+        };
+
+        const { data: byMrn } = await client
           .from("patients")
-          .upsert(
-            {
-              edge_patient_id: edgePatientId,
-              mrn,
-              first_name: String(patient.firstName ?? "Unknown"),
-              middle_name: (patient.middleName as string | null) ?? null,
-              last_name: String(patient.lastName ?? ""),
-              date_of_birth: (patient.dateOfBirth as string | null) ?? null,
-              sex: (patient.sex as string | null) ?? null,
-              identity_origin: String(
-                patient.identityOrigin ?? "upstream",
-              ),
-              sync_status: String(patient.syncStatus ?? "n_a"),
-              status: "active",
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "edge_patient_id" },
-          )
           .select("id")
-          .single();
-        if (error) throw error;
-        patientUuid = upserted.id as string;
+          .eq("mrn", mrn)
+          .maybeSingle();
+
+        if (byMrn?.id) {
+          const { error: updateErr } = await client
+            .from("patients")
+            .update(patientPatch)
+            .eq("id", byMrn.id);
+          if (updateErr) throw updateErr;
+          patientUuid = byMrn.id as string;
+        } else {
+          const { data: upserted, error } = await client
+            .from("patients")
+            .upsert(patientPatch, { onConflict: "edge_patient_id" })
+            .select("id")
+            .single();
+          if (error) throw error;
+          patientUuid = upserted.id as string;
+        }
       }
     }
 
@@ -437,6 +471,9 @@ export class SyncService {
         registered_by: opts.registeredBy ?? null,
         registered_by_snapshot: opts.registeredBySnapshot ?? null,
         registered_at: opts.registeredAt ?? new Date().toISOString(),
+        collected_at: opts.collectedAt ?? null,
+        collected_by_staff_id: opts.collectedByStaffId ?? null,
+        collected_by_snapshot: opts.collectedBySnapshot ?? null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "accession_number" },
@@ -649,6 +686,13 @@ export class SyncService {
           ? String(payload.registeredBy)
           : null,
         registeredBySnapshot: payload.registeredBySnapshot ?? null,
+        collectedAt: payload.collectedAt
+          ? String(payload.collectedAt)
+          : null,
+        collectedByStaffId: payload.collectedByStaffId
+          ? String(payload.collectedByStaffId)
+          : null,
+        collectedBySnapshot: payload.collectedBySnapshot ?? null,
       });
       return;
     }
@@ -708,6 +752,8 @@ export class SyncService {
               > | null) ?? null,
             manual_last_edited_at:
               (r.manualLastEditedAt as string | null) ?? null,
+            manual_payload_json:
+              (r.manualPayloadJson as Record<string, string> | null) ?? null,
             observed_at: String(
               r.observedAt ?? new Date().toISOString(),
             ),
@@ -1049,6 +1095,76 @@ export class SyncService {
     };
   }
 
+  private releaseQueueSpecimenSelect(includeDismissed: boolean): string {
+    const collectorFields =
+      this.collectorColumnsSupported !== false
+        ? `
+          collected_at,
+          collected_by_snapshot,`
+        : "";
+    const dismissedField = includeDismissed
+      ? `
+          release_queue_dismissed_at,`
+      : "";
+    return `
+          accession_number,
+          barcode,
+          registered_at,
+          registered_by_snapshot,${collectorFields}
+          patient_json,${dismissedField}
+          submit_missing_expected,
+          patients (
+            edge_patient_id,
+            mrn,
+            first_name,
+            middle_name,
+            last_name,
+            date_of_birth,
+            sex
+          )
+        `;
+  }
+
+  private isMissingCollectorColumnError(error: unknown): boolean {
+    if (!error || typeof error !== "object") return false;
+    const code = (error as { code?: string }).code;
+    const message = String((error as { message?: string }).message ?? "");
+    return (
+      code === "42703" &&
+      /collected_(at|by)/i.test(message)
+    );
+  }
+
+  private async fetchReleaseQueueSpecimens(
+    client: NonNullable<SupabaseService["client"]>,
+    accessions: string[],
+    includeDismissed: boolean,
+  ): Promise<Array<Record<string, unknown>>> {
+    const runQuery = (select: string) =>
+      client
+        .from("specimens")
+        .select(select)
+        .in("accession_number", accessions);
+
+    const select = this.releaseQueueSpecimenSelect(includeDismissed);
+    let { data, error } = await runQuery(select);
+
+    if (error && this.isMissingCollectorColumnError(error)) {
+      this.collectorColumnsSupported = false;
+      this.logger.warn(
+        "specimens.collected_* columns missing — run `supabase migration up`. Release queue will omit collector until migrated.",
+      );
+      ({ data, error } = await runQuery(
+        this.releaseQueueSpecimenSelect(includeDismissed),
+      ));
+    } else if (!error) {
+      this.collectorColumnsSupported = true;
+    }
+
+    if (error) throw error;
+    return (data ?? []) as unknown as Array<Record<string, unknown>>;
+  }
+
   private mapSpecimensToContext(
     specimens: Array<Record<string, unknown>>,
   ): Map<string, SpecimenContext> {
@@ -1068,6 +1184,8 @@ export class SyncService {
             barcode: String(s.barcode),
             registered_at: s.registered_at as string | null,
             registered_by_snapshot: s.registered_by_snapshot,
+            collected_at: s.collected_at as string | null | undefined,
+            collected_by_snapshot: s.collected_by_snapshot,
             patient_json: s.patient_json,
             submit_missing_expected: s.submit_missing_expected,
             patients,
@@ -1127,6 +1245,12 @@ export class SyncService {
           spec.registeredAt ?? spec.registered_at ?? "",
         ),
         registered_by_snapshot: spec.registeredBySnapshot ?? null,
+        collected_at: (spec.collectedAt ?? spec.collected_at) as
+          | string
+          | null
+          | undefined,
+        collected_by_snapshot:
+          spec.collectedBySnapshot ?? spec.collected_by_snapshot ?? null,
         patient_json: patientJson,
         submit_missing_expected: spec.submit_missing_expected ?? null,
         patients,
@@ -1143,6 +1267,184 @@ export class SyncService {
       return `http://127.0.0.1:${process.env.EDGE_ENGINE_PORT ?? "3101"}`;
     }
     return null;
+  }
+
+  async onModuleInit() {
+    if (process.env.NODE_ENV === "production") return;
+    if (process.env.AUTO_RECONCILE_BENCH === "false") return;
+    if (!this.supabase.enabled) return;
+
+    setTimeout(() => {
+      void this.reconcileCloudWithEdgeBench({ source: "startup" })
+        .then((result) => {
+          if (result.issuesBefore === 0) return;
+          this.logger.log(
+            `Bench/cloud reconcile (startup): deleted=${result.deletedByEdgeResultId + result.deletedByCloudId}, reset=${result.reset}`,
+          );
+        })
+        .catch((err) => {
+          this.logger.warn(
+            `Startup bench reconcile skipped: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+    }, 10_000);
+  }
+
+  /** id → status for bench rows; null when edge is unreachable. */
+  private async fetchEdgeResultStatusById(): Promise<Map<string, string> | null> {
+    try {
+      const edgeRows = await this.loadEdgeBenchRows();
+      return new Map(edgeRows.map((row) => [row.id, row.status]));
+    } catch (err) {
+      this.logger.warn(
+        `Edge bench verify skipped: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+  }
+
+  async loadEdgeBenchRows(): Promise<EdgeBenchRow[]> {
+    try {
+      return loadEdgeBenchFromSqlite();
+    } catch (sqliteErr) {
+      const edgeUrl = this.edgeApiUrl();
+      if (!edgeUrl) throw sqliteErr;
+      return loadEdgeBenchFromApi(edgeUrl);
+    }
+  }
+
+  private async loadCloudResultRowsForAlignment(): Promise<CloudResultRow[]> {
+    if (!this.supabase.enabled || !this.supabase.client) return [];
+    const { data, error } = await this.supabase.client
+      .from("results")
+      .select("id, edge_result_id, accession_number, test_code, status");
+    if (error) throw error;
+    return (data ?? []).map((row) => ({
+      id: String(row.id),
+      edge_result_id: (row.edge_result_id as string | null) ?? null,
+      accession_number: String(row.accession_number ?? ""),
+      test_code: String(row.test_code ?? ""),
+      status: String(row.status ?? "pending_review"),
+    }));
+  }
+
+  async getBenchCloudAlignment(): Promise<BenchCloudAlignment> {
+    const edgeRows = await this.loadEdgeBenchRows();
+    const cloudRows = await this.loadCloudResultRowsForAlignment();
+    const plan = buildBenchCloudAlignmentPlan(edgeRows, cloudRows);
+    const summary = summarizeBenchCloudAlignment(edgeRows, cloudRows, plan);
+    return {
+      aligned: summary.aligned,
+      edgeResultCount: summary.edgeResultCount,
+      cloudResultCount: summary.cloudResultCount,
+      staleReleasedCount: summary.staleReleasedCount,
+      orphanCloudCount: summary.orphanCloudCount,
+      issues: summary.issues,
+    };
+  }
+
+  private async reconcileSpecimenPatientLinksFromEdge(): Promise<number> {
+    if (!this.supabase.enabled || !this.supabase.client) return 0;
+    return repairSpecimenPatientLinks(this.supabase.client);
+  }
+
+  async reconcileCloudWithEdgeBench(opts?: {
+    dryRun?: boolean;
+    source?: string;
+  }): Promise<BenchCloudReconcileResult> {
+    const dryRun = opts?.dryRun === true;
+    const source = opts?.source ?? "manual";
+    const edgeRows = await this.loadEdgeBenchRows();
+    const cloudRows = await this.loadCloudResultRowsForAlignment();
+    const plan = buildBenchCloudAlignmentPlan(edgeRows, cloudRows);
+    const issuesBefore = plan.issues.length;
+
+    if (!this.supabase.enabled || !this.supabase.client) {
+      return {
+        aligned: plan.aligned,
+        dryRun,
+        deletedByEdgeResultId: 0,
+        deletedByCloudId: 0,
+        reset: 0,
+        dismissedAccessions: 0,
+        issuesBefore,
+      };
+    }
+
+    const client = this.supabase.client;
+
+    if (dryRun) {
+      return {
+        aligned: plan.aligned,
+        dryRun: true,
+        deletedByEdgeResultId: plan.deleteEdgeResultIds.length,
+        deletedByCloudId: plan.deleteCloudIds.length,
+        reset: plan.resetEdgeResultIds.length,
+        dismissedAccessions: 0,
+        issuesBefore,
+      };
+    }
+
+    let deletedByEdgeResultId = 0;
+    let deletedByCloudId = 0;
+    let reset = 0;
+    let dismissedAccessions = 0;
+
+    if (!plan.aligned) {
+      const { data, error } = await client.rpc("reconcile_bench_cloud_results", {
+      p_delete_edge_result_ids: plan.deleteEdgeResultIds,
+      p_delete_cloud_ids: plan.deleteCloudIds,
+      p_reset_edge_result_ids: plan.resetEdgeResultIds,
+    });
+      if (error) throw error;
+
+      const payload = (data ?? {}) as Record<string, unknown>;
+      deletedByEdgeResultId = Number(payload.deletedByEdgeResultId ?? 0);
+      deletedByCloudId = Number(payload.deletedByCloudId ?? 0);
+      reset = Number(payload.reset ?? 0);
+
+      const affectedAccessions = [
+        ...new Set(plan.issues.map((issue) => issue.accessionNumber)),
+      ];
+      for (const accession of affectedAccessions) {
+        const { data: remainingReleased, error: remainingErr } = await client
+          .from("results")
+          .select("id")
+          .eq("accession_number", accession)
+          .eq("status", "released")
+          .limit(1);
+        if (remainingErr) throw remainingErr;
+        if (remainingReleased?.length) continue;
+
+        const { error: dismissErr } = await client
+          .from("specimens")
+          .update({
+            release_queue_dismissed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("accession_number", accession)
+          .is("release_queue_dismissed_at", null);
+        if (dismissErr) throw dismissErr;
+        dismissedAccessions += 1;
+      }
+    }
+
+    const patientLinksRepaired = await this.reconcileSpecimenPatientLinksFromEdge();
+
+    this.logger.log(
+      `Bench/cloud reconcile (${source}): deleted=${deletedByEdgeResultId + deletedByCloudId}, reset=${reset}, dismissed=${dismissedAccessions}, patientLinks=${patientLinksRepaired}`,
+    );
+
+    const after = await this.getBenchCloudAlignment();
+    return {
+      aligned: after.aligned,
+      dryRun: false,
+      deletedByEdgeResultId,
+      deletedByCloudId,
+      reset,
+      dismissedAccessions,
+      issuesBefore,
+    };
   }
 
   /**
@@ -1197,9 +1499,13 @@ export class SyncService {
 
         const { data: existingSpecimen } = await client
           .from("specimens")
-          .select("accession_number")
+          .select("accession_number, release_queue_dismissed_at")
           .eq("accession_number", accession)
           .maybeSingle();
+
+        if (existingSpecimen?.release_queue_dismissed_at) {
+          continue;
+        }
 
         if (!existingSpecimen) {
           await this.upsertSpecimenRegistration(client, {
@@ -1332,6 +1638,13 @@ export class SyncService {
   }
 
   async listReleaseQueue(): Promise<ReleaseQueueGroup[]> {
+    try {
+      await this.reconcileEdgeReleasedToCloud();
+    } catch (err) {
+      this.logger.warn(
+        `Edge→cloud release reconcile before queue list failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     const pending = await this.listPendingAuthorizationQueueGroups();
     const released = await this.listReleasedReadyToSendQueueGroups();
     return mergeReleaseQueueGroups(pending, released);
@@ -1355,33 +1668,15 @@ export class SyncService {
         ...new Set(results.map((r) => String(r.accession_number))),
       ];
 
-      const { data: specimens, error: specErr } = await client
-        .from("specimens")
-        .select(
-          `
-          accession_number,
-          barcode,
-          registered_at,
-          registered_by_snapshot,
-          patient_json,
-          submit_missing_expected,
-          patients (
-            edge_patient_id,
-            mrn,
-            first_name,
-            middle_name,
-            last_name,
-            date_of_birth,
-            sex
-          )
-        `,
-        )
-        .in("accession_number", accessions);
-      if (specErr) throw specErr;
+      const specimens = await this.fetchReleaseQueueSpecimens(
+        client,
+        accessions,
+        false,
+      );
 
       return assembleReleaseQueueGroups(
         results,
-        this.mapSpecimensToContext(specimens ?? []),
+        this.mapSpecimensToContext(specimens),
         "pending_authorization",
       );
     }
@@ -1433,52 +1728,48 @@ export class SyncService {
   }
 
   private async listReleasedReadyToSendQueueGroups(): Promise<ReleaseQueueGroup[]> {
-    await this.reconcileEdgeReleasedToCloud();
-
     if (this.supabase.enabled && this.supabase.client) {
       const client = this.supabase.client;
-      const { data: results, error: resErr } = await client
+      const { data: rawResults, error: resErr } = await client
         .from("results")
         .select(
-          "id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, released_at, released_by_snapshot, manual_entered_by_snapshot, manual_entered_at, manual_last_edited_by_snapshot, manual_last_edited_at",
+          "id, edge_result_id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, released_at, released_by_snapshot, manual_entered_by_snapshot, manual_entered_at, manual_last_edited_by_snapshot, manual_last_edited_at",
         )
         .eq("status", "released")
         .order("released_at", { ascending: false })
         .limit(500);
       if (resErr) throw resErr;
-      if (!results?.length) return [];
+      if (!rawResults?.length) return [];
+
+      const edgeStatusById = await this.fetchEdgeResultStatusById();
+      if (!edgeStatusById) {
+        this.logger.warn(
+          `Ready queue: edge bench unreachable — hiding ${rawResults.length} cloud released row(s) until bench is verified`,
+        );
+      }
+      const results = filterReleasedResultsVerifiedOnEdge(
+        rawResults,
+        edgeStatusById,
+      );
+      if (edgeStatusById && results.length < rawResults.length) {
+        this.logger.log(
+          `Ready queue: hid ${rawResults.length - results.length} stale cloud released row(s) not verified on edge bench`,
+        );
+      }
+      if (!results.length) return [];
 
       const accessions = [
         ...new Set(results.map((r) => String(r.accession_number))),
       ];
 
-      const { data: specimens, error: specErr } = await client
-        .from("specimens")
-        .select(
-          `
-          accession_number,
-          barcode,
-          registered_at,
-          registered_by_snapshot,
-          patient_json,
-          release_queue_dismissed_at,
-          submit_missing_expected,
-          patients (
-            edge_patient_id,
-            mrn,
-            first_name,
-            middle_name,
-            last_name,
-            date_of_birth,
-            sex
-          )
-        `,
-        )
-        .in("accession_number", accessions);
-      if (specErr) throw specErr;
+      const specimens = await this.fetchReleaseQueueSpecimens(
+        client,
+        accessions,
+        true,
+      );
 
       const dismissedAccessions = new Set(
-        (specimens ?? [])
+        specimens
           .filter((s) => s.release_queue_dismissed_at != null)
           .map((s) => String(s.accession_number)),
       );
@@ -1487,7 +1778,7 @@ export class SyncService {
       );
       if (!activeResults.length) return [];
 
-      const activeSpecimens = (specimens ?? []).filter(
+      const activeSpecimens = specimens.filter(
         (s) => s.release_queue_dismissed_at == null,
       );
 
@@ -1684,7 +1975,8 @@ export class SyncService {
     }
 
     if (this.supabase.enabled && this.supabase.client) {
-      const { data, error } = await this.supabase.client
+      const client = this.supabase.client;
+      const { data, error } = await client
         .from("results")
         .update({
           status: "released",
@@ -1702,6 +1994,35 @@ export class SyncService {
           "No pending results found for accession or already released",
         );
       }
+
+      // Re-show on Ready after a prior dismiss; ensure a specimen row exists for grouping.
+      await client
+        .from("specimens")
+        .update({
+          release_queue_dismissed_at: null,
+          updated_at: now,
+        })
+        .eq("accession_number", accession);
+
+      const { data: specimenRow } = await client
+        .from("specimens")
+        .select("accession_number")
+        .eq("accession_number", accession)
+        .maybeSingle();
+      if (!specimenRow) {
+        const { data: sampleResult } = await client
+          .from("results")
+          .select("barcode, test_code")
+          .eq("accession_number", accession)
+          .limit(1)
+          .maybeSingle();
+        await this.upsertSpecimenRegistration(client, {
+          accessionNumber: accession,
+          barcode: String(sampleResult?.barcode ?? accession),
+          orderedTests: [],
+        });
+      }
+
       return {
         accessionNumber: accession,
         releasedCount: data.length,

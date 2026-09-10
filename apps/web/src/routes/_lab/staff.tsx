@@ -168,7 +168,7 @@ function StaffPage() {
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <StaffRoleBadge role={member.role} />
-                  <StaffJobTitleBadge jobTitle={member.jobTitle} />
+                  <StaffJobTitleBadge title={member.jobTitle} />
                   <Badge variant={member.isActive ? "ok" : "muted"}>
                     {member.isActive ? "Active" : "Inactive"}
                   </Badge>

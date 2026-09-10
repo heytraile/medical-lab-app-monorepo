@@ -17,6 +17,7 @@ export type LabelPayload = {
   dateOfBirth?: string | null;
   orderedTests?: string[];
   specimenType?: string;
+  departmentLabel?: string;
   mrn?: string;
 };
 
@@ -121,6 +122,7 @@ export class PrinterService {
         dateOfBirth: opts.dateOfBirth,
         orderedTests: opts.orderedTests,
         specimenType: opts.specimenType,
+        departmentLabel: opts.departmentLabel,
         mrn: opts.mrn,
       },
       this.labelSize,
@@ -134,8 +136,8 @@ export class PrinterService {
       patientName: "Test Patient",
       barcode: "DH202608260001",
       dateOfBirth: "1980-01-01",
-      orderedTests: ["CBC", "BMP"],
       specimenType: "blood",
+      departmentLabel: "Blood Chemistry",
       mrn: "MRN-TEST",
     });
   }

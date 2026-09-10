@@ -1,3 +1,4 @@
+import { CATALOG_CATEGORY_ORDER } from "@drax-lis/catalog";
 import type { SpecimenOrderedTest, SpecimenRow } from "./api";
 
 export type OrderSelectionSnapshot = {
@@ -6,16 +7,18 @@ export type OrderSelectionSnapshot = {
 };
 
 export type AccessionSession = {
-  /** Stable key for list selection (batch / requisition / single id). */
+  /** Stable key for list selection (batch / requisition / accession). */
   key: string;
   tubes: SpecimenRow[];
-  /** Earliest accession in the batch (primary tube). */
+  /** Earliest container in the session (primary routing label). */
   primary: SpecimenRow;
   registeredAt: string;
   specimenTypes: string[];
+  departmentLabels: string[];
   orderedTests: SpecimenOrderedTest[];
   /** Original Accession ticks (panels and/or individual tests). */
   orderedSelections: OrderSelectionSnapshot[];
+  /** One accession number per doctor form. */
   accessionNumbers: string[];
 };
 
@@ -39,6 +42,10 @@ function specimenTests(row: SpecimenRow): SpecimenOrderedTest[] {
 }
 
 function sessionKeyFor(row: SpecimenRow): string {
+  // One doctor form → one accession; department routing labels share it.
+  if (row.accessionNumber?.trim()) {
+    return `acc:${row.accessionNumber.trim().toUpperCase()}`;
+  }
   if (row.registrationBatchId?.trim()) {
     return `batch:${row.registrationBatchId.trim()}`;
   }
@@ -85,25 +92,32 @@ function mergeOrderedSelections(
   return out;
 }
 
-const SPECIMEN_TYPE_ORDER = ["blood", "serum", "urine", "stool", "other"];
+const COLLECTION_TYPE_ORDER = ["blood", "urine", "stool", "other"];
 
 function sortTubes(a: SpecimenRow, b: SpecimenRow): number {
-  const ai = SPECIMEN_TYPE_ORDER.indexOf(
-    (a.specimenType ?? "blood").toLowerCase(),
+  const aKey = a.departmentKey ?? "";
+  const bKey = b.departmentKey ?? "";
+  const ai = CATALOG_CATEGORY_ORDER.indexOf(
+    aKey as (typeof CATALOG_CATEGORY_ORDER)[number],
   );
-  const bi = SPECIMEN_TYPE_ORDER.indexOf(
-    (b.specimenType ?? "blood").toLowerCase(),
+  const bi = CATALOG_CATEGORY_ORDER.indexOf(
+    bKey as (typeof CATALOG_CATEGORY_ORDER)[number],
   );
   const ao = ai === -1 ? 99 : ai;
   const bo = bi === -1 ? 99 : bi;
   if (ao !== bo) return ao - bo;
-  return a.accessionNumber.localeCompare(b.accessionNumber);
+  const aiType = COLLECTION_TYPE_ORDER.indexOf(
+    (a.collectionType ?? a.specimenType ?? "blood").toLowerCase(),
+  );
+  const biType = COLLECTION_TYPE_ORDER.indexOf(
+    (b.collectionType ?? b.specimenType ?? "blood").toLowerCase(),
+  );
+  if (aiType !== biType) return aiType - biType;
+  return a.id.localeCompare(b.id);
 }
 
 /**
- * Group flat specimen/tube rows into Accession sessions (one submit → N tubes).
- * Panels that expand across blood/serum/urine used to look like separate
- * wrong orders when listed flat (urine often appeared first).
+ * Group flat routing-label rows into Accession sessions (one form → one accession).
  */
 export function groupSpecimensIntoSessions(
   rows: SpecimenRow[],
@@ -126,18 +140,29 @@ export function groupSpecimensIntoSessions(
     );
     const types = [
       ...new Set(
-        sorted.map((t) => (t.specimenType?.trim() || "blood").toLowerCase()),
+        sorted.map((t) =>
+          (t.collectionType ?? t.specimenType ?? "blood").toLowerCase(),
+        ),
       ),
     ];
+    const departmentLabels = [
+      ...new Set(
+        sorted
+          .map((t) => t.departmentLabel?.trim())
+          .filter((label): label is string => Boolean(label)),
+      ),
+    ];
+    const accessionNumber = primary.accessionNumber;
     sessions.push({
       key,
       tubes: sorted,
       primary,
       registeredAt,
       specimenTypes: types,
+      departmentLabels,
       orderedTests: mergeOrderedTests(sorted),
       orderedSelections: mergeOrderedSelections(sorted),
-      accessionNumbers: sorted.map((t) => t.accessionNumber),
+      accessionNumbers: accessionNumber ? [accessionNumber] : [],
     });
   }
 

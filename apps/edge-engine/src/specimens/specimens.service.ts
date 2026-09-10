@@ -24,6 +24,7 @@ type IdentityConfirmation = {
 type CollectorInput = {
   collectedByStaffId?: string;
   collectedBy?: string;
+  collectedByJobTitle?: string;
 };
 
 type OrderSelectionInput = {
@@ -54,7 +55,10 @@ type BatchRegisterInput = {
   collectedAt?: string;
   selections?: OrderSelectionInput[];
   specimens: Array<{
-    specimenType: string;
+    departmentKey?: string;
+    departmentLabel?: string;
+    collectionType?: string;
+    specimenType?: string;
     orderedTests: Array<{ code: string; name?: string }>;
   }>;
 } & CollectorInput;
@@ -84,6 +88,8 @@ type CreatedSpecimen = {
   accessionNumber: string;
   barcode: string;
   orderedTests: Array<{ code: string; name?: string }>;
+  departmentLabel: string;
+  collectionType: string;
 };
 
 @Injectable()
@@ -100,12 +106,15 @@ export class SpecimensService {
     return this.listEnriched(opts);
   }
 
-  findByAccession(accessionNumber: string) {
-    return this.prisma.specimen
-      .findUnique({
-        where: { accessionNumber },
-      })
-      .then((row) => (row ? this.toListItem(row) : null));
+  async findByAccession(accessionNumber: string) {
+    const accession = await this.prisma.accession.findUnique({
+      where: { accessionNumber },
+      include: {
+        specimens: { orderBy: { departmentKey: "asc" } },
+      },
+    });
+    if (!accession) return null;
+    return this.toAccessionListItem(accession);
   }
 
   private async listEnriched(opts?: { q?: string }) {
@@ -144,13 +153,83 @@ export class SpecimensService {
     return false;
   }
 
+  private toAccessionListItem(accession: {
+    id: string;
+    accessionNumber: string;
+    patientId: string | null;
+    patientJson: string | null;
+    identityConfirmationJson: string | null;
+    orderedTestsJson: string;
+    orderedSelectionsJson: string;
+    requisitionId: string | null;
+    status: string;
+    collectedAt: Date | null;
+    collectedByStaffId: string | null;
+    collectedBySnapshot: string | null;
+    registeredAt: Date;
+    registeredBy: string | null;
+    registeredBySnapshot: string | null;
+    specimens: Array<{
+      id: string;
+      barcode: string;
+      departmentKey: string;
+      departmentLabel: string;
+      collectionType: string;
+      specimenType: string;
+      orderedTestsJson: string;
+      registrationBatchId: string | null;
+    }>;
+  }) {
+    const primary = accession.specimens[0];
+    return {
+      ...this.toListItem({
+        id: primary?.id ?? accession.id,
+        accessionId: accession.id,
+        accessionNumber: accession.accessionNumber,
+        barcode: primary?.barcode ?? accession.accessionNumber,
+        patientId: accession.patientId,
+        patientJson: accession.patientJson,
+        identityConfirmationJson: accession.identityConfirmationJson,
+        departmentKey: primary?.departmentKey ?? "general",
+        departmentLabel: primary?.departmentLabel ?? "General",
+        collectionType: primary?.collectionType ?? "blood",
+        specimenType: primary?.specimenType ?? "blood",
+        orderedTestsJson: accession.orderedTestsJson,
+        requisitionId: accession.requisitionId,
+        registrationBatchId: primary?.registrationBatchId ?? null,
+        orderedSelectionsJson: accession.orderedSelectionsJson,
+        status: accession.status,
+        collectedAt: accession.collectedAt,
+        collectedByStaffId: accession.collectedByStaffId,
+        collectedBySnapshot: accession.collectedBySnapshot,
+        registeredAt: accession.registeredAt,
+        registeredBy: accession.registeredBy,
+        registeredBySnapshot: accession.registeredBySnapshot,
+      }),
+      containerCount: accession.specimens.length,
+      containers: accession.specimens.map((s) => ({
+        id: s.id,
+        departmentKey: s.departmentKey,
+        departmentLabel: s.departmentLabel,
+        collectionType: s.collectionType,
+        specimenType: s.specimenType,
+        barcode: s.barcode,
+        orderedTestsJson: s.orderedTestsJson,
+      })),
+    };
+  }
+
   private toListItem(row: {
     id: string;
+    accessionId?: string;
     accessionNumber: string;
     barcode: string;
     patientId: string | null;
     patientJson: string | null;
     identityConfirmationJson: string | null;
+    departmentKey?: string;
+    departmentLabel?: string;
+    collectionType?: string;
     specimenType: string;
     orderedTestsJson: string;
     requisitionId: string | null;
@@ -252,11 +331,15 @@ export class SpecimensService {
 
     return {
       id: row.id,
+      accessionId: row.accessionId,
       accessionNumber: row.accessionNumber,
       barcode: row.barcode,
       patientId: row.patientId,
       patientJson: row.patientJson,
       identityConfirmationJson: row.identityConfirmationJson,
+      departmentKey: row.departmentKey,
+      departmentLabel: row.departmentLabel,
+      collectionType: row.collectionType ?? row.specimenType,
       specimenType: row.specimenType,
       orderedTestsJson: row.orderedTestsJson,
       orderedTests,
@@ -298,10 +381,12 @@ export class SpecimensService {
   private collectorSnapshot(input: CollectorInput): string | null {
     const staffId = input.collectedByStaffId?.trim();
     const fullName = input.collectedBy?.trim();
+    const jobTitle = input.collectedByJobTitle?.trim();
     if (!staffId && !fullName) return null;
     return JSON.stringify({
       staffId: staffId || undefined,
       fullName: fullName || undefined,
+      jobTitle: jobTitle || undefined,
     });
   }
 
@@ -311,6 +396,7 @@ export class SpecimensService {
   ) {
     const resolved = await this.resolveRegistration(input);
     const orderedTests = input.orderedTests ?? [];
+    const collectionType = input.specimenType?.trim() || "blood";
 
     const accessionNumber =
       input.accessionNumber ?? (await this.nextAccessionNumber());
@@ -319,37 +405,73 @@ export class SpecimensService {
     const collectedBySnapshot = this.collectorSnapshot(input);
     const orderedSelections = this.normalizeSelections(input.selections);
 
-    const specimen = await this.prisma.specimen.create({
-      data: this.specimenCreateData({
-        accessionNumber,
-        barcode,
-        patientId: resolved.patient.id,
-        patientPayload: resolved.patientPayload,
-        identityConfirmationJson: resolved.identityConfirmationJson,
-        orderedTests,
-        orderedSelections,
-        requisitionId: input.requisitionId,
-        registrationBatchId,
-        specimenType: input.specimenType,
-        collectedAt: input.collectedAt,
-        collectedByStaffId: input.collectedByStaffId?.trim() || null,
-        collectedBySnapshot,
-        actor,
-      }),
-    });
+    const { accession, specimen } = await this.prisma.$transaction(
+      async (tx) => {
+        const accession = await tx.accession.create({
+          data: this.accessionCreateData({
+            accessionNumber,
+            patientId: resolved.patient.id,
+            patientPayload: resolved.patientPayload,
+            identityConfirmationJson: resolved.identityConfirmationJson,
+            orderedTests,
+            orderedSelections,
+            requisitionId: input.requisitionId,
+            collectedAt: input.collectedAt,
+            collectedByStaffId: input.collectedByStaffId?.trim() || null,
+            collectedBySnapshot,
+            actor,
+          }),
+        });
+        const specimen = await tx.specimen.create({
+          data: this.specimenCreateData({
+            accessionId: accession.id,
+            accessionNumber,
+            barcode,
+            patientId: resolved.patient.id,
+            patientPayload: resolved.patientPayload,
+            identityConfirmationJson: resolved.identityConfirmationJson,
+            departmentKey: "general",
+            departmentLabel: "General",
+            collectionType,
+            orderedTests,
+            orderedSelections,
+            requisitionId: input.requisitionId,
+            registrationBatchId,
+            collectedAt: input.collectedAt,
+            collectedByStaffId: input.collectedByStaffId?.trim() || null,
+            collectedBySnapshot,
+            actor,
+          }),
+        });
+        return { accession, specimen };
+      },
+    );
 
-    const { labelPreview, printResult } = await this.finalizeSpecimen({
+    const { labelPreview, printResult } = await this.finalizeContainer({
+      accession,
       specimen,
-      accessionNumber,
-      barcode,
       patient: resolved.patient,
       patientName: resolved.patientName,
       patientPayload: resolved.patientPayload,
       orderedTests,
+      departmentLabel: "General",
+      collectionType,
       identityConfirmationJson: resolved.identityConfirmationJson,
       printLabel: input.printLabel,
       copies: input.copies,
       actor,
+      syncAccession: true,
+      allOrderedTests: orderedTests,
+      containers: [
+        {
+          departmentKey: "general",
+          departmentLabel: "General",
+          collectionType,
+          orderedTests,
+          barcode,
+          specimenId: specimen.id,
+        },
+      ],
     });
 
     await this.maybeQueueIdentityReview(resolved, accessionNumber, actor);
@@ -371,7 +493,28 @@ export class SpecimensService {
     const collectedByStaffId = input.collectedByStaffId?.trim() || null;
     const orderedSelections = this.normalizeSelections(input.selections);
 
+    const allOrderedTests = this.mergeOrderedTests(
+      input.specimens.map((g) => g.orderedTests ?? []),
+    );
+
     const created = await this.prisma.$transaction(async (tx) => {
+      const accessionNumber = await this.nextAccessionNumber(tx);
+      const accession = await tx.accession.create({
+        data: this.accessionCreateData({
+          accessionNumber,
+          patientId: resolved.patient.id,
+          patientPayload: resolved.patientPayload,
+          identityConfirmationJson: resolved.identityConfirmationJson,
+          orderedTests: allOrderedTests,
+          orderedSelections,
+          requisitionId: input.requisitionId,
+          collectedAt: input.collectedAt,
+          collectedByStaffId,
+          collectedBySnapshot,
+          actor,
+        }),
+      });
+
       const results: CreatedSpecimen[] = [];
       for (const group of input.specimens) {
         const orderedTests = group.orderedTests ?? [];
@@ -380,29 +523,39 @@ export class SpecimensService {
             "Each specimen must include at least one ordered test",
           );
         }
-        const accessionNumber = await this.nextAccessionNumber(tx);
+        const routing = this.normalizeRoutingGroup(group);
         const barcode = accessionNumber;
         const specimen = await tx.specimen.create({
           data: this.specimenCreateData({
+            accessionId: accession.id,
             accessionNumber,
             barcode,
             patientId: resolved.patient.id,
             patientPayload: resolved.patientPayload,
             identityConfirmationJson: resolved.identityConfirmationJson,
+            departmentKey: routing.departmentKey,
+            departmentLabel: routing.departmentLabel,
+            collectionType: routing.collectionType,
             orderedTests,
             orderedSelections,
             requisitionId: input.requisitionId,
             registrationBatchId,
-            specimenType: group.specimenType,
             collectedAt: input.collectedAt,
             collectedByStaffId,
             collectedBySnapshot,
             actor,
           }),
         });
-        results.push({ specimen, accessionNumber, barcode, orderedTests });
+        results.push({
+          specimen,
+          accessionNumber,
+          barcode,
+          orderedTests,
+          departmentLabel: routing.departmentLabel,
+          collectionType: routing.collectionType,
+        });
       }
-      return results;
+      return { accession, results, accessionNumber };
     });
 
     const specimens = [];
@@ -420,19 +573,33 @@ export class SpecimensService {
       | undefined
     > = [];
 
-    for (const item of created) {
-      const finalized = await this.finalizeSpecimen({
+    const containerPayload = created.results.map((item) => ({
+      departmentKey: item.specimen.departmentKey,
+      departmentLabel: item.departmentLabel,
+      collectionType: item.collectionType,
+      orderedTests: item.orderedTests,
+      barcode: item.barcode,
+      specimenId: item.specimen.id,
+    }));
+
+    for (let i = 0; i < created.results.length; i++) {
+      const item = created.results[i]!;
+      const finalized = await this.finalizeContainer({
+        accession: created.accession,
         specimen: item.specimen,
-        accessionNumber: item.accessionNumber,
-        barcode: item.barcode,
         patient: resolved.patient,
         patientName: resolved.patientName,
         patientPayload: resolved.patientPayload,
         orderedTests: item.orderedTests,
+        departmentLabel: item.departmentLabel,
+        collectionType: item.collectionType,
         identityConfirmationJson: resolved.identityConfirmationJson,
         printLabel: input.printLabel,
         copies: input.copies,
         actor,
+        syncAccession: i === 0,
+        allOrderedTests,
+        containers: containerPayload,
       });
       specimens.push(item.specimen);
       labelPreviews.push(finalized.labelPreview);
@@ -441,24 +608,26 @@ export class SpecimensService {
 
     await this.maybeQueueIdentityReview(
       resolved,
-      created[0]?.accessionNumber ?? "",
+      created.accessionNumber,
       actor,
     );
 
-    return { specimens, labelPreviews, printResults };
+    return {
+      accessionNumber: created.accessionNumber,
+      specimens,
+      labelPreviews,
+      printResults,
+    };
   }
 
-  private specimenCreateData(args: {
+  private accessionCreateData(args: {
     accessionNumber: string;
-    barcode: string;
     patientId: string;
     patientPayload: ResolvedRegistration["patientPayload"];
     identityConfirmationJson: string | null;
     orderedTests: Array<{ code: string; name?: string }>;
     orderedSelections: OrderSelectionInput[];
     requisitionId?: string;
-    registrationBatchId: string;
-    specimenType?: string;
     collectedAt?: string;
     collectedByStaffId: string | null;
     collectedBySnapshot: string | null;
@@ -466,15 +635,12 @@ export class SpecimensService {
   }) {
     return {
       accessionNumber: args.accessionNumber,
-      barcode: args.barcode,
       patientId: args.patientId,
       patientJson: JSON.stringify(args.patientPayload),
       identityConfirmationJson: args.identityConfirmationJson,
       orderedTestsJson: JSON.stringify(args.orderedTests),
       orderedSelectionsJson: JSON.stringify(args.orderedSelections),
       requisitionId: args.requisitionId?.trim() || null,
-      registrationBatchId: args.registrationBatchId,
-      specimenType: args.specimenType?.trim() || "blood",
       collectedAt: args.collectedAt ? new Date(args.collectedAt) : null,
       collectedByStaffId: args.collectedByStaffId,
       collectedBySnapshot: args.collectedBySnapshot,
@@ -482,6 +648,85 @@ export class SpecimensService {
       registeredBy: args.actor?.userId ?? null,
       registeredBySnapshot: args.actor ? JSON.stringify(args.actor) : null,
     };
+  }
+
+  private specimenCreateData(args: {
+    accessionId: string;
+    accessionNumber: string;
+    barcode: string;
+    patientId: string;
+    patientPayload: ResolvedRegistration["patientPayload"];
+    identityConfirmationJson: string | null;
+    departmentKey: string;
+    departmentLabel: string;
+    collectionType: string;
+    orderedTests: Array<{ code: string; name?: string }>;
+    orderedSelections: OrderSelectionInput[];
+    requisitionId?: string;
+    registrationBatchId: string;
+    collectedAt?: string;
+    collectedByStaffId: string | null;
+    collectedBySnapshot: string | null;
+    actor: ActorSnapshot | null;
+  }) {
+    const collectionType = args.collectionType?.trim() || "blood";
+    return {
+      accessionId: args.accessionId,
+      accessionNumber: args.accessionNumber,
+      barcode: args.barcode,
+      patientId: args.patientId,
+      patientJson: JSON.stringify(args.patientPayload),
+      identityConfirmationJson: args.identityConfirmationJson,
+      departmentKey: args.departmentKey,
+      departmentLabel: args.departmentLabel,
+      collectionType,
+      specimenType: collectionType,
+      orderedTestsJson: JSON.stringify(args.orderedTests),
+      orderedSelectionsJson: JSON.stringify(args.orderedSelections),
+      requisitionId: args.requisitionId?.trim() || null,
+      registrationBatchId: args.registrationBatchId,
+      collectedAt: args.collectedAt ? new Date(args.collectedAt) : null,
+      collectedByStaffId: args.collectedByStaffId,
+      collectedBySnapshot: args.collectedBySnapshot,
+      status: "registered" as const,
+      registeredBy: args.actor?.userId ?? null,
+      registeredBySnapshot: args.actor ? JSON.stringify(args.actor) : null,
+    };
+  }
+
+  private normalizeRoutingGroup(group: BatchRegisterInput["specimens"][number]) {
+    const collectionType =
+      group.collectionType?.trim() ||
+      group.specimenType?.trim() ||
+      "blood";
+    const departmentKey =
+      group.departmentKey?.trim() ||
+      group.departmentLabel?.trim().toLowerCase().replace(/\s+/g, "_") ||
+      collectionType;
+    const departmentLabel =
+      group.departmentLabel?.trim() ||
+      departmentKey
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    return { departmentKey, departmentLabel, collectionType };
+  }
+
+  private mergeOrderedTests(
+    groups: Array<Array<{ code: string; name?: string }>>,
+  ): Array<{ code: string; name?: string }> {
+    const seen = new Set<string>();
+    const out: Array<{ code: string; name?: string }> = [];
+    for (const tests of groups) {
+      for (const test of tests) {
+        const code = test.code?.trim();
+        if (!code) continue;
+        const key = code.toUpperCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ code, name: test.name?.trim() || undefined });
+      }
+    }
+    return out;
   }
 
   private async resolveRegistration(input: {
@@ -606,74 +851,101 @@ export class SpecimensService {
     });
   }
 
-  private async finalizeSpecimen(args: {
+  private async finalizeContainer(args: {
+    accession: Awaited<ReturnType<PrismaService["accession"]["create"]>>;
     specimen: Awaited<ReturnType<PrismaService["specimen"]["create"]>>;
-    accessionNumber: string;
-    barcode: string;
     patient: ResolvedRegistration["patient"];
     patientName: string;
     patientPayload: ResolvedRegistration["patientPayload"];
     orderedTests: Array<{ code: string; name?: string }>;
+    departmentLabel: string;
+    collectionType: string;
     identityConfirmationJson: string | null;
     printLabel?: boolean;
     copies?: number;
     actor: ActorSnapshot | null;
+    syncAccession: boolean;
+    allOrderedTests: Array<{ code: string; name?: string }>;
+    containers: Array<{
+      departmentKey: string;
+      departmentLabel: string;
+      collectionType: string;
+      orderedTests: Array<{ code: string; name?: string }>;
+      barcode: string;
+      specimenId: string;
+    }>;
   }) {
     const {
+      accession,
       specimen,
-      accessionNumber,
-      barcode,
       patient,
       patientName,
       patientPayload,
       orderedTests,
+      departmentLabel,
+      collectionType,
       identityConfirmationJson,
       printLabel,
       copies,
       actor,
+      syncAccession,
+      allOrderedTests,
+      containers,
     } = args;
 
-    await this.sync.enqueue({
-      type: "specimen.registered",
-      payload: {
+    const accessionNumber = accession.accessionNumber;
+    const barcode = specimen.barcode;
+
+    if (syncAccession) {
+      await this.sync.enqueue({
+        type: "specimen.registered",
+        payload: {
+          accessionNumber,
+          barcode: accessionNumber,
+          patientId: patient.id,
+          patientName,
+          patient: patientPayload,
+          specimenType: collectionType,
+          orderedTests: allOrderedTests,
+          containers,
+          requisitionId: accession.requisitionId,
+          registrationBatchId: specimen.registrationBatchId,
+          orderedSelections: (() => {
+            try {
+              return JSON.parse(accession.orderedSelectionsJson || "[]");
+            } catch {
+              return [];
+            }
+          })(),
+          collectedAt: accession.collectedAt?.toISOString() ?? null,
+          collectedByStaffId: accession.collectedByStaffId,
+          collectedBySnapshot: accession.collectedBySnapshot
+            ? JSON.parse(accession.collectedBySnapshot)
+            : null,
+          identityConfirmation: identityConfirmationJson
+            ? JSON.parse(identityConfirmationJson)
+            : null,
+          registeredBy: actor?.userId ?? null,
+          registeredBySnapshot: actor ?? null,
+        },
+      });
+
+      this.realtime.emitBenchEvent({
+        type: "specimen.registered",
         accessionNumber,
-        barcode,
-        patientId: patient.id,
+        barcode: accessionNumber,
         patientName,
-        patient: patientPayload,
-        specimenType: specimen.specimenType,
-        orderedTests,
-        requisitionId: specimen.requisitionId,
-        registrationBatchId: specimen.registrationBatchId,
-        orderedSelections: (() => {
-          try {
-            const raw = (specimen as { orderedSelectionsJson?: string | null })
-              .orderedSelectionsJson;
-            return JSON.parse(raw || "[]");
-          } catch {
-            return [];
-          }
-        })(),
-        collectedAt: specimen.collectedAt?.toISOString() ?? null,
-        collectedByStaffId: specimen.collectedByStaffId,
-        collectedBySnapshot: specimen.collectedBySnapshot
-          ? JSON.parse(specimen.collectedBySnapshot)
-          : null,
-        identityConfirmation: identityConfirmationJson
-          ? JSON.parse(identityConfirmationJson)
-          : null,
-        registeredBy: actor?.userId ?? null,
-        registeredBySnapshot: actor ?? null,
-      },
-    });
+        at: new Date().toISOString(),
+      });
+    }
 
     const labelPayload = {
       accessionNumber,
       patientName,
       barcode,
       dateOfBirth: patient.dateOfBirth,
-      orderedTests: orderedTests.map((t) => t.code),
-      specimenType: specimen.specimenType,
+      specimenType: collectionType,
+      departmentLabel,
       mrn: patient.mrn,
     };
     const built = this.printer.buildSpecimenLabel(labelPayload);
@@ -693,14 +965,6 @@ export class SpecimensService {
       const sent = await this.printer.printZpl(built.zpl, copies);
       printResult = { ...sent, zpl: built.zpl, fields: built.fields };
     }
-
-    this.realtime.emitBenchEvent({
-      type: "specimen.registered",
-      accessionNumber,
-      barcode,
-      patientName,
-      at: new Date().toISOString(),
-    });
 
     return { labelPreview, printResult };
   }

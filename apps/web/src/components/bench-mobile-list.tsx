@@ -130,12 +130,12 @@ export function BenchMobileList({
                   patientId ? `Open ${name} in patient panel` : undefined
                 }
               >
-                <div className="flex items-center gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   <AlarmSign flag={summary.worstFlag} />
                   {summary.patient ? (
                     <span
                       className={cn(
-                        "rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight whitespace-nowrap",
+                        "min-w-0 truncate rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight",
                         open
                           ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
                           : "bg-muted",
@@ -145,7 +145,7 @@ export function BenchMobileList({
                       {name}
                     </span>
                   ) : (
-                    <span className="rounded-md bg-muted px-2 py-1 font-mono text-sm font-bold leading-snug whitespace-nowrap">
+                    <span className="min-w-0 truncate rounded-md bg-muted px-2 py-1 font-mono text-sm font-bold leading-snug">
                       {name}
                     </span>
                   )}

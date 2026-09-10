@@ -5,53 +5,33 @@ import type { ExpandedOrderedTest } from "./expand-selection";
 
 function test(
   code: string,
+  category: string,
   specimenHint?: string,
 ): ExpandedOrderedTest {
-  return { code, name: code, specimenHint };
+  return { code, name: code, category, specimenHint };
 }
 
-describe("groupTestsBySpecimenBucket", () => {
-  it("returns one serum group for serum-only tests", () => {
+describe("groupTestsBySpecimenBucket (deprecated alias)", () => {
+  it("groups chemistry tests under Blood Chemistry department", () => {
     const groups = groupTestsBySpecimenBucket([
-      test("CREATININE", "serum"),
-      test("GLUCOSE_RAND", "serum"),
+      test("CREATININE", "blood_chemistry", "blood"),
+      test("GLUCOSE_RAND", "blood_chemistry", "blood"),
     ]);
     assert.equal(groups.length, 1);
-    assert.equal(groups[0]?.specimenType, "serum");
-    assert.equal(groups[0]?.tests.length, 2);
+    assert.equal(groups[0]?.departmentKey, "blood_chemistry");
+    assert.equal(groups[0]?.collectionType, "blood");
   });
 
-  it("splits CBC + BMP + UA into blood, serum, and urine", () => {
+  it("splits Executive-style order by department, not serum bucket", () => {
     const groups = groupTestsBySpecimenBucket([
-      test("CBC", "blood"),
-      test("CREATININE", "serum"),
-      test("URINALYSIS_COMPLETE", "urine"),
-    ]);
-    assert.equal(groups.length, 3);
-    assert.deepEqual(
-      groups.map((g) => g.specimenType),
-      ["blood", "serum", "urine"],
-    );
-    assert.equal(groups[0]?.tests[0]?.code, "CBC");
-    assert.equal(groups[1]?.tests[0]?.code, "CREATININE");
-    assert.equal(groups[2]?.tests[0]?.code, "URINALYSIS_COMPLETE");
-  });
-
-  it("defaults missing hints to blood", () => {
-    const groups = groupTestsBySpecimenBucket([test("MYSTERY")]);
-    assert.equal(groups.length, 1);
-    assert.equal(groups[0]?.specimenType, "blood");
-  });
-
-  it("keeps stable bucket order when multiple types present", () => {
-    const groups = groupTestsBySpecimenBucket([
-      test("URINALYSIS_COMPLETE", "urine"),
-      test("CBC", "blood"),
-      test("CREATININE", "serum"),
+      test("CBC", "haematology", "blood"),
+      test("CREATININE", "blood_chemistry", "blood"),
+      test("URINALYSIS_COMPLETE", "urine_chemistry", "urine"),
     ]);
     assert.deepEqual(
-      groups.map((g) => g.specimenType),
-      ["blood", "serum", "urine"],
+      groups.map((g) => g.departmentKey),
+      ["haematology", "blood_chemistry", "urine_chemistry"],
     );
+    assert.ok(!groups.some((g) => g.collectionType === "serum" as string));
   });
 });

@@ -49,6 +49,13 @@ export const ReleaseQueuePhaseSchema = z.enum([
 ]);
 export type ReleaseQueuePhase = z.infer<typeof ReleaseQueuePhaseSchema>;
 
+export const CollectorSnapshotSchema = z.object({
+  staffId: z.string().optional(),
+  fullName: z.string().optional(),
+  jobTitle: z.string().nullable().optional(),
+});
+export type CollectorSnapshot = z.infer<typeof CollectorSnapshotSchema>;
+
 export const ReleaseQueueGroupSchema = z.object({
   accessionNumber: z.string(),
   barcode: z.string(),
@@ -58,6 +65,8 @@ export const ReleaseQueueGroupSchema = z.object({
   submittedAt: z.string().nullable(),
   accessionedBy: ActorSnapshotSchema.nullable(),
   accessionedAt: z.string().nullable(),
+  collectedBy: CollectorSnapshotSchema.nullable().optional(),
+  collectedAt: z.string().nullable().optional(),
   releasedBy: ActorSnapshotSchema.nullable().optional(),
   releasedAt: z.string().nullable().optional(),
   results: z.array(ReleaseQueueResultSchema),

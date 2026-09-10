@@ -7,10 +7,13 @@ import {
   formattedToPreviewFields,
 } from "@drax-lis/contracts";
 import {
-  orderedTestCodesFromJson,
   parsePatientJson,
   patientDisplayNameFromJson,
 } from "./specimen-display";
+import {
+  findSessionByAccession,
+  groupSpecimensIntoSessions,
+} from "./accession-sessions";
 
 export { orderedTestCodesFromJson } from "./specimen-display";
 
@@ -31,6 +34,14 @@ function patientFromSpecimenJson(json: string | null): {
   };
 }
 
+function routingDepartmentLabel(row: SpecimenRow): string {
+  return row.departmentLabel?.trim() || "General";
+}
+
+function collectionTypeForRow(row: SpecimenRow): string {
+  return row.collectionType?.trim() || row.specimenType?.trim() || "blood";
+}
+
 /** Same payload accession + labels use for edge ZPL preview. */
 export function printPreviewPayloadFromSpecimen(row: SpecimenRow) {
   const client = buildLabelPreviewFromSpecimen(row);
@@ -39,10 +50,8 @@ export function printPreviewPayloadFromSpecimen(row: SpecimenRow) {
     patientName: client.patientName,
     barcode: row.barcode,
     dateOfBirth: client.dateOfBirth,
-    orderedTests:
-      row.orderedTests?.map((t) => t.code) ??
-      orderedTestCodesFromJson(row.orderedTestsJson),
-    specimenType: row.specimenType?.trim() || "blood",
+    specimenType: collectionTypeForRow(row),
+    departmentLabel: routingDepartmentLabel(row),
     mrn: client.mrn,
   };
 }
@@ -64,11 +73,26 @@ export function findSpecimenByAccession(
   specimens: SpecimenRow[],
   accession: string,
 ): SpecimenRow | undefined {
+  return findContainersByAccession(specimens, accession)[0];
+}
+
+/** Every routing label / container for one accession (one form → N labels). */
+export function findContainersByAccession(
+  specimens: SpecimenRow[],
+  accession: string,
+): SpecimenRow[] {
   const trimmed = accession.trim();
-  if (!trimmed) return undefined;
-  return specimens.find(
-    (s) => s.accessionNumber === trimmed || s.barcode === trimmed,
+  if (!trimmed) return [];
+  const sessions = groupSpecimensIntoSessions(specimens);
+  const session = findSessionByAccession(sessions, trimmed);
+  if (session?.tubes.length) return session.tubes;
+  const needle = trimmed.toUpperCase();
+  const match = specimens.find(
+    (s) =>
+      s.accessionNumber.toUpperCase() === needle ||
+      s.barcode.toUpperCase() === needle,
   );
+  return match ? [match] : [];
 }
 
 /** Instant client-side preview from a registered specimen row. */
@@ -82,10 +106,8 @@ export function buildLabelPreviewFromSpecimen(
       patientName: patient.displayName,
       barcode: row.barcode,
       dateOfBirth: patient.dateOfBirth,
-      orderedTests:
-        row.orderedTests?.map((t) => t.code) ??
-        orderedTestCodesFromJson(row.orderedTestsJson),
-      specimenType: row.specimenType?.trim() || "blood",
+      specimenType: collectionTypeForRow(row),
+      departmentLabel: routingDepartmentLabel(row),
       mrn: patient.mrn,
     },
     LABEL_SIZES[DEFAULT_LABEL_SIZE_ID],
@@ -101,8 +123,8 @@ export const TEST_LABEL_PREVIEW: LabelPreviewFields = formattedToPreviewFields(
       patientName: "Test Patient",
       barcode: "DH202608260001",
       dateOfBirth: "1980-01-01",
-      orderedTests: ["CBC", "BMP"],
       specimenType: "blood",
+      departmentLabel: "Blood Chemistry",
       mrn: "MRN-TEST",
     },
     LABEL_SIZES[DEFAULT_LABEL_SIZE_ID],

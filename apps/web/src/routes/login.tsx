@@ -25,8 +25,21 @@ export const Route = createFileRoute("/login")({
   component: LoginPage,
 });
 
-function safeRedirect(path: string | undefined): "/bench" | "/release" | "/profile" | "/sync" | "/accession" | "/register" | "/patients" | "/staff" {
-  const allowed = new Set([
+type LabRedirect =
+  | "/bench"
+  | "/release"
+  | "/profile"
+  | "/sync"
+  | "/accession"
+  | "/register"
+  | "/patients"
+  | "/staff"
+  | "/labels"
+  | "/messages"
+  | "/orders";
+
+function safeRedirect(path: string | undefined): LabRedirect {
+  const allowed = new Set<string>([
     "/bench",
     "/release",
     "/profile",
@@ -35,9 +48,12 @@ function safeRedirect(path: string | undefined): "/bench" | "/release" | "/profi
     "/register",
     "/patients",
     "/staff",
+    "/labels",
+    "/messages",
+    "/orders",
   ]);
   if (path && allowed.has(path)) {
-    return path as "/bench" | "/release" | "/profile" | "/sync" | "/accession" | "/register" | "/patients" | "/staff";
+    return path as LabRedirect;
   }
   return "/bench";
 }

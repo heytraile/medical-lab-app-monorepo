@@ -7,7 +7,7 @@ import { ScrollContainer } from "./ui/scroll-container";
 import { Sheet, SheetContent } from "./ui/sheet";
 import {
   useIsCompactWorkstation,
-  useIsWorkstation,
+  useShowSidebar,
 } from "../lib/use-media-query";
 import { cn } from "../lib/utils";
 
@@ -36,8 +36,8 @@ export function ReleaseQueueMasterDetail({
   onDismissFromQueue,
   className,
 }: Props) {
-  const isWorkstation = useIsWorkstation();
   const isCompactWorkstation = useIsCompactWorkstation();
+  const showSidebar = useShowSidebar();
   const [selectedAccession, setSelectedAccession] = useState<string | null>(
     null,
   );
@@ -86,7 +86,7 @@ export function ReleaseQueueMasterDetail({
 
   const selectedGroup =
     groups.find((g) => g.accessionNumber === selectedAccession) ?? null;
-  const splitDocked = Boolean(selectedAccession) && isWorkstation;
+  const splitDocked = Boolean(selectedAccession) && showSidebar;
 
   const list = (
     <ScrollContainer
@@ -145,7 +145,7 @@ export function ReleaseQueueMasterDetail({
         ) : null}
       </div>
 
-      {!isWorkstation ? (
+      {!showSidebar ? (
         <Sheet
           open={Boolean(selectedGroup)}
           onOpenChange={(open) => {

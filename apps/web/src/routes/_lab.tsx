@@ -1,7 +1,13 @@
-import { createFileRoute, Outlet, useRouterState } from "@tanstack/react-router";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
-import { FlaskConical, Search } from "lucide-react";
+import {
+  createFileRoute,
+  Outlet,
+  redirect,
+  useNavigate,
+  useRouterState,
+} from "@tanstack/react-router";
+import { QueryClientProvider, type QueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { FlaskConical, Loader2, Search } from "lucide-react";
 import { ThemeProvider } from "../components/theme-provider";
 import { AppSidebar } from "../components/app-sidebar";
 import { CommandPalette } from "../components/command-palette";
@@ -14,8 +20,21 @@ import { PatientNameOrderProvider } from "../lib/patient-name-order";
 import { MobileBottomNav } from "../components/mobile-bottom-nav";
 import { cn } from "../lib/utils";
 import { useShowSidebar } from "../lib/use-media-query";
+import { readStoredAccessToken, useAuth } from "../lib/auth";
+import { isCloudMode } from "../lib/api";
 
 export const Route = createFileRoute("/_lab")({
+  beforeLoad: ({ location }) => {
+    // Edge mode: token is in localStorage immediately. Cloud mode waits for
+    // Supabase hydration in LabAuthGate so we do not false-redirect.
+    if (isCloudMode) return;
+    if (!readStoredAccessToken()) {
+      throw redirect({
+        to: "/login",
+        search: { redirect: location.pathname },
+      });
+    }
+  },
   component: LabLayout,
 });
 
@@ -23,6 +42,8 @@ const FILL_VIEWPORT_PATHS = [
   "/messages",
   "/bench",
   "/accession",
+  "/labels",
+  "/orders",
   "/release",
 ] as const;
 
@@ -34,6 +55,45 @@ function isFillViewportPath(pathname: string): boolean {
 
 function LabLayout() {
   const { queryClient } = Route.useRouteContext();
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <LabAuthGate queryClient={queryClient} />
+    </QueryClientProvider>
+  );
+}
+
+function LabAuthGate({ queryClient }: { queryClient: QueryClient }) {
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  useEffect(() => {
+    if (!auth.ready) return;
+    if (auth.accessToken) return;
+    queryClient.clear();
+    void navigate({
+      to: "/login",
+      search: { redirect: pathname },
+      replace: true,
+    });
+  }, [auth.ready, auth.accessToken, pathname, navigate, queryClient]);
+
+  if (!auth.ready || !auth.accessToken) {
+    return (
+      <div className="grid h-svh place-items-center bg-background text-muted-foreground">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="size-8 animate-spin text-accent" aria-hidden />
+          <p className="text-sm">Redirecting to sign in…</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <LabShell />;
+}
+
+function LabShell() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -41,7 +101,6 @@ function LabLayout() {
   const showSidebar = useShowSidebar();
 
   return (
-    <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <NotificationProvider>
           <PatientNameOrderProvider>
@@ -96,6 +155,7 @@ function LabLayout() {
                 <div
                   className={cn(
                     "min-h-0 flex-1",
+                    !showSidebar && "overflow-x-hidden",
                     fillViewport
                       ? cn(
                           "overflow-hidden p-0",
@@ -123,6 +183,5 @@ function LabLayout() {
           </PatientNameOrderProvider>
         </NotificationProvider>
       </ThemeProvider>
-    </QueryClientProvider>
   );
 }

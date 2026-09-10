@@ -111,23 +111,31 @@ export class IngestionService {
       };
     }
 
-    const existingSpecimen = await this.prisma.specimen.findUnique({
+    const existingAccession = await this.prisma.accession.findUnique({
       where: { accessionNumber },
     });
 
-    await this.prisma.specimen.upsert({
-      where: { accessionNumber },
-      create: {
-        accessionNumber,
-        barcode,
-        status: "in_progress",
-        orderedTestsJson: "[]",
-      },
-      update: { status: "partial" },
-    });
+    if (existingAccession) {
+      await this.prisma.accession.update({
+        where: { accessionNumber },
+        data: { status: "in_progress" },
+      });
+      await this.prisma.specimen.updateMany({
+        where: { accessionId: existingAccession.id },
+        data: { status: "in_progress" },
+      });
+    } else {
+      await this.prisma.accession.create({
+        data: {
+          accessionNumber,
+          status: "in_progress",
+          orderedTestsJson: "[]",
+        },
+      });
+    }
 
     const orderedCatalogCodes = parseOrderedTestCodes(
-      existingSpecimen?.orderedTestsJson,
+      existingAccession?.orderedTestsJson,
     );
     const analyzerId = input.analyzerId as AnalyzerId;
 
@@ -255,16 +263,16 @@ export class IngestionService {
     });
 
     if (notifiableItems.length) {
-      const specimen = await this.prisma.specimen.findUnique({
+      const accession = await this.prisma.accession.findUnique({
         where: { accessionNumber },
         include: { patient: true },
       });
       let patientDisplayName: string | undefined;
-      if (specimen?.patient) {
-        patientDisplayName = displayName(specimen.patient);
-      } else if (specimen?.patientJson) {
+      if (accession?.patient) {
+        patientDisplayName = displayName(accession.patient);
+      } else if (accession?.patientJson) {
         try {
-          const snap = JSON.parse(specimen.patientJson) as {
+          const snap = JSON.parse(accession.patientJson) as {
             firstName?: string;
             lastName?: string;
             middleName?: string | null;

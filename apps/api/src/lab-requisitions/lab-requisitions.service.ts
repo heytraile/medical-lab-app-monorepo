@@ -10,6 +10,7 @@ import {
   buildPanelsWithMembers,
   expandSelections,
   selectionsNeedFasting,
+  type CatalogItemSeed,
   type OrderSelection,
 } from "@drax-lis/catalog";
 import type {
@@ -19,6 +20,24 @@ import type {
   SpecimenInfo,
 } from "@drax-lis/contracts";
 import type { AuthUser } from "../auth/auth.guard";
+
+function catalogSpecimenHint(
+  hint: string | null | undefined,
+): CatalogItemSeed["specimenHint"] {
+  switch (hint?.trim().toLowerCase()) {
+    case "blood":
+    case "serum":
+      return "blood";
+    case "urine":
+      return "urine";
+    case "stool":
+      return "stool";
+    case "other":
+      return "other";
+    default:
+      return undefined;
+  }
+}
 
 type Row = {
   id: string;
@@ -63,7 +82,7 @@ export class LabRequisitionsService {
         code: i.code,
         name: i.name,
         category: i.category,
-        specimenHint: (i.specimenHint as "serum" | "urine" | "blood") ?? undefined,
+        specimenHint: catalogSpecimenHint(i.specimenHint),
         fastingRequired: i.fastingRequired,
       })),
     );

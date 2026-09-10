@@ -1,7 +1,9 @@
 import {
   ActorSnapshotSchema,
+  CollectorSnapshotSchema,
   MissingExpectedResultSchema,
   type ActorSnapshot,
+  type CollectorSnapshot,
   type ReleaseQueueGroup,
   type ReleaseQueuePatient,
   type ReleaseQueuePhase,
@@ -10,6 +12,13 @@ import { resolveDisplayFlag } from "@drax-lis/contracts";
 
 export function parseActorSnapshot(raw: unknown): ActorSnapshot | null {
   const parsed = ActorSnapshotSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
+export function parseCollectorSnapshot(
+  raw: unknown,
+): CollectorSnapshot | null {
+  const parsed = CollectorSnapshotSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
 }
 
@@ -68,6 +77,8 @@ export type SpecimenContext = {
   barcode: string;
   registered_at?: string | null;
   registered_by_snapshot?: unknown;
+  collected_at?: string | null;
+  collected_by_snapshot?: unknown;
   patient_json?: unknown;
   submit_missing_expected?: unknown;
   patients?: {
@@ -197,6 +208,10 @@ export function assembleReleaseQueueGroups(
       accessionedAt: specimen?.registered_at
         ? String(specimen.registered_at)
         : null,
+      collectedBy: parseCollectorSnapshot(specimen?.collected_by_snapshot),
+      collectedAt: specimen?.collected_at
+        ? String(specimen.collected_at)
+        : null,
       releasedBy:
         queuePhase === "released"
           ? parseActorSnapshot(releasedRow.released_by_snapshot)
@@ -246,6 +261,29 @@ export function assembleReleaseQueueGroups(
   });
 
   return groups;
+}
+
+type ReleasedResultRow = {
+  edge_result_id?: string | null;
+};
+
+/**
+ * Drop cloud "released" rows that no longer exist on the current edge bench, or
+ * where edge still shows pending_review (stale generation after edge DB reset).
+ */
+export function filterReleasedResultsVerifiedOnEdge<T extends ReleasedResultRow>(
+  results: T[],
+  edgeStatusById: Map<string, string> | null,
+): T[] {
+  // When edge is unreachable, hide Ready rows rather than show stale cloud data.
+  if (!edgeStatusById) return [];
+  return results.filter((row) => {
+    const edgeId = String(row.edge_result_id ?? "").trim();
+    if (!edgeId) return false;
+    const edgeStatus = edgeStatusById.get(edgeId);
+    if (!edgeStatus) return false;
+    return edgeStatus === "released" || edgeStatus === "pending_authorization";
+  });
 }
 
 /** Released wins: an accession must not stay on Authorization once it is Ready. */

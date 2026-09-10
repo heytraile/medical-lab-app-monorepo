@@ -23,6 +23,7 @@ import { PrismaService } from "../prisma/prisma.service";
 import { SyncService } from "../sync/sync.service";
 import { AuditService } from "../audit/audit.service";
 import { displayName } from "../patients/patient-normalize";
+import { syncAccessionStatusFromResults } from "../specimens/sync-accession-status";
 
 function parseSnapshot(raw: string | null): ActorSnapshot | null {
   if (!raw) return null;
@@ -71,21 +72,21 @@ export class ResultsService {
       orderBy: { observedAt: "desc" },
       take: 200,
       include: {
-        specimen: {
+        accession: {
           include: { patient: true },
         },
       },
     });
 
-    return rows.map(({ specimen, ...result }) => {
-      const orderedCodes = parseOrderedTestCodes(specimen?.orderedTestsJson);
+    return rows.map(({ accession, ...result }) => {
+      const orderedCodes = parseOrderedTestCodes(accession?.orderedTestsJson);
       return {
         ...result,
         expectedOnOrder: isResultExpectedOnOrder(
           result.orderedTestCode ?? result.testCode,
           orderedCodes,
         ),
-        patient: this.resolvePatient(specimen),
+        patient: this.resolvePatient(accession),
       };
     });
   }
@@ -119,18 +120,18 @@ export class ResultsService {
       ...new Set(candidates.map((result) => result.accessionNumber)),
     ];
 
-    const specimens = await this.prisma.specimen.findMany({
+    const accessions = await this.prisma.accession.findMany({
       where: { accessionNumber: { in: accessionNumbers } },
       include: { patient: true },
     });
     const missingExpectedByAccession: Record<string, unknown[]> = {};
-    for (const specimen of specimens) {
-      missingExpectedByAccession[specimen.accessionNumber] =
+    for (const accession of accessions) {
+      missingExpectedByAccession[accession.accessionNumber] =
         missingManualResultRequirements(
-          parseOrderedTestCodes(specimen.orderedTestsJson),
+          parseOrderedTestCodes(accession.orderedTestsJson),
           allAccessionResults.filter(
             (result) =>
-              result.accessionNumber === specimen.accessionNumber &&
+              result.accessionNumber === accession.accessionNumber &&
               result.status !== "cancelled",
           ),
         );
@@ -172,33 +173,33 @@ export class ResultsService {
     });
 
     const specimensByAccession: Record<string, unknown> = {};
-    for (const spec of specimens) {
+    for (const accession of accessions) {
       const missingSnapshot =
-        missingExpectedByAccession[spec.accessionNumber] ?? [];
-      await this.prisma.specimen.update({
-        where: { accessionNumber: spec.accessionNumber },
+        missingExpectedByAccession[accession.accessionNumber] ?? [];
+      await this.prisma.specimen.updateMany({
+        where: { accessionId: accession.id },
         data: {
           submitMissingExpectedJson: JSON.stringify(missingSnapshot),
         },
       });
-      const patientSummary = this.resolvePatient(spec);
+      const patientSummary = this.resolvePatient(accession);
       let registeredBySnapshot: unknown = null;
-      if (spec.registeredBySnapshot) {
+      if (accession.registeredBySnapshot) {
         try {
-          registeredBySnapshot = JSON.parse(spec.registeredBySnapshot);
+          registeredBySnapshot = JSON.parse(accession.registeredBySnapshot);
         } catch {
           registeredBySnapshot = null;
         }
       }
-      specimensByAccession[spec.accessionNumber] = {
-        barcode: spec.barcode,
-        patientId: spec.patientId,
+      specimensByAccession[accession.accessionNumber] = {
+        barcode: accession.accessionNumber,
+        patientId: accession.patientId,
         patient: patientSummary
           ? {
               id: patientSummary.id,
               mrn: patientSummary.mrn,
               firstName: patientSummary.firstName,
-              middleName: spec.patient?.middleName ?? null,
+              middleName: accession.patient?.middleName ?? null,
               lastName: patientSummary.lastName,
               dateOfBirth: patientSummary.dateOfBirth,
               sex: patientSummary.sex,
@@ -206,11 +207,15 @@ export class ResultsService {
               status: patientSummary.status,
             }
           : null,
-        registeredBy: spec.registeredBy,
+        registeredBy: accession.registeredBy,
         registeredBySnapshot,
-        registeredAt: spec.registeredAt.toISOString(),
-        orderedTestsJson: spec.orderedTestsJson,
+        registeredAt: accession.registeredAt.toISOString(),
+        orderedTestsJson: accession.orderedTestsJson,
       };
+    }
+
+    for (const accessionNumber of accessionNumbers) {
+      await syncAccessionStatusFromResults(this.prisma, accessionNumber);
     }
 
     await this.sync.enqueue({
@@ -259,15 +264,17 @@ export class ResultsService {
       body.orderedTestCode ?? body.testCode,
     );
 
-    const specimen = await this.prisma.specimen.findUnique({
+    const accession = await this.prisma.accession.findUnique({
       where: { accessionNumber },
-      include: { patient: true },
+      include: { patient: true, specimens: { take: 1 } },
     });
-    if (!specimen) {
+    if (!accession) {
       throw new NotFoundException(`Accession ${accessionNumber} not found`);
     }
 
-    const orderedCodes = parseOrderedTestCodes(specimen.orderedTestsJson);
+    const barcode =
+      accession.specimens[0]?.barcode ?? accession.accessionNumber;
+    const orderedCodes = parseOrderedTestCodes(accession.orderedTestsJson);
     if (!isResultExpectedOnOrder(orderedTestCode, orderedCodes)) {
       throw new BadRequestException(
         `${orderedTestCode} is not on the order for ${accessionNumber}`,
@@ -308,6 +315,9 @@ export class ResultsService {
     const actionAt = new Date();
     const actorJson = JSON.stringify(actor);
     const flag = body.flag ?? "unknown";
+    const manualPayloadJson = body.manualPayloadJson
+      ? JSON.stringify(body.manualPayloadJson)
+      : null;
 
     const existing = await this.prisma.result.findFirst({
       where: {
@@ -354,7 +364,7 @@ export class ResultsService {
       result = await this.prisma.result.update({
         where: { id: existing.id },
         data: {
-          barcode: specimen.barcode,
+          barcode,
           orderedTestCode,
           resultComponentCode,
           testName,
@@ -364,6 +374,7 @@ export class ResultsService {
           referenceHigh: body.referenceHigh ?? null,
           flag,
           status: existing.status || "pending_review",
+          manualPayloadJson: manualPayloadJson ?? existing.manualPayloadJson,
           manualLastEditedBy: actor.userId,
           manualLastEditedBySnapshot: actorJson,
           manualLastEditedAt: actionAt,
@@ -373,7 +384,7 @@ export class ResultsService {
       result = await this.prisma.result.create({
         data: {
           accessionNumber,
-          barcode: specimen.barcode,
+          barcode,
           analyzerId: "manual",
           testCode,
           orderedTestCode,
@@ -386,6 +397,7 @@ export class ResultsService {
           flag,
           status: "pending_review",
           observedAt,
+          manualPayloadJson,
           manualEnteredBy: actor.userId,
           manualEnteredBySnapshot: actorJson,
           manualEnteredAt: actionAt,
@@ -393,12 +405,14 @@ export class ResultsService {
       });
     }
 
+    await syncAccessionStatusFromResults(this.prisma, accessionNumber);
+
     await this.sync.enqueue({
       type: "result.batch",
       payload: {
         analyzerId: "manual",
         accessionNumber,
-        barcode: specimen.barcode,
+        barcode,
         results: [
           {
             id: result.id,
@@ -424,6 +438,12 @@ export class ResultsService {
             ),
             manualLastEditedAt:
               result.manualLastEditedAt?.toISOString() ?? null,
+            manualPayloadJson: result.manualPayloadJson
+              ? (JSON.parse(result.manualPayloadJson) as Record<
+                  string,
+                  string
+                >)
+              : null,
           },
         ],
       },
@@ -631,6 +651,10 @@ export class ResultsService {
       },
     });
 
+    for (const accessionNumber of accessionNumbers) {
+      await syncAccessionStatusFromResults(this.prisma, accessionNumber);
+    }
+
     await this.audit.log({
       eventType: auditEventType,
       entityType: "accession",
@@ -700,6 +724,8 @@ export class ResultsService {
         submittedBySnapshot: null,
       },
     });
+
+    await syncAccessionStatusFromResults(this.prisma, accession);
 
     await this.audit.log({
       eventType: "result.accession_released",
@@ -778,11 +804,11 @@ export class ResultsService {
       );
     }
     if (body.patientId) {
-      const specimens = await this.prisma.specimen.findMany({
+      const accessions = await this.prisma.accession.findMany({
         where: { patientId: body.patientId },
         select: { accessionNumber: true },
       });
-      return specimens.map((s) => s.accessionNumber);
+      return accessions.map((a) => a.accessionNumber);
     }
     throw new BadRequestException(
       "Provide accessionNumbers or patientId",

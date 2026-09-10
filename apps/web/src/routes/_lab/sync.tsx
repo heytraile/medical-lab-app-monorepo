@@ -2,7 +2,9 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2, RefreshCw } from "lucide-react";
 import { api, ApiError } from "../../lib/api";
+import { BenchAlignmentBanner } from "../../components/bench-alignment-banner";
 import { Button } from "../../components/ui/button";
+import { useAuth } from "../../lib/auth";
 import { cn } from "../../lib/utils";
 import {
   useIsWorkstation,
@@ -19,6 +21,7 @@ function formatCount(n: number | undefined): string {
 }
 
 function SyncPage() {
+  const auth = useAuth();
   const qc = useQueryClient();
   const isWorkstation = useIsWorkstation();
   const showWorkstationChrome = useShowWorkstationChrome();
@@ -42,6 +45,7 @@ function SyncPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
+      {auth.hasCloudSession ? <BenchAlignmentBanner /> : null}
       <div>
         {isWorkstation ? (
           <>

@@ -36,9 +36,10 @@ import { BenchEmptyState } from "../../components/bench-empty-state";
 import { BenchMobileList } from "../../components/bench-mobile-list";
 import { Sheet, SheetContent } from "../../components/ui/sheet";
 import {
-  useIsDesktop,
   useIsCompactWorkstation,
   useIsWorkstation,
+  usePreferCardLayout,
+  useShowSidebar,
   useWorkstationViewportClass,
 } from "../../lib/use-media-query";
 import {
@@ -145,11 +146,11 @@ function BenchPage() {
   // Typed loosely because the desktop renderer points it at a <tr> and the
   // mobile one at a card element.
   const focusedRowRef = useRef<HTMLElement | null>(null);
-  const isDesktop = useIsDesktop();
   const isWorkstation = useIsWorkstation();
   const isCompactWorkstation = useIsCompactWorkstation();
-  /** Tablet landscape (lg–xl): card list like phone; full table only with sidebar at xl+. */
-  const useListLayout = !isDesktop || isCompactWorkstation;
+  /** Vertical patient cards on touch/tablet; wide table only with desktop sidebar. */
+  const useListLayout = usePreferCardLayout();
+  const showSidebar = useShowSidebar();
   const workstationViewportClass = useWorkstationViewportClass();
 
   const [searchDraft, setSearchDraft] = useState(q ?? "");
@@ -518,7 +519,8 @@ function BenchPage() {
 
   const title = analyzer ? analyzerLabel(analyzer) : "All machines";
   const split = Boolean(selectedPatientId);
-  const splitDocked = split && isWorkstation;
+  /** Side-by-side patient panel only on full desktop; tablets use bottom sheet. */
+  const splitDocked = split && showSidebar;
   const hasUrlFilter = Boolean(q || analyzer);
 
   const emptyState = (
@@ -700,7 +702,7 @@ function BenchPage() {
   return (
     <div
       className={cn(
-        "mx-auto w-full max-w-none",
+        "mx-auto w-full max-w-none overflow-x-hidden",
         isWorkstation
           ? cn(
               "flex min-h-0 flex-col",
@@ -913,7 +915,7 @@ function BenchPage() {
       </div>
 
       <Sheet
-        open={Boolean(selectedPatientId) && !isWorkstation}
+        open={Boolean(selectedPatientId) && !showSidebar}
         onOpenChange={(open) => !open && setSelectedPatientId(null)}
       >
         <SheetContent side="bottom" label="Patient results" className="p-0">

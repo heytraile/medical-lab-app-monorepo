@@ -14,6 +14,13 @@ import {
   PrinterService,
 } from "./printer.service";
 
+type ResolvedLabelContext = {
+  accessionNumber: string;
+  patientName: string;
+  dateOfBirth: string | null;
+  mrn?: string;
+};
+
 @Controller("print")
 export class PrinterController {
   constructor(
@@ -39,6 +46,7 @@ export class PrinterController {
       dateOfBirth: body.dateOfBirth,
       orderedTests: body.orderedTests,
       specimenType: body.specimenType,
+      departmentLabel: body.departmentLabel,
       mrn: body.mrn,
     });
     return { zpl, fields };
@@ -57,6 +65,7 @@ export class PrinterController {
       dateOfBirth: body.dateOfBirth,
       orderedTests: body.orderedTests,
       specimenType: body.specimenType,
+      departmentLabel: body.departmentLabel,
       mrn: body.mrn,
     });
     const result = await this.printer.printZpl(zpl, body.copies);
@@ -66,32 +75,109 @@ export class PrinterController {
   @Post("reprint")
   @UseGuards(HardenedAuthGuard)
   async reprint(
-    @Body() body: { accessionNumber: string; copies?: number },
+    @Body()
+    body: {
+      accessionNumber: string;
+      copies?: number;
+      departmentKey?: string;
+    },
   ) {
     const accessionNumber = body.accessionNumber?.trim();
     if (!accessionNumber) {
       throw new NotFoundException("accessionNumber required");
     }
 
-    const specimen = await this.prisma.specimen.findUnique({
+    const accession = await this.prisma.accession.findUnique({
       where: { accessionNumber },
-      include: { patient: true },
+      include: {
+        patient: true,
+        specimens: {
+          where: body.departmentKey?.trim()
+            ? { departmentKey: body.departmentKey.trim() }
+            : undefined,
+          orderBy: { departmentKey: "asc" },
+        },
+      },
     });
-    if (!specimen) {
+
+    let containers = accession?.specimens ?? [];
+    if (!containers.length) {
+      containers = await this.prisma.specimen.findMany({
+        where: { accessionNumber },
+        orderBy: { departmentKey: "asc" },
+      });
+    }
+
+    if (!containers.length) {
       throw new NotFoundException(`Specimen ${accessionNumber} not found`);
     }
 
+    const ctx = this.resolvePatientContext(
+      accession ?? containers[0]!,
+      accession?.patient ?? null,
+    );
+
+    const labels = [];
+    for (const specimen of containers) {
+      const { zpl, fields } = this.printer.buildSpecimenLabel({
+        accessionNumber: specimen.accessionNumber,
+        patientName: ctx.patientName,
+        barcode: specimen.barcode,
+        dateOfBirth: ctx.dateOfBirth,
+        specimenType: specimen.collectionType ?? specimen.specimenType,
+        departmentLabel: specimen.departmentLabel,
+        mrn: ctx.mrn,
+      });
+      const result = await this.printer.printZpl(zpl, body.copies);
+      labels.push({
+        ...result,
+        zpl,
+        fields,
+        specimenId: specimen.id,
+        departmentKey: specimen.departmentKey,
+      });
+    }
+
+    const first = labels[0]!;
+    return {
+      ok: labels.every((l) => l.ok),
+      error: labels.find((l) => !l.ok)?.error,
+      zpl: first.zpl,
+      fields: first.fields,
+      labels,
+      specimenId: first.specimenId,
+    };
+  }
+
+  @Post("test")
+  @UseGuards(HardenedAuthGuard)
+  async testLabel(@Body() body: { copies?: number }) {
+    const { zpl, fields } = this.printer.buildTestLabel();
+    const result = await this.printer.printZpl(zpl, body.copies ?? 1);
+    return { ...result, zpl, fields };
+  }
+
+  private resolvePatientContext(
+    row: { patientJson: string | null },
+    patient: {
+      firstName: string;
+      lastName: string;
+      middleName: string | null;
+      dateOfBirth: string | null;
+      mrn: string;
+    } | null,
+  ): ResolvedLabelContext {
     let patientName = "Unknown";
     let dateOfBirth: string | null = null;
     let mrn: string | undefined;
 
-    if (specimen.patient) {
-      patientName = displayName(specimen.patient);
-      dateOfBirth = specimen.patient.dateOfBirth;
-      mrn = specimen.patient.mrn;
-    } else if (specimen.patientJson) {
+    if (patient) {
+      patientName = displayName(patient);
+      dateOfBirth = patient.dateOfBirth;
+      mrn = patient.mrn;
+    } else if (row.patientJson) {
       try {
-        const snap = JSON.parse(specimen.patientJson) as {
+        const snap = JSON.parse(row.patientJson) as {
           firstName?: string;
           lastName?: string;
           middleName?: string | null;
@@ -112,34 +198,11 @@ export class PrinterController {
       }
     }
 
-    let orderedTests: string[] = [];
-    try {
-      const parsed = JSON.parse(specimen.orderedTestsJson) as Array<{
-        code?: string;
-      }>;
-      orderedTests = parsed.map((t) => t.code).filter(Boolean) as string[];
-    } catch {
-      /* ignore */
-    }
-
-    const { zpl, fields } = this.printer.buildSpecimenLabel({
-      accessionNumber: specimen.accessionNumber,
+    return {
+      accessionNumber: "",
       patientName,
-      barcode: specimen.barcode,
       dateOfBirth,
-      orderedTests,
-      specimenType: specimen.specimenType,
       mrn,
-    });
-    const result = await this.printer.printZpl(zpl, body.copies);
-    return { ...result, zpl, fields, specimenId: specimen.id };
-  }
-
-  @Post("test")
-  @UseGuards(HardenedAuthGuard)
-  async testLabel(@Body() body: { copies?: number }) {
-    const { zpl, fields } = this.printer.buildTestLabel();
-    const result = await this.printer.printZpl(zpl, body.copies ?? 1);
-    return { ...result, zpl, fields };
+    };
   }
 }

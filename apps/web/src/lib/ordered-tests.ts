@@ -1,4 +1,5 @@
 import type { SpecimenRow } from "./api";
+import { groupSpecimensIntoSessions } from "./accession-sessions";
 
 export type ParsedOrderedTest = { code: string; name?: string };
 
@@ -21,13 +22,18 @@ export function orderedTestsForPatient(
   specimens: SpecimenRow[],
   patientId: string,
 ): Array<{ accessionNumber: string; tests: ParsedOrderedTest[] }> {
-  return specimens
-    .filter((s) => s.patientId === patientId)
-    .map((s) => ({
-      accessionNumber: s.accessionNumber,
-      tests: parseOrderedTestsJson(s.orderedTestsJson),
+  return groupSpecimensIntoSessions(
+    specimens.filter((s) => s.patientId === patientId),
+  )
+    .map((session) => ({
+      accessionNumber:
+        session.accessionNumbers[0] ?? session.primary.accessionNumber,
+      tests: session.orderedTests.map((t) => ({
+        code: t.code,
+        name: t.name,
+      })),
     }))
-    .filter((row) => row.tests.length > 0);
+    .filter((row) => row.accessionNumber && row.tests.length > 0);
 }
 
 export type CloudSpecimenLookup = {

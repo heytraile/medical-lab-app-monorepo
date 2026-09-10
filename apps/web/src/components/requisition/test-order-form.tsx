@@ -21,7 +21,8 @@ export function selectionsToOrderedTests(
       name: i.name,
       category: i.category,
       specimenHint:
-        (i.specimenHint as "serum" | "urine" | "blood") ?? undefined,
+        (i.specimenHint as "urine" | "blood" | "stool" | "other") ??
+          undefined,
       fastingRequired: i.fastingRequired,
     })),
   );

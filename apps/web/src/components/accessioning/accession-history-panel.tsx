@@ -27,10 +27,12 @@ import {
   type LabelPreviewItem,
 } from "./multi-label-preview-panel";
 import { Badge } from "../ui/badge";
+import { SpecimenAccessionStatusChip } from "../result-status";
 import { Button } from "../ui/button";
 import { ClearableInput } from "../ui/clearable-input";
 import { ScrollContainer } from "../ui/scroll-container";
 import { Sheet, SheetContent } from "../ui/sheet";
+import { AccessionPeopleBlockForAccession } from "../accession-people-block";
 
 function specimenPatientName(row: SpecimenRow): string {
   return (
@@ -227,9 +229,10 @@ export function AccessionHistoryPanel({
                     <span className="min-w-0 truncate font-medium">
                       {specimenPatientName(session.primary)}
                     </span>
-                    <Badge variant="muted" className="shrink-0">
-                      {session.primary.status}
-                    </Badge>
+                    <SpecimenAccessionStatusChip
+                      status={session.primary.status}
+                      className="shrink-0 text-[10px]"
+                    />
                   </span>
                   <span className="font-mono text-xs text-muted-foreground">
                     {session.accessionNumbers.join(" · ")}
@@ -446,9 +449,19 @@ function AccessionHistoryDetail({
             <p className="text-muted-foreground">
               Tubes:{" "}
               {session.specimenTypes.map(formatSpecimenType).join(", ")} ·
-              Status: {row.status}
+              Status:{" "}
+              <SpecimenAccessionStatusChip
+                status={row.status}
+                className="inline-flex align-middle text-[10px]"
+              />
             </p>
           </section>
+
+          <AccessionPeopleBlockForAccession
+            accessionNumber={session.accessionNumbers[0] ?? row.accessionNumber}
+            specimens={session.tubes}
+            results={[]}
+          />
 
           {panels.length > 0 ? (
             <section>

@@ -67,6 +67,25 @@ const AuthContext = createContext<AuthState | null>(null);
 const DEV_TOKEN_KEY = "lis-dev-role";
 const EDGE_TOKEN_KEY = "lis-edge-token";
 
+/** Sync read for route guards — React context may not be hydrated yet. */
+export function readStoredAccessToken(): string | null {
+  if (typeof window === "undefined") return null;
+  if (isCloudMode) {
+    const dev = localStorage.getItem(DEV_TOKEN_KEY);
+    if (dev === "tech" || dev === "authorizer" || dev === "admin") {
+      return `dev:${dev}`;
+    }
+    return null;
+  }
+  const raw = localStorage.getItem(EDGE_TOKEN_KEY);
+  if (!raw) return null;
+  try {
+    return (JSON.parse(raw) as EdgeSession).accessToken;
+  } catch {
+    return null;
+  }
+}
+
 type EdgeSession = {
   accessToken: string;
   user: {

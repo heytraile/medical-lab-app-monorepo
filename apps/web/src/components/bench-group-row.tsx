@@ -5,7 +5,7 @@ import {
   type MissingExpectedResult,
 } from "@drax-lis/catalog";
 import type { BenchResult, SpecimenRow } from "../lib/api";
-import { parseOrderedTestsJson } from "../lib/ordered-tests";
+import { groupSpecimensIntoSessions } from "../lib/accession-sessions";
 import { Badge } from "./ui/badge";
 import {
   AlarmSign,
@@ -66,13 +66,12 @@ export function summarizeGroup(
   }
   const missingExpectedByAccession: Record<string, MissingExpectedResult[]> = {};
   for (const accessionNumber of accessions) {
-    const specimen = specimens.find(
+    const tubesForAccession = specimens.filter(
       (row) => row.accessionNumber === accessionNumber,
     );
-    if (!specimen) continue;
-    const orderedCodes = parseOrderedTestsJson(specimen.orderedTestsJson).map(
-      (test) => test.code,
-    );
+    const session = groupSpecimensIntoSessions(tubesForAccession)[0];
+    if (!session) continue;
+    const orderedCodes = session.orderedTests.map((test) => test.code);
     const missing = missingManualResultRequirements(
       orderedCodes,
       completenessResults.filter(

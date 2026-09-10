@@ -88,6 +88,11 @@ function LabelCard({
   return (
     <div className={cn("min-w-0 space-y-2", compact && "rounded-lg border border-border/60 bg-muted/10 p-2")}>
       <div className="flex flex-wrap items-center gap-2">
+        {item.fields?.departmentLabel ? (
+          <Badge variant="muted" className="text-[10px]">
+            {item.fields.departmentLabel}
+          </Badge>
+        ) : null}
         <Badge variant="muted" className="text-[10px] capitalize">
           {specimenTypeLabel(item.specimenType)}
         </Badge>

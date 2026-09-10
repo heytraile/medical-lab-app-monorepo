@@ -97,6 +97,14 @@ export function useNativeScroll(): boolean {
 }
 
 /**
+ * Card/list layouts instead of wide data tables — phones, tablets, and any
+ * viewport without the persistent sidebar (bottom nav chrome).
+ */
+export function usePreferCardLayout(): boolean {
+  return !useShowSidebar();
+}
+
+/**
  * Fill-height class for workstation pages (/bench, /accession, …).
  * Tablet landscape keeps bottom nav — subtract extra chrome height.
  */

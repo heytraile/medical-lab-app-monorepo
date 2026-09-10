@@ -88,7 +88,10 @@ export function PatientReportExportMenu({
     : reportSummaryQ.isLoading
       ? "Checking cloud for the released report…"
       : reportSummaryQ.isError
-        ? "Released on the bench, but the cloud report is not ready yet. Try again in a moment."
+        ? reportSummaryQ.error instanceof ApiError &&
+          reportSummaryQ.error.status === 404
+          ? "Released on the bench, but cloud has no matching patient or accession yet. Run Repair alignment on the Release queue (admin) or wait for sync."
+          : "Released on the bench, but the cloud report could not be loaded. Try again in a moment."
         : hasReleasedResults
           ? null
           : "Released on the bench. Waiting for the cloud copy before PDF or email can be generated.";

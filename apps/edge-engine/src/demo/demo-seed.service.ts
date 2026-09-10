@@ -1,4 +1,4 @@
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { readFile } from "fs/promises";
 import { join } from "path";
 import {
@@ -10,6 +10,10 @@ import {
 import { PrismaService } from "../prisma/prisma.service";
 import { PatientsSeedService } from "../patients/patients-seed.service";
 import { displayName, normalizeMrn } from "../patients/patient-normalize";
+import {
+  syncAccessionStatusFromResults,
+  syncAllAccessionStatusesFromResults,
+} from "../specimens/sync-accession-status";
 
 type DemoResult = {
   analyzerId: AnalyzerId;
@@ -31,13 +35,22 @@ type DemoCase = {
 };
 
 @Injectable()
-export class DemoSeedService {
+export class DemoSeedService implements OnModuleInit {
   private readonly logger = new Logger(DemoSeedService.name);
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly patientsSeed: PatientsSeedService,
   ) {}
+
+  async onModuleInit() {
+    const repaired = await syncAllAccessionStatusesFromResults(this.prisma);
+    if (repaired > 0) {
+      this.logger.log(
+        `Aligned accession status with bench results for ${repaired} accession(s)`,
+      );
+    }
+  }
 
   async seedBench() {
     const cases = await this.loadFixture();
@@ -100,11 +113,43 @@ export class DemoSeedService {
       const barcode = accessionNumber;
       const hasReleasedResults = releasedAccessions.has(accessionNumber);
 
-      await this.prisma.specimen.upsert({
+      const accession = await this.prisma.accession.upsert({
         where: { accessionNumber },
         create: {
           accessionNumber,
+          patientId: patient.id,
+          patientJson: JSON.stringify(patientPayload),
+          orderedTestsJson: JSON.stringify(demo.orderedTests ?? []),
+          status: "registered",
+        },
+        update: hasReleasedResults
+          ? {
+              patientId: patient.id,
+              patientJson: JSON.stringify(patientPayload),
+              orderedTestsJson: JSON.stringify(demo.orderedTests ?? []),
+            }
+          : {
+              patientId: patient.id,
+              patientJson: JSON.stringify(patientPayload),
+              orderedTestsJson: JSON.stringify(demo.orderedTests ?? []),
+              status: "registered",
+            },
+      });
+
+      await this.prisma.specimen.upsert({
+        where: {
+          accessionId_departmentKey: {
+            accessionId: accession.id,
+            departmentKey: "general",
+          },
+        },
+        create: {
+          accessionId: accession.id,
+          accessionNumber,
           barcode,
+          departmentKey: "general",
+          departmentLabel: "General",
+          collectionType: "blood",
           patientId: patient.id,
           patientJson: JSON.stringify(patientPayload),
           orderedTestsJson: JSON.stringify(demo.orderedTests ?? []),
@@ -129,6 +174,7 @@ export class DemoSeedService {
 
       if (hasReleasedResults) {
         releasedAccessionsPreserved += 1;
+        await syncAccessionStatusFromResults(this.prisma, accessionNumber);
         this.logger.log(
           `Demo bench: preserved released accession ${accessionNumber}`,
         );
@@ -163,10 +209,16 @@ export class DemoSeedService {
         results += 1;
       }
 
+      await syncAccessionStatusFromResults(this.prisma, accessionNumber);
+
       this.logger.log(
         `Demo bench: ${displayName(patient)} (${patient.mrn}) → ${accessionNumber}`,
       );
     }
+
+    const statusesSynced = await syncAllAccessionStatusesFromResults(
+      this.prisma,
+    );
 
     return {
       ok: true,
@@ -179,6 +231,7 @@ export class DemoSeedService {
       releasedAccessionsPreserved,
       dedupedOther: extraDupes,
       skipped,
+      statusesSynced,
     };
   }
 

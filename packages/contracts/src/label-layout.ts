@@ -78,6 +78,8 @@ export type SpecimenLabelInput = {
   dateOfBirth?: string | null;
   orderedTests?: string[];
   specimenType?: string;
+  /** Lab routing department shown on the label meta line (e.g. Blood Chemistry). */
+  departmentLabel?: string;
   mrn?: string;
 };
 
@@ -94,6 +96,7 @@ export type FormattedSpecimenLabel = {
   barcode: string;
   printedAt: string;
   specimenType: string;
+  departmentLabel?: string;
   mrn?: string;
   widthDots: number;
   heightDots: number;
@@ -280,12 +283,8 @@ export function formatSpecimenLabel(
   const profile = layoutProfileFor(size);
   const dob = input.dateOfBirth?.trim() || "DOB —";
   const tube = input.specimenType?.trim() || "blood";
+  const dept = input.departmentLabel?.trim() || "General";
   const metaRaw = `${dob} · ${tube}`;
-  const { lines: testLines, overflowCount } = formatTestLines(
-    input.orderedTests ?? [],
-    profile.testMaxLines,
-    profile.testMaxCharsPerLine,
-  );
 
   return {
     size,
@@ -299,12 +298,16 @@ export function formatSpecimenLabel(
     ),
     dateOfBirth: dob,
     metaLine: sanitizeZplText(metaRaw, profile.metaMaxChars),
-    testLines,
-    orderedTests: testLines.join(" "),
-    testsOverflowCount: overflowCount,
+    testLines: [],
+    orderedTests: "",
+    testsOverflowCount: 0,
     barcode: sanitizeZplText(input.barcode, 48),
     printedAt,
     specimenType: tube,
+    departmentLabel: truncateWithEllipsis(
+      sanitizeZplText(dept, 200),
+      profile.nameMaxChars,
+    ),
     mrn: input.mrn,
     widthDots: size.widthDots,
     heightDots: size.heightDots,
@@ -317,12 +320,8 @@ export function buildSpecimenLabelZpl(formatted: FormattedSpecimenLabel): string
   const ll = formatted.heightDots;
   const ts = formatted.printedAt.slice(0, 19).replace("T", " ");
 
-  const testBlocks = formatted.testLines
-    .map(
-      (line, idx) =>
-        `^FO8,${profile.testStartY + idx * profile.testLineHeight}^A0N,${profile.bodyFont},${profile.bodyFont}^FD${line}^FS`,
-    )
-    .join("\n");
+  const deptLine = formatted.departmentLabel?.trim() || "General";
+  const routingBlock = `^FO8,${profile.testStartY}^A0N,${profile.nameFont},${profile.nameFont}^FD${deptLine}^FS`;
 
   return `^XA
 ^PW${pw}
@@ -331,7 +330,7 @@ export function buildSpecimenLabelZpl(formatted: FormattedSpecimenLabel): string
 ^FO8,${profile.accessionY}^A0N,${profile.accessionFont},${profile.accessionFont}^FD${formatted.accessionNumber}^FS
 ^FO8,${profile.nameY}^A0N,${profile.nameFont},${profile.nameFont}^FD${formatted.patientName}^FS
 ^FO8,${profile.metaY}^A0N,${profile.bodyFont},${profile.bodyFont}^FD${formatted.metaLine}^FS
-${testBlocks}
+${routingBlock}
 ^FO${pw - 72},${profile.accessionY}^BXN,4,200,,,,_,1^FD${formatted.barcode}^FS
 ^FO8,${profile.barcodeY}^BY2,2,${profile.barcodeHeight}^BCN,${profile.barcodeHeight},Y,N,N^FD${formatted.barcode}^FS
 ^FO8,${profile.timestampY}^A0N,${profile.timestampFont},${profile.timestampFont}^FD${ts}^FS
@@ -357,6 +356,7 @@ export function formattedToPreviewFields(formatted: FormattedSpecimenLabel) {
     dateOfBirth: formatted.dateOfBirth,
     orderedTests: formatted.orderedTests,
     specimenType: formatted.specimenType,
+    departmentLabel: formatted.departmentLabel,
     mrn: formatted.mrn,
     printedAt: formatted.printedAt,
     widthDots: formatted.widthDots,

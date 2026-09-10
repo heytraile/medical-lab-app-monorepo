@@ -1,7 +1,7 @@
 import type { ActorSnapshot, ReleaseQueueGroup } from "@drax-lis/contracts";
 import { analyzerLabel } from "../lib/analyzers";
 import { usePatientNameOrder } from "../lib/patient-name-order";
-import { useIsWorkstation } from "../lib/use-media-query";
+import { usePreferCardLayout } from "../lib/use-media-query";
 import { cn } from "../lib/utils";
 import { Badge } from "./ui/badge";
 import {
@@ -39,8 +39,7 @@ export function ReleaseQueueDetailPanel({
   className,
   embedded = false,
 }: Props) {
-  const isWorkstation = useIsWorkstation();
-  const useCards = !isWorkstation;
+  const useCards = usePreferCardLayout();
   const { formatName } = usePatientNameOrder();
   const parts = group.patient.displayName.trim().split(/\s+/);
   const patientName = formatName({
@@ -50,6 +49,8 @@ export function ReleaseQueueDetailPanel({
   });
   const submitter = actorLabel(group.submittedBy);
   const accessioner = actorLabel(group.accessionedBy);
+  const collector = group.collectedBy?.fullName?.trim() || null;
+  const collectorTitle = group.collectedBy?.jobTitle?.trim() || null;
   const releaser = actorLabel(group.releasedBy ?? null);
   const isPending = group.queuePhase === "pending_authorization";
 
@@ -128,6 +129,19 @@ export function ReleaseQueueDetailPanel({
                 {accessioner}
                 {" · "}
                 {formatWhen(group.accessionedAt)}
+              </div>
+            ) : null}
+            {collector ? (
+              <div>
+                <span className="font-medium text-foreground">Collected by</span>{" "}
+                {collector}
+                {collectorTitle ? ` (${collectorTitle})` : ""}
+                {group.collectedAt ? (
+                  <>
+                    {" · "}
+                    {formatWhen(group.collectedAt)}
+                  </>
+                ) : null}
               </div>
             ) : null}
             {!isPending && releaser ? (
