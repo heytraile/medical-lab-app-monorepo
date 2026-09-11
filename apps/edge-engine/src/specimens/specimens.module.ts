@@ -1,6 +1,7 @@
 import { Module } from "@nestjs/common";
 import { SpecimensController } from "./specimens.controller";
 import { SpecimensService } from "./specimens.service";
+import { SpecimenBackfillService } from "./specimen-backfill.service";
 import { PrinterModule } from "../printer/printer.module";
 import { SyncModule } from "../sync/sync.module";
 import { RealtimeModule } from "../realtime/realtime.module";
@@ -16,6 +17,6 @@ import { PatientsModule } from "../patients/patients.module";
     PatientsModule,
   ],
   controllers: [SpecimensController],
-  providers: [SpecimensService],
+  providers: [SpecimensService, SpecimenBackfillService],
 })
 export class SpecimensModule {}

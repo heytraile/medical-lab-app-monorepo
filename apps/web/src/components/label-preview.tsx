@@ -8,12 +8,14 @@ import { cn } from "../lib/utils";
 
 export type LabelPreviewFields = {
   accessionNumber: string;
+  specimenNumber?: string;
   patientName: string;
   barcode: string;
   dateOfBirth: string;
   orderedTests: string;
   specimenType: string;
   departmentLabel?: string;
+  routingLine?: string;
   mrn?: string;
   printedAt: string;
   widthDots?: number;
@@ -98,14 +100,15 @@ export function LabelPreview({
   const widthDots = fields.widthDots ?? DEFAULT_LABEL_WIDTH_DOTS;
   const heightDots = fields.heightDots ?? DEFAULT_LABEL_HEIGHT_DOTS;
   const previewWidthPx = labelPreviewWidthPx(widthDots);
-  const routingLabel =
-    fields.departmentLabel?.trim() ||
-    fields.testLines?.[0]?.trim() ||
+  const routingLine =
+    fields.routingLine?.trim() ||
+    (fields.departmentLabel && fields.dateOfBirth
+      ? `${fields.departmentLabel} · ${fields.dateOfBirth}`
+      : fields.departmentLabel?.trim()) ||
     null;
   const barW = 300;
-  const barH = 56;
+  const barH = 40;
   const isDraft = mode === "draft";
-  const sizeLabel = fields.sizeName ?? '2" × 1"';
 
   return (
     <div
@@ -114,55 +117,45 @@ export function LabelPreview({
     >
       <div
         className={cn(
-          "relative flex w-full min-w-0 flex-col overflow-hidden rounded-lg border-2 bg-white p-2.5 text-black shadow-sm dark:bg-zinc-100 sm:p-3",
+          "relative flex w-full min-w-0 flex-col rounded-lg border-2 bg-white px-2 py-1.5 text-black shadow-sm dark:bg-zinc-100",
           isDraft ? "border-dashed border-zinc-400" : "border-foreground/80",
         )}
         style={{ aspectRatio: `${widthDots} / ${heightDots}` }}
       >
-        <div className="flex min-h-0 flex-1 flex-col gap-0.5 text-[10px] leading-tight sm:text-xs">
-          <div className="flex min-w-0 shrink-0 items-start justify-between gap-1.5">
-            <div className="min-w-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 flex-1 flex-col justify-between gap-0.5 leading-tight">
+          <div className="min-w-0 space-y-0.5">
+            <p
+              className={cn(
+                "break-all font-bold text-[11px] leading-none sm:text-xs",
+                isDraft && "text-zinc-500 italic",
+              )}
+            >
+              {fields.accessionNumber}
+            </p>
+            {fields.specimenNumber &&
+            fields.specimenNumber !== fields.accessionNumber ? (
               <p
                 className={cn(
-                  "truncate font-bold text-sm leading-tight sm:text-base",
+                  "break-all font-semibold text-[10px] leading-none",
                   isDraft && "text-zinc-500 italic",
                 )}
               >
-                {fields.accessionNumber}
+                {fields.specimenNumber}
               </p>
-              <p className="truncate font-medium leading-tight">
-                {fields.patientName}
-              </p>
-              <p className="truncate text-[10px] leading-tight text-zinc-600">
-                {fields.dateOfBirth} · {fields.specimenType}
-              </p>
-            </div>
-            <div
-              className="grid size-9 shrink-0 grid-cols-3 grid-rows-3 gap-px bg-black p-0.5 sm:size-11"
-              title="Data Matrix (2D)"
-            >
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "bg-white",
-                    (i + fields.barcode.length) % 3 !== 0 && "bg-black",
-                  )}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {routingLabel ? (
-              <p className="line-clamp-2 text-xs font-semibold leading-snug text-zinc-800 sm:text-sm">
-                {routingLabel}
+            ) : null}
+            <p className="break-words text-[10px] font-medium leading-snug sm:text-[11px]">
+              {fields.patientName}
+            </p>
+            {routingLine ? (
+              <p className="break-words text-[9px] leading-snug text-zinc-700">
+                {routingLine}
               </p>
             ) : null}
           </div>
-          <div className="mt-auto shrink-0 px-0.5 pt-0.5">
+          <div className="mt-0.5 shrink-0">
             <svg
               viewBox={`0 0 ${barW} ${barH}`}
-              className="block h-8 w-full text-black sm:h-10"
+              className="block h-7 w-full text-black sm:h-8"
               preserveAspectRatio="xMidYMid meet"
               aria-hidden
             >
@@ -172,7 +165,7 @@ export function LabelPreview({
                 }}
               />
             </svg>
-            <p className="truncate text-center font-mono text-[8px] tracking-wide sm:text-[9px]">
+            <p className="break-all text-center font-mono text-[7px] leading-none tracking-tight sm:text-[8px]">
               {fields.barcode}
             </p>
           </div>
@@ -190,10 +183,6 @@ export function LabelPreview({
             : `Print failed: ${printStatus.error ?? "unknown error"}`}
         </p>
       )}
-      <p className="break-words text-[10px] text-muted-foreground">
-        ZD411 · {sizeLabel} routing label
-        {isDraft ? " · draft" : ` · ${fields.barcode}`}
-      </p>
     </div>
   );
 }

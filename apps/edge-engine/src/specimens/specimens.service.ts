@@ -13,6 +13,7 @@ import { SyncService } from "../sync/sync.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { displayName } from "../patients/patient-normalize";
 import { PatientsService } from "../patients/patients.service";
+import { formatSpecimenNumber } from "./specimen-number";
 
 type IdentityConfirmation = {
   decision: "distinct_people" | "possible_duplicate_acknowledged";
@@ -86,6 +87,7 @@ type ResolvedRegistration = {
 type CreatedSpecimen = {
   specimen: Awaited<ReturnType<PrismaService["specimen"]["create"]>>;
   accessionNumber: string;
+  specimenNumber: string;
   barcode: string;
   orderedTests: Array<{ code: string; name?: string }>;
   departmentLabel: string;
@@ -110,11 +112,40 @@ export class SpecimensService {
     const accession = await this.prisma.accession.findUnique({
       where: { accessionNumber },
       include: {
-        specimens: { orderBy: { departmentKey: "asc" } },
+        specimens: { orderBy: [{ departmentKey: "asc" }, { tubeSequence: "asc" }] },
       },
     });
     if (!accession) return null;
     return this.toAccessionListItem(accession);
+  }
+
+  async findByBarcode(barcode: string) {
+    const trimmed = barcode.trim();
+    if (!trimmed) return null;
+
+    const specimen = await this.prisma.specimen.findFirst({
+      where: {
+        OR: [{ barcode: trimmed }, { specimenNumber: trimmed }],
+      },
+      include: {
+        accession: {
+          include: {
+            specimens: {
+              orderBy: [{ departmentKey: "asc" }, { tubeSequence: "asc" }],
+            },
+          },
+        },
+      },
+    });
+    if (specimen?.accession) {
+      return {
+        ...this.toAccessionListItem(specimen.accession),
+        matchedSpecimenId: specimen.id,
+        matchedSpecimenNumber: specimen.specimenNumber ?? specimen.barcode,
+      };
+    }
+
+    return this.findByAccession(trimmed);
   }
 
   private async listEnriched(opts?: { q?: string }) {
@@ -133,6 +164,7 @@ export class SpecimensService {
     q: string,
   ): boolean {
     if (row.accessionNumber.toLowerCase().includes(q)) return true;
+    if (row.specimenNumber?.toLowerCase().includes(q)) return true;
     if (row.barcode.toLowerCase().includes(q)) return true;
     if (row.patientDisplayName.toLowerCase().includes(q)) return true;
     if (row.patientMrn?.toLowerCase().includes(q)) return true;
@@ -171,6 +203,8 @@ export class SpecimensService {
     registeredBySnapshot: string | null;
     specimens: Array<{
       id: string;
+      specimenNumber: string | null;
+      tubeSequence: number;
       barcode: string;
       departmentKey: string;
       departmentLabel: string;
@@ -209,6 +243,8 @@ export class SpecimensService {
       containerCount: accession.specimens.length,
       containers: accession.specimens.map((s) => ({
         id: s.id,
+        specimenNumber: s.specimenNumber ?? s.barcode,
+        tubeSequence: s.tubeSequence,
         departmentKey: s.departmentKey,
         departmentLabel: s.departmentLabel,
         collectionType: s.collectionType,
@@ -223,6 +259,8 @@ export class SpecimensService {
     id: string;
     accessionId?: string;
     accessionNumber: string;
+    specimenNumber?: string | null;
+    tubeSequence?: number;
     barcode: string;
     patientId: string | null;
     patientJson: string | null;
@@ -329,10 +367,16 @@ export class SpecimensService {
       }
     }
 
+    const specimenNumber =
+      row.specimenNumber?.trim() ||
+      formatSpecimenNumber(row.accessionNumber, row.tubeSequence ?? 1);
+
     return {
       id: row.id,
       accessionId: row.accessionId,
       accessionNumber: row.accessionNumber,
+      specimenNumber,
+      tubeSequence: row.tubeSequence ?? 1,
       barcode: row.barcode,
       patientId: row.patientId,
       patientJson: row.patientJson,
@@ -400,7 +444,8 @@ export class SpecimensService {
 
     const accessionNumber =
       input.accessionNumber ?? (await this.nextAccessionNumber());
-    const barcode = input.barcode ?? accessionNumber;
+    const specimenNumber = formatSpecimenNumber(accessionNumber, 1);
+    const barcode = input.barcode ?? specimenNumber;
     const registrationBatchId = randomUUID();
     const collectedBySnapshot = this.collectorSnapshot(input);
     const orderedSelections = this.normalizeSelections(input.selections);
@@ -426,6 +471,8 @@ export class SpecimensService {
           data: this.specimenCreateData({
             accessionId: accession.id,
             accessionNumber,
+            specimenNumber,
+            tubeSequence: 1,
             barcode,
             patientId: resolved.patient.id,
             patientPayload: resolved.patientPayload,
@@ -469,6 +516,7 @@ export class SpecimensService {
           collectionType,
           orderedTests,
           barcode,
+          specimenNumber: specimen.specimenNumber ?? barcode,
           specimenId: specimen.id,
         },
       ],
@@ -516,7 +564,8 @@ export class SpecimensService {
       });
 
       const results: CreatedSpecimen[] = [];
-      for (const group of input.specimens) {
+      for (let i = 0; i < input.specimens.length; i++) {
+        const group = input.specimens[i]!;
         const orderedTests = group.orderedTests ?? [];
         if (!orderedTests.length) {
           throw new BadRequestException(
@@ -524,11 +573,14 @@ export class SpecimensService {
           );
         }
         const routing = this.normalizeRoutingGroup(group);
-        const barcode = accessionNumber;
+        const specimenNumber = formatSpecimenNumber(accessionNumber, i + 1);
+        const barcode = specimenNumber;
         const specimen = await tx.specimen.create({
           data: this.specimenCreateData({
             accessionId: accession.id,
             accessionNumber,
+            specimenNumber,
+            tubeSequence: 1,
             barcode,
             patientId: resolved.patient.id,
             patientPayload: resolved.patientPayload,
@@ -549,6 +601,7 @@ export class SpecimensService {
         results.push({
           specimen,
           accessionNumber,
+          specimenNumber,
           barcode,
           orderedTests,
           departmentLabel: routing.departmentLabel,
@@ -579,6 +632,7 @@ export class SpecimensService {
       collectionType: item.collectionType,
       orderedTests: item.orderedTests,
       barcode: item.barcode,
+      specimenNumber: item.specimenNumber,
       specimenId: item.specimen.id,
     }));
 
@@ -653,6 +707,8 @@ export class SpecimensService {
   private specimenCreateData(args: {
     accessionId: string;
     accessionNumber: string;
+    specimenNumber: string;
+    tubeSequence: number;
     barcode: string;
     patientId: string;
     patientPayload: ResolvedRegistration["patientPayload"];
@@ -673,6 +729,8 @@ export class SpecimensService {
     return {
       accessionId: args.accessionId,
       accessionNumber: args.accessionNumber,
+      specimenNumber: args.specimenNumber,
+      tubeSequence: args.tubeSequence,
       barcode: args.barcode,
       patientId: args.patientId,
       patientJson: JSON.stringify(args.patientPayload),
@@ -872,6 +930,7 @@ export class SpecimensService {
       collectionType: string;
       orderedTests: Array<{ code: string; name?: string }>;
       barcode: string;
+      specimenNumber: string;
       specimenId: string;
     }>;
   }) {
@@ -941,6 +1000,7 @@ export class SpecimensService {
 
     const labelPayload = {
       accessionNumber,
+      specimenNumber: specimen.specimenNumber ?? barcode,
       patientName,
       barcode,
       dateOfBirth: patient.dateOfBirth,

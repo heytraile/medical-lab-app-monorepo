@@ -216,6 +216,16 @@ function BenchPage() {
   const debouncedQ = useDebouncedValue(q ?? "", 150);
   const deferredQ = useDeferredValue(debouncedQ.trim().toLowerCase());
 
+  const specimenHayByAccession = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of specimensQ.data ?? []) {
+      const key = s.accessionNumber.toLowerCase();
+      const chunk = [s.specimenNumber, s.barcode].filter(Boolean).join(" ");
+      map.set(key, `${map.get(key) ?? ""} ${chunk}`.trim());
+    }
+    return map;
+  }, [specimensQ.data]);
+
   const filtered = useMemo(() => {
     let rows = data;
     if (analyzer) {
@@ -226,8 +236,10 @@ function BenchPage() {
         const patientHay = r.patient
           ? `${r.patient.displayName} ${r.patient.mrn}`
           : "";
+        const specimenHay =
+          specimenHayByAccession.get(r.accessionNumber.toLowerCase()) ?? "";
         const hay =
-          `${r.accessionNumber} ${r.barcode} ${r.testCode} ${r.value} ${r.flag} ${r.analyzerId} ${patientHay}`.toLowerCase();
+          `${r.accessionNumber} ${r.barcode} ${specimenHay} ${r.testCode} ${r.value} ${r.flag} ${r.analyzerId} ${patientHay}`.toLowerCase();
         return hay.includes(deferredQ);
       });
     }
@@ -249,7 +261,7 @@ function BenchPage() {
       );
     }
     return rows;
-  }, [data, analyzer, deferredQ, tab]);
+  }, [data, analyzer, deferredQ, specimenHayByAccession, tab]);
 
   const groupSummaries = useMemo(() => {
     const byKey = new Map<string, BenchResult[]>();
@@ -282,15 +294,7 @@ function BenchPage() {
   const matchedSpecimen = useMemo(() => {
     const needle = (q ?? "").trim();
     if (!needle || !specimensQ.data?.length) return null;
-    return (
-      findSpecimenByAccession(specimensQ.data, needle) ??
-      specimensQ.data.find(
-        (s) =>
-          s.accessionNumber.toLowerCase() === needle.toLowerCase() ||
-          s.barcode.toLowerCase() === needle.toLowerCase(),
-      ) ??
-      null
-    );
+    return findSpecimenByAccession(specimensQ.data, needle) ?? null;
   }, [q, specimensQ.data]);
 
   const resultsExistForAccession = useMemo(() => {
@@ -786,7 +790,7 @@ function BenchPage() {
           <Input
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
-            placeholder="Search accession, patient, test…"
+            placeholder="Search accession, specimen ID, patient, test…"
             className={cn(
               "h-8 text-sm",
               isCompactWorkstation

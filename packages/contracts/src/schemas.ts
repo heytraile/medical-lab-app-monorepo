@@ -161,6 +161,8 @@ export type OrderedTest = z.infer<typeof OrderedTestSchema>;
 export const SpecimenSchema = z.object({
   id: z.string().optional(),
   accessionNumber: z.string().min(1),
+  specimenNumber: z.string().min(1).optional(),
+  tubeSequence: z.number().int().positive().optional(),
   barcode: z.string().min(1),
   patientId: z.string().optional(),
   patient: PatientSchema.optional(),
@@ -204,12 +206,14 @@ export type RegisterSpecimenRequest = z.infer<
 
 export const LabelPreviewFieldsSchema = z.object({
   accessionNumber: z.string(),
+  specimenNumber: z.string().optional(),
   patientName: z.string(),
   barcode: z.string(),
   dateOfBirth: z.string(),
   orderedTests: z.string(),
   specimenType: z.string(),
   departmentLabel: z.string().optional(),
+  routingLine: z.string().optional(),
   mrn: z.string().optional(),
   printedAt: z.string(),
   widthDots: z.number().optional(),

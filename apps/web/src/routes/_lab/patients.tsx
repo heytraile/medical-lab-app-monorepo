@@ -3,6 +3,11 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { searchQueryField } from "@drax-lis/contracts";
 import { api, type PatientListItem } from "../../lib/api";
+import { isAdmin, useAuth } from "../../lib/auth";
+import {
+  chartStatusLabel,
+  chartStatusVariant,
+} from "../../lib/patient-display";
 import { PatientDetailDialog } from "../../components/patient-detail-dialog";
 import { RegisterPatientDialog } from "../../components/patients/register-patient-dialog";
 import {
@@ -38,11 +43,14 @@ export const Route = createFileRoute("/_lab/patients")({
 });
 
 function PatientsPage() {
+  const auth = useAuth();
+  const admin = isAdmin(auth.role);
   const navigate = Route.useNavigate();
   const { register: openRegister, seed, tab } = Route.useSearch();
   const [query, setQuery] = useState("");
   const [queryError, setQueryError] = useState<string | null>(null);
   const deferredQuery = useDeferredValue(query);
+  const [includeInactive, setIncludeInactive] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [registerOpen, setRegisterOpen] = useState(false);
   const isWorkstation = useIsWorkstation();
@@ -54,8 +62,12 @@ function PatientsPage() {
   }, [openRegister]);
 
   const patientsQ = useQuery({
-    queryKey: ["patients", deferredQuery],
-    queryFn: () => api.patients(deferredQuery),
+    queryKey: ["patients", deferredQuery, includeInactive],
+    queryFn: () =>
+      api.patients({
+        q: deferredQuery,
+        includeInactive: admin && includeInactive,
+      }),
     enabled: tab === "registry",
   });
 
@@ -154,6 +166,18 @@ function PatientsPage() {
             </p>
           ) : null}
 
+          {admin ? (
+            <label className="flex max-w-md cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+              <input
+                type="checkbox"
+                className="size-4 rounded border-border accent-accent"
+                checked={includeInactive}
+                onChange={(e) => setIncludeInactive(e.target.checked)}
+              />
+              Show deactivated charts
+            </label>
+          ) : null}
+
           {patientsQ.isError && (
             <p className="text-sm text-lab-danger">
               Could not load patients. Please try again.
@@ -217,7 +241,7 @@ function PatientsPage() {
                       <th className="px-3 py-2.5 font-medium">MRN</th>
                       <th className="px-3 py-2.5 font-medium">DOB</th>
                       <th className="px-3 py-2.5 font-medium">Sex</th>
-                      <th className="px-3 py-2.5 font-medium">Status</th>
+                      <th className="px-3 py-2.5 font-medium">Chart status</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -327,8 +351,8 @@ function PatientsPage() {
 function StatusBadges({ patient }: { patient: PatientListItem }) {
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5">
-      <Badge variant={patient.status === "quarantined" ? "danger" : "muted"}>
-        {patient.status}
+      <Badge variant={chartStatusVariant(patient.status)}>
+        {chartStatusLabel(patient.status)}
       </Badge>
     </span>
   );

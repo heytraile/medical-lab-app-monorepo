@@ -12,6 +12,7 @@ import {
 
 export type LabelPayload = {
   accessionNumber: string;
+  specimenNumber?: string;
   patientName: string;
   barcode: string;
   dateOfBirth?: string | null;
@@ -117,8 +118,9 @@ export class PrinterService {
     const { formatted, zpl } = buildSpecimenLabelDocument(
       {
         accessionNumber: opts.accessionNumber,
+        specimenNumber: opts.specimenNumber,
         patientName: opts.patientName,
-        barcode: opts.barcode ?? opts.accessionNumber,
+        barcode: opts.barcode ?? opts.specimenNumber ?? opts.accessionNumber,
         dateOfBirth: opts.dateOfBirth,
         orderedTests: opts.orderedTests,
         specimenType: opts.specimenType,
@@ -133,8 +135,9 @@ export class PrinterService {
   buildTestLabel(): { zpl: string; fields: LabelPreviewFields } {
     return this.buildSpecimenLabel({
       accessionNumber: "DH202608260001",
+      specimenNumber: "DH202608260001-01",
       patientName: "Test Patient",
-      barcode: "DH202608260001",
+      barcode: "DH202608260001-01",
       dateOfBirth: "1980-01-01",
       specimenType: "blood",
       departmentLabel: "Blood Chemistry",

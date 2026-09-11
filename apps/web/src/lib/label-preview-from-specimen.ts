@@ -44,15 +44,16 @@ function collectionTypeForRow(row: SpecimenRow): string {
 
 /** Same payload accession + labels use for edge ZPL preview. */
 export function printPreviewPayloadFromSpecimen(row: SpecimenRow) {
-  const client = buildLabelPreviewFromSpecimen(row);
+  const patient = patientFromSpecimenJson(row.patientJson);
   return {
     accessionNumber: row.accessionNumber,
-    patientName: client.patientName,
+    specimenNumber: row.specimenNumber ?? row.barcode,
+    patientName: patient.displayName,
     barcode: row.barcode,
-    dateOfBirth: client.dateOfBirth,
+    dateOfBirth: patient.dateOfBirth,
     specimenType: collectionTypeForRow(row),
     departmentLabel: routingDepartmentLabel(row),
-    mrn: client.mrn,
+    mrn: patient.mrn,
   };
 }
 
@@ -90,7 +91,8 @@ export function findContainersByAccession(
   const match = specimens.find(
     (s) =>
       s.accessionNumber.toUpperCase() === needle ||
-      s.barcode.toUpperCase() === needle,
+      s.barcode.toUpperCase() === needle ||
+      s.specimenNumber?.toUpperCase() === needle,
   );
   return match ? [match] : [];
 }
@@ -103,6 +105,7 @@ export function buildLabelPreviewFromSpecimen(
   const formatted = formatSpecimenLabel(
     {
       accessionNumber: row.accessionNumber,
+      specimenNumber: row.specimenNumber ?? row.barcode,
       patientName: patient.displayName,
       barcode: row.barcode,
       dateOfBirth: patient.dateOfBirth,
@@ -120,8 +123,9 @@ export const TEST_LABEL_PREVIEW: LabelPreviewFields = formattedToPreviewFields(
   formatSpecimenLabel(
     {
       accessionNumber: "DH202608260001",
+      specimenNumber: "DH202608260001-01",
       patientName: "Test Patient",
-      barcode: "DH202608260001",
+      barcode: "DH202608260001-01",
       dateOfBirth: "1980-01-01",
       specimenType: "blood",
       departmentLabel: "Blood Chemistry",

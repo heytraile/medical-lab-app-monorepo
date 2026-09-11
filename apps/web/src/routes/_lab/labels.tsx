@@ -32,7 +32,7 @@ import {
   patientDisplayNameFromJson,
 } from "../../lib/specimen-display";
 import { groupSpecimensIntoSessions } from "../../lib/accession-sessions";
-import { findExactSpecimenMatch } from "../../lib/ordered-tests";
+import { resolveAccessionFromSearch } from "../../lib/specimen-search";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 
 type LabelsSearch = {
@@ -211,15 +211,15 @@ function LabelsPage() {
     [navigate],
   );
 
-  const resolveSearch = useCallback(() => {
+  const resolveSearch = useCallback(async () => {
     const trimmed = filterQuery.trim();
     if (!trimmed) return;
 
     const specimens = specimensQ.data ?? [];
-    const exact = findExactSpecimenMatch(specimens, trimmed);
-    if (exact) {
+    const resolved = await resolveAccessionFromSearch(specimens, trimmed);
+    if (resolved) {
       setFilterQuery("");
-      selectAccession(exact.accessionNumber);
+      selectAccession(resolved);
       return;
     }
 
@@ -294,8 +294,10 @@ function LabelsPage() {
 
   const scanHandlers = useScanInput((value) => {
     setFilterQuery("");
-    const exact = findExactSpecimenMatch(specimensQ.data ?? [], value);
-    selectAccession(exact?.accessionNumber ?? value);
+    void (async () => {
+      const acc = await resolveAccessionFromSearch(specimensQ.data ?? [], value);
+      selectAccession(acc ?? value.trim());
+    })();
   });
 
   const recentSessions = useMemo(
@@ -308,7 +310,7 @@ function LabelsPage() {
           <label className="block space-y-1.5">
             <span className="flex items-center gap-2 text-sm font-medium">
               <ScanLine className="size-4" />
-              Scan or enter accession
+              Scan or enter accession / specimen ID
             </span>
             <ClearableInput
               value={filterQuery}
@@ -317,7 +319,7 @@ function LabelsPage() {
                 setFilterQuery(e.target.value);
               }}
               onClear={() => setFilterQuery("")}
-              placeholder="Patient, MRN, or accession…"
+              placeholder="Patient, MRN, accession, or specimen ID…"
               autoComplete="off"
               autoFocus
               maxLength={200}
@@ -328,7 +330,7 @@ function LabelsPage() {
                 scanHandlers.onKeyDown(e);
                 if (e.key === "Enter" && !e.defaultPrevented) {
                   e.preventDefault();
-                  resolveSearch();
+                  void resolveSearch();
                 }
               }}
             />

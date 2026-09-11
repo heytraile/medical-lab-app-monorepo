@@ -18,7 +18,14 @@ export class SpecimensController {
   constructor(private readonly specimens: SpecimensService) {}
 
   @Get()
-  list(@Query("accession") accession?: string, @Query("q") q?: string) {
+  list(
+    @Query("accession") accession?: string,
+    @Query("barcode") barcode?: string,
+    @Query("q") q?: string,
+  ) {
+    if (barcode?.trim()) {
+      return this.specimens.findByBarcode(barcode.trim());
+    }
     if (accession?.trim()) {
       return this.specimens.findByAccession(accession.trim());
     }

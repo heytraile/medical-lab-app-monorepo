@@ -71,14 +71,41 @@ export function labelPreviewHeightPx(
   return Math.round(heightDots * LABEL_PREVIEW_SCALE);
 }
 
+/** Format a per-tube specimen ID tied to the parent accession number. */
+export function formatSpecimenNumber(
+  accessionNumber: string,
+  sequence: number,
+): string {
+  return `${accessionNumber}-${String(sequence).padStart(2, "0")}`;
+}
+
+export function formatPatientNameWithMrn(
+  name: string,
+  mrn?: string | null,
+): string {
+  const m = mrn?.trim();
+  if (!m) return name.trim();
+  let n = name.trim();
+  if (!n) return m;
+  if (n.toUpperCase() === m.toUpperCase()) return m;
+  const suffix = ` · ${m}`;
+  const suffixLower = suffix.toLowerCase();
+  while (n.toLowerCase().endsWith(suffixLower)) {
+    n = n.slice(0, -suffix.length).trimEnd();
+  }
+  return `${n} · ${m}`;
+}
+
 export type SpecimenLabelInput = {
   accessionNumber: string;
+  /** Per-tube specimen ID (printed and encoded in barcode). */
+  specimenNumber?: string;
   patientName: string;
   barcode: string;
   dateOfBirth?: string | null;
   orderedTests?: string[];
   specimenType?: string;
-  /** Lab routing department shown on the label meta line (e.g. Blood Chemistry). */
+  /** Lab routing department shown on the label (e.g. Blood Chemistry). */
   departmentLabel?: string;
   mrn?: string;
 };
@@ -86,10 +113,11 @@ export type SpecimenLabelInput = {
 export type FormattedSpecimenLabel = {
   size: LabelSizeSpec;
   accessionNumber: string;
+  specimenNumber: string;
   patientName: string;
   dateOfBirth: string;
-  metaLine: string;
-  /** Lines actually printed (joined for display field). */
+  /** Department · DOB — routing + identity check. */
+  routingLine: string;
   testLines: string[];
   orderedTests: string;
   testsOverflowCount: number;
@@ -103,88 +131,75 @@ export type FormattedSpecimenLabel = {
 };
 
 type LayoutProfile = {
-  testMaxLines: number;
-  testMaxCharsPerLine: number;
-  accessionMaxChars: number;
-  nameMaxChars: number;
-  metaMaxChars: number;
-  /** ZPL y positions and barcode height */
+  marginX: number;
+  textWidth: number;
   accessionY: number;
+  specimenY: number;
   nameY: number;
-  metaY: number;
-  testStartY: number;
-  testLineHeight: number;
+  nameMaxLines: number;
+  nameLineSpacing: number;
+  routingY: number;
   barcodeY: number;
   barcodeHeight: number;
-  timestampY: number;
   accessionFont: number;
+  specimenFont: number;
   nameFont: number;
-  bodyFont: number;
-  timestampFont: number;
+  routingFont: number;
 };
 
 function layoutProfileFor(size: LabelSizeSpec): LayoutProfile {
   if (size.id === "tube_4x2") {
     return {
-      testMaxLines: 4,
-      testMaxCharsPerLine: 48,
-      accessionMaxChars: 24,
-      nameMaxChars: 40,
-      metaMaxChars: 44,
-      accessionY: 12,
-      nameY: 48,
-      metaY: 76,
-      testStartY: 104,
-      testLineHeight: 22,
-      barcodeY: 200,
-      barcodeHeight: 80,
-      timestampY: size.heightDots - 24,
+      marginX: 12,
+      textWidth: size.widthDots - 24,
+      accessionY: 16,
+      specimenY: 52,
+      nameY: 88,
+      nameMaxLines: 2,
+      nameLineSpacing: 6,
+      routingY: 148,
+      barcodeY: 188,
+      barcodeHeight: 72,
       accessionFont: 36,
-      nameFont: 28,
-      bodyFont: 20,
-      timestampFont: 16,
+      specimenFont: 28,
+      nameFont: 26,
+      routingFont: 22,
     };
   }
   if (size.id === "tube_2x0_5") {
     return {
-      testMaxLines: 1,
-      testMaxCharsPerLine: 32,
-      accessionMaxChars: 16,
-      nameMaxChars: 22,
-      metaMaxChars: 28,
-      accessionY: 4,
-      nameY: 24,
-      metaY: 40,
-      testStartY: 54,
-      testLineHeight: 14,
-      barcodeY: 68,
+      marginX: 6,
+      textWidth: size.widthDots - 12,
+      accessionY: 2,
+      specimenY: 16,
+      nameY: 30,
+      nameMaxLines: 2,
+      nameLineSpacing: 2,
+      routingY: 52,
+      barcodeY: 66,
       barcodeHeight: 28,
-      timestampY: size.heightDots - 12,
-      accessionFont: 22,
-      nameFont: 16,
-      bodyFont: 14,
-      timestampFont: 12,
+      accessionFont: 16,
+      specimenFont: 13,
+      nameFont: 12,
+      routingFont: 11,
     };
   }
-  // tube_2x1 — default tube label
+  // tube_2x1 — default tube label (406 × 203 dots)
   return {
-    testMaxLines: 2,
-    testMaxCharsPerLine: 38,
-    accessionMaxChars: 18,
-    nameMaxChars: 28,
-    metaMaxChars: 34,
-    accessionY: 8,
-    nameY: 38,
-    metaY: 60,
-    testStartY: 78,
-    testLineHeight: 16,
-    barcodeY: 112,
-    barcodeHeight: 52,
-    timestampY: size.heightDots - 18,
-    accessionFont: 28,
-    nameFont: 20,
-    bodyFont: 16,
-    timestampFont: 14,
+    marginX: 8,
+    textWidth: size.widthDots - 16,
+    accessionY: 4,
+    specimenY: 24,
+    nameY: 40,
+    nameMaxLines: 2,
+    nameLineSpacing: 4,
+    routingY: 72,
+    barcodeY: 88,
+    barcodeHeight: 40,
+    accessionFont: 18,
+    specimenFont: 14,
+    nameFont: 13,
+    routingFont: 12,
   };
 }
 
@@ -222,15 +237,8 @@ export function resolveLabelSize(options?: {
   return LABEL_SIZES[DEFAULT_LABEL_SIZE_ID];
 }
 
-export function sanitizeZplText(value: string, maxLen: number): string {
-  return value.replace(/\^/g, " ").replace(/\\/g, " ").trim().slice(0, maxLen);
-}
-
-export function truncateWithEllipsis(text: string, maxLen: number): string {
-  const t = text.trim();
-  if (t.length <= maxLen) return t;
-  if (maxLen <= 1) return "…";
-  return `${t.slice(0, maxLen - 1)}…`;
+export function sanitizeZplText(value: string): string {
+  return value.replace(/\^/g, " ").replace(/\\/g, " ").replace(/\r?\n/g, " ").trim();
 }
 
 /** Fit comma-separated test codes onto a fixed number of label lines. */
@@ -253,7 +261,7 @@ export function formatTestLines(
       const candidate = line ? `${line}, ${next}` : next;
       if (candidate.length > maxCharsPerLine) {
         if (!line) {
-          lines.push(truncateWithEllipsis(next, maxCharsPerLine));
+          lines.push(next.slice(0, maxCharsPerLine));
           i += 1;
         }
         break;
@@ -265,14 +273,17 @@ export function formatTestLines(
   }
 
   const overflowCount = Math.max(0, clean.length - i);
-  if (overflowCount > 0 && lines.length > 0) {
-    const lastIdx = lines.length - 1;
-    const suffix = ` +${overflowCount}`;
-    const room = maxCharsPerLine - suffix.length;
-    lines[lastIdx] = truncateWithEllipsis(lines[lastIdx]!, Math.max(8, room)) + suffix;
-  }
-
   return { lines, overflowCount };
+}
+
+function formatRoutingLine(
+  departmentLabel: string,
+  dateOfBirth: string,
+): string {
+  const dept = departmentLabel.trim() || "General";
+  const dob = dateOfBirth.trim();
+  if (!dob || dob === "DOB —") return dept;
+  return `${dept} · ${dob}`;
 }
 
 export function formatSpecimenLabel(
@@ -280,34 +291,26 @@ export function formatSpecimenLabel(
   size: LabelSizeSpec = LABEL_SIZES[DEFAULT_LABEL_SIZE_ID],
   printedAt = new Date().toISOString(),
 ): FormattedSpecimenLabel {
-  const profile = layoutProfileFor(size);
   const dob = input.dateOfBirth?.trim() || "DOB —";
-  const tube = input.specimenType?.trim() || "blood";
   const dept = input.departmentLabel?.trim() || "General";
-  const metaRaw = `${dob} · ${tube}`;
+  const specimenNumber =
+    input.specimenNumber?.trim() || input.barcode.trim() || input.accessionNumber;
+  const patientLine = formatPatientNameWithMrn(input.patientName, input.mrn);
 
   return {
     size,
-    accessionNumber: truncateWithEllipsis(
-      sanitizeZplText(input.accessionNumber, 200),
-      profile.accessionMaxChars,
-    ),
-    patientName: truncateWithEllipsis(
-      sanitizeZplText(input.patientName, 200),
-      profile.nameMaxChars,
-    ),
+    accessionNumber: sanitizeZplText(input.accessionNumber),
+    specimenNumber: sanitizeZplText(specimenNumber),
+    patientName: sanitizeZplText(patientLine),
     dateOfBirth: dob,
-    metaLine: sanitizeZplText(metaRaw, profile.metaMaxChars),
+    routingLine: sanitizeZplText(formatRoutingLine(dept, dob)),
     testLines: [],
     orderedTests: "",
     testsOverflowCount: 0,
-    barcode: sanitizeZplText(input.barcode, 48),
+    barcode: sanitizeZplText(input.barcode),
     printedAt,
-    specimenType: tube,
-    departmentLabel: truncateWithEllipsis(
-      sanitizeZplText(dept, 200),
-      profile.nameMaxChars,
-    ),
+    specimenType: input.specimenType?.trim() || "blood",
+    departmentLabel: sanitizeZplText(dept),
     mrn: input.mrn,
     widthDots: size.widthDots,
     heightDots: size.heightDots,
@@ -318,22 +321,18 @@ export function buildSpecimenLabelZpl(formatted: FormattedSpecimenLabel): string
   const profile = layoutProfileFor(formatted.size);
   const pw = formatted.widthDots;
   const ll = formatted.heightDots;
-  const ts = formatted.printedAt.slice(0, 19).replace("T", " ");
-
-  const deptLine = formatted.departmentLabel?.trim() || "General";
-  const routingBlock = `^FO8,${profile.testStartY}^A0N,${profile.nameFont},${profile.nameFont}^FD${deptLine}^FS`;
+  const x = profile.marginX;
+  const w = profile.textWidth;
 
   return `^XA
 ^PW${pw}
 ^LL${ll}
 ^LH0,0
-^FO8,${profile.accessionY}^A0N,${profile.accessionFont},${profile.accessionFont}^FD${formatted.accessionNumber}^FS
-^FO8,${profile.nameY}^A0N,${profile.nameFont},${profile.nameFont}^FD${formatted.patientName}^FS
-^FO8,${profile.metaY}^A0N,${profile.bodyFont},${profile.bodyFont}^FD${formatted.metaLine}^FS
-${routingBlock}
-^FO${pw - 72},${profile.accessionY}^BXN,4,200,,,,_,1^FD${formatted.barcode}^FS
-^FO8,${profile.barcodeY}^BY2,2,${profile.barcodeHeight}^BCN,${profile.barcodeHeight},Y,N,N^FD${formatted.barcode}^FS
-^FO8,${profile.timestampY}^A0N,${profile.timestampFont},${profile.timestampFont}^FD${ts}^FS
+^FO${x},${profile.accessionY}^A0N,${profile.accessionFont},${profile.accessionFont}^FD${formatted.accessionNumber}^FS
+^FO${x},${profile.specimenY}^A0N,${profile.specimenFont},${profile.specimenFont}^FD${formatted.specimenNumber}^FS
+^FO${x},${profile.nameY}^A0N,${profile.nameFont},${profile.nameFont}^FB${w},${profile.nameMaxLines},${profile.nameLineSpacing},L,0^FD${formatted.patientName}^FS
+^FO${x},${profile.routingY}^A0N,${profile.routingFont},${profile.routingFont}^FB${w},1,0,L,0^FD${formatted.routingLine}^FS
+^FO${x},${profile.barcodeY}^BY1.5,2,${profile.barcodeHeight}^BCN,${profile.barcodeHeight},Y,N,N^FD${formatted.barcode}^FS
 ^XZ
 `;
 }
@@ -351,12 +350,14 @@ export function buildSpecimenLabelDocument(
 export function formattedToPreviewFields(formatted: FormattedSpecimenLabel) {
   return {
     accessionNumber: formatted.accessionNumber,
+    specimenNumber: formatted.specimenNumber,
     patientName: formatted.patientName,
     barcode: formatted.barcode,
     dateOfBirth: formatted.dateOfBirth,
     orderedTests: formatted.orderedTests,
     specimenType: formatted.specimenType,
     departmentLabel: formatted.departmentLabel,
+    routingLine: formatted.routingLine,
     mrn: formatted.mrn,
     printedAt: formatted.printedAt,
     widthDots: formatted.widthDots,

@@ -110,7 +110,8 @@ export class DemoSeedService implements OnModuleInit {
       };
 
       const accessionNumber = demo.accessionNumber;
-      const barcode = accessionNumber;
+      const specimenNumber = `${accessionNumber}-01`;
+      const barcode = specimenNumber;
       const hasReleasedResults = releasedAccessions.has(accessionNumber);
 
       const accession = await this.prisma.accession.upsert({
@@ -138,14 +139,17 @@ export class DemoSeedService implements OnModuleInit {
 
       await this.prisma.specimen.upsert({
         where: {
-          accessionId_departmentKey: {
+          accessionId_departmentKey_tubeSequence: {
             accessionId: accession.id,
             departmentKey: "general",
+            tubeSequence: 1,
           },
         },
         create: {
           accessionId: accession.id,
           accessionNumber,
+          specimenNumber,
+          tubeSequence: 1,
           barcode,
           departmentKey: "general",
           departmentLabel: "General",
@@ -157,12 +161,14 @@ export class DemoSeedService implements OnModuleInit {
         },
         update: hasReleasedResults
           ? {
+              specimenNumber,
               barcode,
               patientId: patient.id,
               patientJson: JSON.stringify(patientPayload),
               orderedTestsJson: JSON.stringify(demo.orderedTests ?? []),
             }
           : {
+              specimenNumber,
               barcode,
               patientId: patient.id,
               patientJson: JSON.stringify(patientPayload),

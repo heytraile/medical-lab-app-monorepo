@@ -10,11 +10,11 @@ import {
 import { ScanLine } from "lucide-react";
 import { api, type SpecimenRow } from "../../lib/api";
 import {
-  findExactSpecimenMatch,
   mergeOrderedTestsLookup,
   parseOrderedTestsJson,
   type ParsedOrderedTest,
 } from "../../lib/ordered-tests";
+import { resolveAccessionFromSearch } from "../../lib/specimen-search";
 import {
   findSessionByAccession,
   groupSpecimensIntoSessions,
@@ -122,15 +122,15 @@ function OrdersLookupPage() {
     [navigate],
   );
 
-  const confirmFromInput = useCallback(() => {
+  const confirmFromInput = useCallback(async () => {
     const trimmed = filterQuery.trim();
     if (!trimmed) return;
 
     const specimens = specimensQ.data ?? [];
-    const exact = findExactSpecimenMatch(specimens, trimmed);
-    if (exact) {
+    const resolved = await resolveAccessionFromSearch(specimens, trimmed);
+    if (resolved) {
       setFilterQuery("");
-      selectAccession(exact.accessionNumber);
+      selectAccession(resolved);
       return;
     }
 
@@ -156,8 +156,10 @@ function OrdersLookupPage() {
     const v = value.trim();
     if (!v) return;
     setFilterQuery("");
-    const exact = findExactSpecimenMatch(specimensQ.data ?? [], v);
-    selectAccession(exact?.accessionNumber ?? v);
+    void (async () => {
+      const acc = await resolveAccessionFromSearch(specimensQ.data ?? [], v);
+      selectAccession(acc ?? v);
+    })();
   });
 
   const searchForm = (
@@ -165,14 +167,14 @@ function OrdersLookupPage() {
       className="flex shrink-0 gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        confirmFromInput();
+        void confirmFromInput();
       }}
     >
       <ClearableInput
         value={filterQuery}
         onChange={(e) => setFilterQuery(e.target.value)}
         onClear={clearFilter}
-        placeholder="Patient, MRN, or accession…"
+        placeholder="Patient, MRN, accession, or specimen ID…"
         wrapperClassName="flex-1"
         leftSlot={<ScanLine className="size-4 text-muted-foreground" />}
       />

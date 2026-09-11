@@ -36,6 +36,19 @@ When reception cannot find the patient:
 
 **Later (not built yet):** upstream assigns a real MRN; edge reconciles local row (`externalId` / MRN swap, `syncStatus=synced`). No reconcile UI this pass.
 
+## Patient chart fields (Patients → Registry detail)
+
+When you open a patient from **Patients → Registry**, these fields describe the **lab chart** (not clinical status):
+
+| UI label | Database field | Meaning |
+| --- | --- | --- |
+| **Chart status** | `status` | Can this chart receive **new specimens**? `active` — yes; `inactive` — deactivated by admin; `quarantined` — blocked (identity conflict, system-managed) |
+| **Registration source** | `identityOrigin` | Where the chart came from: `upstream` (main hospital registry import) or `local_provisional` (registered at this lab with a TEMP MRN) |
+| **Hospital registry link** | `syncStatus` | For lab-registered charts: link state to the main hospital registry (`n_a` for imports; `pending_upstream` / `synced` / `failed` for provisional) |
+| **Hospital system ID** | `externalId` | Identifier in the main hospital patient system (if known). Not the lab MRN. |
+
+Admins can **deactivate** or **reactivate** active/inactive charts via `PATCH /patients/:id/status`. Quarantined charts cannot be changed manually — use Identity review.
+
 ## Register gate
 
 Happy path: `POST /specimens` with **required** `patientId`.
@@ -53,7 +66,7 @@ Allowed decisions (audited on `Specimen.identityConfirmationJson`):
 
 Accession UI: continue with selected, switch to a sibling, or cancel; optional **Flag as possible duplicate** checkbox. **No chart merge from Accession.**
 
-Quarantined patients → **400**, cannot register.
+Quarantined or inactive patients → **400**, cannot register.
 
 ## Identity review + merge (Patients)
 
@@ -71,9 +84,10 @@ UI: Patients page tabs **Registry | Identity review**.
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| `GET` | `/patients?q=` | Active patients (default); `includeQuarantined=true` optional |
+| `GET` | `/patients?q=` | Active patients (default); `includeInactive=true` (admin registry view); `includeQuarantined=true` optional |
 | `POST` | `/patients` | Create provisional patient |
 | `GET` | `/patients/:id` | One patient (+ suspect siblings when listed) |
+| `PATCH` | `/patients/:id/status` | **Admin:** `{ status: "active" \| "inactive" }` — deactivate/reactivate chart |
 | `GET` | `/patients/identity-reviews` | Flagged possible-duplicate queue |
 | `POST` | `/patients/identity-reviews/:id/resolve-distinct` | Admin: mark distinct |
 | `POST` | `/patients/merge` | Admin: merge charts |

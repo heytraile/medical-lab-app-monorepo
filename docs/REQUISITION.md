@@ -14,13 +14,24 @@ Not every catalog test runs on the four bench analyzers. `@drax-lis/catalog` exp
 
 Machine output is **remapped** to request-form codes at ingestion (`packages/catalog/src/test-fulfillment.ts`). Plain-English reference: [MACHINE_TO_REQUEST_FORM.md](./MACHINE_TO_REQUEST_FORM.md).
 
+## Identifiers (accession vs specimen)
+
+| ID | Scope | Example | On tube label |
+| --- | --- | --- | --- |
+| **MRN** | Patient chart (stable) | `MRN-1001` | Beside patient name |
+| **Accession number** | One doctor form / visit | `DH202609100001` | Top line — shared by all tubes on the form |
+| **Specimen ID** | One physical tube | `DH202609100001-01` | Second line + barcode — unique per tube |
+
+One accession can produce multiple specimen IDs when tests route to different departments (e.g. Haematology tube `-01`, Blood Chemistry tube `-02`). Machines scan the **specimen ID** barcode; results roll up to the parent **accession** for Bench and release.
+
 ## Flow (unified register)
 
 1. Reception selects **patient** + **panels/tests** on Accession (`/accession`).
 2. When signed in, cloud API creates a **requisition** with expanded `ordered_tests`.
-3. Edge **accessions** the specimen (`POST /specimens`) with the same list + `requisitionId`.
-4. Label prints; outbox syncs specimen to cloud as today.
-5. Phlebotomy / bench read ordered work from specimen JSON or cloud requisition (`/orders?accession=`).
+3. Edge **accessions** the specimen (`POST /specimens/batch`) with the same list + `requisitionId` — one accession, one label per routing tube.
+4. Each tube label prints accession + specimen ID + patient name · MRN + department; barcode encodes the specimen ID.
+5. Outbox syncs specimen to cloud as today.
+6. Phlebotomy / bench read ordered work from specimen JSON or cloud requisition (`/orders?accession=`).
 
 ```text
 Accession UI → POST /requisitions (cloud) → POST /specimens (edge) → PATCH /requisitions/:id/link

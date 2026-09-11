@@ -160,8 +160,9 @@ function AccessionPage() {
       queryFn: () =>
         api.printPreview({
           accessionNumber: "Assigns on accession",
+          specimenNumber: "Assigns per tube",
           patientName: selected!.displayName,
-          barcode: selected!.mrn,
+          barcode: "Assigns per tube",
           dateOfBirth: selected!.dateOfBirth,
           specimenType: group.collectionType,
           departmentLabel: group.departmentLabel,

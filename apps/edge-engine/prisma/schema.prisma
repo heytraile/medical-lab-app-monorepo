@@ -17,7 +17,7 @@ model Patient {
   lastName       String
   dateOfBirth    String?
   sex            String?
-  /// active | quarantined
+  /// active | inactive | quarantined
   status         String     @default("active")
   /// upstream | local_provisional
   identityOrigin String     @default("upstream")
@@ -100,6 +100,10 @@ model Specimen {
   accessionId            String
   /// Denormalized from parent Accession — same on every container label.
   accessionNumber        String
+  /// Per-tube ID, e.g. DH202609100001-01 (unique barcode value).
+  specimenNumber         String?   @unique
+  /// Allows multiple physical tubes in the same department later (default 1).
+  tubeSequence           Int       @default(1)
   barcode                String
   /// Requisition category key, e.g. haematology, blood_chemistry.
   departmentKey          String    @default("general")
@@ -129,8 +133,9 @@ model Specimen {
   accession              Accession @relation(fields: [accessionId], references: [id], onDelete: Cascade)
   patient                Patient?  @relation(fields: [patientId], references: [id])
 
-  @@unique([accessionId, departmentKey])
+  @@unique([accessionId, departmentKey, tubeSequence])
   @@index([accessionNumber])
+  @@index([specimenNumber])
   @@index([barcode])
   @@index([patientId])
   @@index([requisitionId])

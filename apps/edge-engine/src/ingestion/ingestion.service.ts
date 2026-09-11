@@ -80,8 +80,10 @@ export class IngestionService {
       },
     });
 
-    const barcode = message.barcode ?? `UNK-${raw.id.slice(0, 8)}`;
-    const accessionNumber = barcode;
+    const scannedBarcode = message.barcode ?? `UNK-${raw.id.slice(0, 8)}`;
+    const resolved = await this.resolveScannedBarcode(scannedBarcode);
+    const accessionNumber = resolved.accessionNumber;
+    const barcode = resolved.barcode;
 
     const releasedOnAccession = await this.prisma.result.findFirst({
       where: { accessionNumber, status: "released" },
@@ -111,9 +113,11 @@ export class IngestionService {
       };
     }
 
-    const existingAccession = await this.prisma.accession.findUnique({
-      where: { accessionNumber },
-    });
+    const existingAccession =
+      resolved.accession ??
+      (await this.prisma.accession.findUnique({
+        where: { accessionNumber },
+      }));
 
     if (existingAccession) {
       await this.prisma.accession.update({
@@ -124,6 +128,12 @@ export class IngestionService {
         where: { accessionId: existingAccession.id },
         data: { status: "in_progress" },
       });
+      if (resolved.specimen) {
+        await this.prisma.specimen.update({
+          where: { id: resolved.specimen.id },
+          data: { status: "in_progress" },
+        });
+      }
     } else {
       await this.prisma.accession.create({
         data: {
@@ -135,7 +145,7 @@ export class IngestionService {
     }
 
     const orderedCatalogCodes = parseOrderedTestCodes(
-      existingAccession?.orderedTestsJson,
+      resolved.orderedTestsJson ?? existingAccession?.orderedTestsJson,
     );
     const analyzerId = input.analyzerId as AnalyzerId;
 
@@ -309,6 +319,57 @@ export class IngestionService {
       accessionNumber,
       barcode,
       results: createdResults,
+    };
+  }
+
+  /** Map tube barcode (specimen ID) or legacy accession scan to order context. */
+  private async resolveScannedBarcode(barcode: string): Promise<{
+    accessionNumber: string;
+    barcode: string;
+    orderedTestsJson: string | null;
+    accession: Awaited<
+      ReturnType<PrismaService["accession"]["findUnique"]>
+    > | null;
+    specimen: Awaited<
+      ReturnType<PrismaService["specimen"]["findFirst"]>
+    > | null;
+  }> {
+    const trimmed = barcode.trim();
+    const specimen = await this.prisma.specimen.findFirst({
+      where: {
+        OR: [{ barcode: trimmed }, { specimenNumber: trimmed }],
+      },
+      include: { accession: true },
+    });
+    if (specimen) {
+      return {
+        accessionNumber: specimen.accessionNumber,
+        barcode: specimen.barcode,
+        orderedTestsJson: specimen.orderedTestsJson,
+        accession: specimen.accession,
+        specimen,
+      };
+    }
+
+    const accession = await this.prisma.accession.findUnique({
+      where: { accessionNumber: trimmed },
+    });
+    if (accession) {
+      return {
+        accessionNumber: accession.accessionNumber,
+        barcode: trimmed,
+        orderedTestsJson: accession.orderedTestsJson,
+        accession,
+        specimen: null,
+      };
+    }
+
+    return {
+      accessionNumber: trimmed,
+      barcode: trimmed,
+      orderedTestsJson: null,
+      accession: null,
+      specimen: null,
     };
   }
 

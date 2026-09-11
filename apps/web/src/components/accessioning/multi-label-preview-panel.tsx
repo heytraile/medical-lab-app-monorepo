@@ -104,6 +104,10 @@ function LabelCard({
         {item.accessionNumber && (
           <span className="font-mono text-[10px] text-muted-foreground">
             {item.accessionNumber}
+            {item.fields?.specimenNumber &&
+            item.fields.specimenNumber !== item.accessionNumber
+              ? ` · ${item.fields.specimenNumber}`
+              : ""}
           </span>
         )}
       </div>

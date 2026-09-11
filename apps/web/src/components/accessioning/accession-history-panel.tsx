@@ -183,7 +183,7 @@ export function AccessionHistoryPanel({
       <ClearableInput
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        placeholder="Search accession, patient, or MRN…"
+        placeholder="Search accession, specimen ID, patient, or MRN…"
         className="h-10"
       />
       {specimensQ.isError ? (
@@ -237,6 +237,13 @@ export function AccessionHistoryPanel({
                   <span className="font-mono text-xs text-muted-foreground">
                     {session.accessionNumbers.join(" · ")}
                   </span>
+                  {session.tubes.length > 0 ? (
+                    <span className="font-mono text-[11px] text-muted-foreground/90">
+                      {session.tubes
+                        .map((t) => t.specimenNumber ?? t.barcode)
+                        .join(" · ")}
+                    </span>
+                  ) : null}
                   <span className="text-xs text-muted-foreground">
                     {tubeLabel}
                   </span>
@@ -540,7 +547,7 @@ function AccessionHistoryDetail({
                         {formatSpecimenType(tube.specimenType ?? "blood")}
                       </span>
                       <span className="font-mono text-muted-foreground">
-                        {tube.accessionNumber}
+                        {tube.specimenNumber ?? tube.barcode}
                       </span>
                       <span className="mt-0.5 block text-muted-foreground">
                         {specimenTests(tube)
@@ -557,7 +564,7 @@ function AccessionHistoryDetail({
           <section>
             <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Label · {formatSpecimenType(activeTube.specimenType ?? "blood")} ·{" "}
-              {activeTube.accessionNumber}
+              {activeTube.specimenNumber ?? activeTube.barcode}
             </p>
             <MultiLabelPreviewPanel
               phase="registered"

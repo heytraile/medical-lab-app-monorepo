@@ -69,11 +69,12 @@ export class PatientsService {
   async list(opts: {
     q?: string;
     includeQuarantined?: boolean;
+    includeInactive?: boolean;
   }): Promise<PatientListItem[]> {
     const q = opts.q?.trim();
     const patients = await this.prisma.patient.findMany({
       where: {
-        ...(opts.includeQuarantined ? {} : { status: "active" }),
+        ...this.listStatusFilter(opts),
         ...(q
           ? {
               OR: [
@@ -103,6 +104,54 @@ export class PatientsService {
     if (!p) throw new NotFoundException(`Patient ${id} not found`);
     const items = await this.toListItems([p]);
     return items[0]!;
+  }
+
+  async updateStatus(
+    id: string,
+    status: "active" | "inactive",
+    actor: ActorSnapshot,
+  ): Promise<PatientListItem> {
+    const patient = await this.prisma.patient.findUnique({ where: { id } });
+    if (!patient) throw new NotFoundException(`Patient ${id} not found`);
+
+    if (patient.status === "quarantined") {
+      throw new BadRequestException(
+        "Quarantined charts cannot be deactivated or reactivated manually",
+      );
+    }
+    if (status === "inactive" && patient.status !== "active") {
+      throw new BadRequestException(
+        `Only active charts can be deactivated (current status: ${patient.status})`,
+      );
+    }
+    if (status === "active" && patient.status !== "inactive") {
+      throw new BadRequestException(
+        `Only inactive charts can be reactivated (current status: ${patient.status})`,
+      );
+    }
+    if (patient.status === status) {
+      return this.get(id);
+    }
+
+    await this.prisma.patient.update({
+      where: { id },
+      data: { status },
+    });
+
+    await this.audit.log({
+      eventType:
+        status === "inactive" ? "patient.deactivated" : "patient.reactivated",
+      entityType: "patient",
+      entityId: id,
+      actor,
+      payload: {
+        mrn: patient.mrn,
+        previousStatus: patient.status,
+        status,
+      },
+    });
+
+    return this.get(id);
   }
 
   async createProvisional(input: {
@@ -479,6 +528,17 @@ export class PatientsService {
       specimensMoved: moved.specimens.length,
       reviewItemId: moved.reviewItemId,
     };
+  }
+
+  private listStatusFilter(opts: {
+    includeQuarantined?: boolean;
+    includeInactive?: boolean;
+  }): { status?: string | { in: string[] } } {
+    if (opts.includeQuarantined) return {};
+    if (opts.includeInactive) {
+      return { status: { in: ["active", "inactive"] } };
+    }
+    return { status: "active" };
   }
 
   private async allocateProvisionalMrn(): Promise<string> {

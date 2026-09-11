@@ -23,8 +23,9 @@ export function buildDraftLabelPreview(
   const formatted = formatSpecimenLabel(
     {
       accessionNumber: "Assigns on accession",
+      specimenNumber: "Assigns per tube",
       patientName: patient.displayName,
-      barcode: patient.mrn,
+      barcode: "Assigns per tube",
       dateOfBirth: patient.dateOfBirth,
       specimenType,
       departmentLabel,

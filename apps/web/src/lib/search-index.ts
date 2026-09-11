@@ -140,20 +140,19 @@ export function buildSearchIndex(input: {
     });
   }
 
-  const seenAccessions = new Set<string>();
   for (const s of input.specimens) {
-    const accessionKey = s.accessionNumber.trim().toUpperCase();
-    if (!accessionKey || seenAccessions.has(accessionKey)) continue;
-    seenAccessions.add(accessionKey);
+    const specimenId = (s.specimenNumber ?? s.barcode).trim();
+    if (!specimenId) continue;
     const patient = patientSnippet(s.patientJson);
+    const mrn = s.patientMrn?.trim() ?? "";
     hits.push({
-      id: `specimen-${accessionKey}`,
+      id: `specimen-${s.id}`,
       kind: "specimen",
-      title: s.accessionNumber,
-      subtitle: patient || s.barcode,
+      title: specimenId,
+      subtitle: [s.accessionNumber, patient].filter(Boolean).join(" · "),
       haystack:
-        `${s.accessionNumber} ${s.barcode} ${patient} ${s.status}`.toLowerCase(),
-      href: `/bench?q=${encodeURIComponent(s.accessionNumber)}`,
+        `${s.accessionNumber} ${specimenId} ${s.barcode} ${patient} ${mrn} ${s.status} ${s.departmentLabel ?? ""}`.toLowerCase(),
+      href: `/bench?q=${encodeURIComponent(specimenId)}`,
     });
   }
 

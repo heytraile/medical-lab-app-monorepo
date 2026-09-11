@@ -29,6 +29,8 @@
     "supabase:stop": "supabase stop",
     "supabase:status": "supabase status",
     "supabase:reset": "supabase db reset",
+    "reseed:local": "bash scripts/reseed-local.sh",
+    "reseed:local:full": "bash scripts/reseed-local.sh --seed",
     "supabase:migration": "supabase migration new",
     "supabase:migrate:local": "supabase migration up",
     "docs:manual-entry-pdf": "node scripts/generate-manual-entry-pdf.mjs",

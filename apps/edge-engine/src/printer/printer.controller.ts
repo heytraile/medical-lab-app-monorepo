@@ -41,8 +41,9 @@ export class PrinterController {
   ) {
     const { zpl, fields } = this.printer.buildSpecimenLabel({
       accessionNumber: body.accessionNumber,
+      specimenNumber: body.specimenNumber,
       patientName: body.patientName,
-      barcode: body.barcode ?? body.accessionNumber,
+      barcode: body.barcode ?? body.specimenNumber ?? body.accessionNumber,
       dateOfBirth: body.dateOfBirth,
       orderedTests: body.orderedTests,
       specimenType: body.specimenType,
@@ -60,8 +61,9 @@ export class PrinterController {
   ) {
     const { zpl, fields } = this.printer.buildSpecimenLabel({
       accessionNumber: body.accessionNumber,
+      specimenNumber: body.specimenNumber,
       patientName: body.patientName,
-      barcode: body.barcode ?? body.accessionNumber,
+      barcode: body.barcode ?? body.specimenNumber ?? body.accessionNumber,
       dateOfBirth: body.dateOfBirth,
       orderedTests: body.orderedTests,
       specimenType: body.specimenType,
@@ -121,6 +123,7 @@ export class PrinterController {
     for (const specimen of containers) {
       const { zpl, fields } = this.printer.buildSpecimenLabel({
         accessionNumber: specimen.accessionNumber,
+        specimenNumber: specimen.specimenNumber ?? specimen.barcode,
         patientName: ctx.patientName,
         barcode: specimen.barcode,
         dateOfBirth: ctx.dateOfBirth,

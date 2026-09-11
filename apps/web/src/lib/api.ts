@@ -318,6 +318,8 @@ export type SpecimenRow = {
   id: string;
   accessionId?: string;
   accessionNumber: string;
+  specimenNumber?: string;
+  tubeSequence?: number;
   barcode: string;
   patientId?: string | null;
   patientJson: string | null;
@@ -350,12 +352,14 @@ export type SpecimenRow = {
 
 export type LabelPreviewFields = {
   accessionNumber: string;
+  specimenNumber?: string;
   patientName: string;
   barcode: string;
   dateOfBirth: string;
   orderedTests: string;
   specimenType: string;
   departmentLabel?: string;
+  routingLine?: string;
   mrn?: string;
   printedAt: string;
   widthDots?: number;
@@ -468,17 +472,39 @@ export const api = {
       `/specimens?accession=${encodeURIComponent(accession.trim())}`,
       { auth: false },
     ),
+  /** Exact lookup by tube barcode or specimen ID (e.g. DH202609100001-01). */
+  specimenByBarcode: (barcode: string) =>
+    request<SpecimenRow | null>(
+      `/specimens?barcode=${encodeURIComponent(barcode.trim())}`,
+      { auth: false },
+    ),
   syncStatus: () => request<SyncStatus>("/sync/status", { auth: false }),
   analyzerStatus: () =>
     request<AnalyzerStatus[]>("/analyzers/status", { auth: false }),
-  patients: (q?: string) => {
-    const qs = q?.trim() ? `?q=${encodeURIComponent(q.trim())}` : "";
-    return request<PatientListItem[]>(`/patients${qs}`, { auth: false });
+  patients: (opts?: { q?: string; includeInactive?: boolean }) => {
+    const params = new URLSearchParams();
+    const q = opts?.q?.trim();
+    if (q) params.set("q", q);
+    if (opts?.includeInactive) params.set("includeInactive", "true");
+    const qs = params.toString();
+    return request<PatientListItem[]>(
+      `/patients${qs ? `?${qs}` : ""}`,
+      { auth: false },
+    );
   },
   patient: (id: string) =>
     request<PatientListItem>(`/patients/${encodeURIComponent(id)}`, {
       auth: false,
     }),
+  updatePatientStatus: (id: string, status: "active" | "inactive") =>
+    request<PatientListItem>(
+      `/patients/${encodeURIComponent(id)}/status`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+        auth: true,
+      },
+    ),
   createPatient: (body: CreatePatientBody) =>
     request<PatientListItem>("/patients", {
       method: "POST",

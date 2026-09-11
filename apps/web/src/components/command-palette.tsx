@@ -37,7 +37,7 @@ import {
 const GROUP_LABEL: Record<SearchHitKind, string> = {
   nav: "Go to",
   machine: "Machines",
-  specimen: "Accessions",
+  specimen: "Specimens",
   result: "Results",
 };
 
@@ -67,8 +67,8 @@ export function CommandPalette({ open, onOpenChange }: Props) {
     enabled: open,
   });
   const specimensQ = useQuery({
-    queryKey: ["specimens"],
-    queryFn: () => api.specimens(),
+    queryKey: ["specimens", deferredQuery.trim()],
+    queryFn: () => api.specimens(deferredQuery.trim() || undefined),
     staleTime: 10_000,
     enabled: open,
   });
@@ -169,7 +169,7 @@ export function CommandPalette({ open, onOpenChange }: Props) {
       >
         <Command>
           <CommandInput
-            placeholder="Search accessions, tests, machines…"
+            placeholder="Search accession, specimen ID, tests, machines…"
             value={raw}
             onValueChange={(v) => {
               setRaw(v);

@@ -1,8 +1,10 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -31,11 +33,14 @@ export class PatientsController {
   list(
     @Query("q") q?: string,
     @Query("includeQuarantined") includeQuarantined?: string,
+    @Query("includeInactive") includeInactive?: string,
   ) {
     return this.patients.list({
       q,
       includeQuarantined:
         includeQuarantined === "1" || includeQuarantined === "true",
+      includeInactive:
+        includeInactive === "1" || includeInactive === "true",
     });
   }
 
@@ -98,6 +103,20 @@ export class PatientsController {
     },
   ) {
     return this.patients.mergePatients(body, toActorSnapshot(user));
+  }
+
+  @Patch(":id/status")
+  @UseGuards(EdgeAuthGuard)
+  @Roles("admin")
+  updateStatus(
+    @Param("id") id: string,
+    @CurrentUser() user: AuthUser,
+    @Body() body: { status: "active" | "inactive" },
+  ) {
+    if (body.status !== "active" && body.status !== "inactive") {
+      throw new BadRequestException('status must be "active" or "inactive"');
+    }
+    return this.patients.updateStatus(id, body.status, toActorSnapshot(user));
   }
 
   @Get(":id")

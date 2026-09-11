@@ -65,9 +65,11 @@ These are often done **by hand**, on a different bench, or at a reference lab. *
        │
        ▼
 3. RUN SAMPLE     Tube goes to the right machine(s)
+                  (tube barcode = specimen ID, e.g. DH202609100001-01)
        │
        ▼
 4. MACHINE SENDS  Machine transmits its own codes + values
+                  (scanned barcode resolves to parent accession + tube order)
        │
        ▼
 5. REMAP          System translates machine codes → request-form codes
