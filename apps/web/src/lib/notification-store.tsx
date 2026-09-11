@@ -12,7 +12,6 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { io, type Socket } from "socket.io-client";
 import {
   BenchEventSchema,
   type BenchEvent,
@@ -21,6 +20,11 @@ import {
 import { api, getWsBaseUrl, type ReviewRequest } from "./api";
 import { analyzerLabel } from "./analyzers";
 import { canAuthorize, useAuth } from "./auth";
+import {
+  createManagedSocket,
+  scheduleSocketConnect,
+  teardownSocket,
+} from "./socket-lifecycle";
 
 export type NotificationSeverity = "critical" | "alarm" | "info";
 export type NotificationType = "result" | "specimen" | "review";
@@ -248,16 +252,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    let socket: Socket | null = io(`${getWsBaseUrl()}/bench`, {
-      transports: ["websocket", "polling"],
-    });
+    if (!auth.accessToken) return;
+
+    const socket = createManagedSocket(`${getWsBaseUrl()}/bench`);
     socket.on("bench.event", handleBenchEvent);
+    const cancelConnect = scheduleSocketConnect(socket);
     return () => {
-      socket?.off("bench.event", handleBenchEvent);
-      socket?.disconnect();
-      socket = null;
+      cancelConnect();
+      teardownSocket(socket, ["bench.event"]);
     };
-  }, [handleBenchEvent]);
+  }, [handleBenchEvent, auth.accessToken]);
 
   // Review requests are cross-user, so they cannot come from localStorage.
   // Polled rather than pushed: the cloud API has no socket, and the release

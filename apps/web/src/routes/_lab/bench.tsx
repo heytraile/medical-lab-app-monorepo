@@ -559,7 +559,8 @@ function BenchPage() {
                 <th
                   key={h.id}
                   className={cn(
-                    "px-3 py-2.5 font-medium",
+                    "px-4 py-3 font-medium",
+                    splitDocked && "first:pl-5 last:pr-5",
                     h.id === "patientGroup" && "min-w-[18rem]",
                   )}
                 >
@@ -597,6 +598,7 @@ function BenchPage() {
                       summary={summary}
                       expanded={isOpen}
                       alternate={blockIndex % 2 === 1}
+                      splitInset={splitDocked}
                       selected={
                         summary.patient?.id != null &&
                         summary.patient.id === selectedPatientId
@@ -644,7 +646,8 @@ function BenchPage() {
                       <td
                         key={cell.id}
                         className={cn(
-                          "px-3 py-3 align-middle transition-[background-color,box-shadow] duration-300",
+                          "px-4 py-3.5 align-middle transition-[background-color,box-shadow] duration-300",
+                          splitDocked && "first:pl-5 last:pr-5",
                           cellBg,
                           isLastInBlock[i]
                             ? "border-b border-border"
@@ -878,10 +881,10 @@ function BenchPage() {
           "min-h-0 flex-1",
           splitDocked &&
             cn(
-              "grid items-stretch gap-3",
+              "grid items-stretch gap-5",
               isCompactWorkstation
                 ? "grid-cols-[minmax(0,1fr)_minmax(16rem,42%)]"
-                : "grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)] lg:gap-4",
+                : "grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)] lg:gap-6",
             ),
           !splitDocked && "flex flex-col",
         )}

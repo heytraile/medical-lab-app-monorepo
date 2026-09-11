@@ -158,8 +158,10 @@ function LabShell() {
                     !showSidebar && "overflow-x-hidden",
                     fillViewport
                       ? cn(
-                          "overflow-hidden p-0",
-                          !showSidebar && "px-6 pt-3 lg:px-8",
+                          "overflow-hidden",
+                          showSidebar
+                            ? "px-5 py-4 lg:px-8 lg:py-5"
+                            : "p-0 px-6 pt-3 lg:px-8",
                         )
                       : "overflow-y-auto p-4 sm:p-6 md:p-8 lg:px-8",
                   )}

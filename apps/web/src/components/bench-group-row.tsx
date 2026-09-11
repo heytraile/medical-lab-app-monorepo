@@ -120,6 +120,7 @@ export function BenchGroupRow({
   expanded,
   alternate,
   compact = false,
+  splitInset = false,
   selected,
   onToggle,
   onSelectPatient,
@@ -131,6 +132,8 @@ export function BenchGroupRow({
   alternate: boolean;
   /** Tablet landscape: tighter cells, fewer columns. */
   compact?: boolean;
+  /** Extra horizontal inset when the bench table shares a row with the panel. */
+  splitInset?: boolean;
   selected: boolean;
   onToggle: () => void;
   onSelectPatient: (id: string) => void;
@@ -165,7 +168,8 @@ export function BenchGroupRow({
 
   const cellClass = compact
     ? "px-2 py-2 align-middle"
-    : "px-3 py-3.5 align-middle";
+    : "px-4 py-3.5 align-middle";
+  const edgeInset = splitInset ? "first:pl-5 last:pr-5" : "";
 
   const observedLabel = summary.latestObservedAt
     ? compact
@@ -220,6 +224,7 @@ export function BenchGroupRow({
       <td
         className={cn(
           cellClass,
+          edgeInset,
           compact ? "w-[26%] align-top" : "min-w-[18rem] w-[22%] align-top",
         )}
       >
@@ -381,7 +386,13 @@ export function BenchGroupRow({
       </td>
 
       {/* Status + actions */}
-      <td className={cn(cellClass, compact ? "min-w-0" : "min-w-[10rem]")}>
+      <td
+        className={cn(
+          cellClass,
+          edgeInset,
+          compact ? "min-w-0" : "min-w-[10rem]",
+        )}
+      >
         <div
           className={cn(
             "flex flex-col",

@@ -1,0 +1,14 @@
+{
+  "stylesheet": "docs/pdf/manual-result-entry-lab-guide.css",
+  "document_title": "Manual Test Result Entry — Lab Review Guide",
+  "pdf_options": {
+    "format": "Letter",
+    "printBackground": true,
+    "margin": {
+      "top": "0.65in",
+      "right": "0.75in",
+      "bottom": "0.75in",
+      "left": "0.75in"
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { io, type Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import {
   MessagingWsEventSchema,
   type Message,
@@ -8,6 +8,11 @@ import {
 import { getWsBaseUrl } from "./api";
 import { isCloudMode } from "./supabase";
 import { useAuth } from "./auth";
+import {
+  createManagedSocket,
+  scheduleSocketConnect,
+  teardownSocket,
+} from "./socket-lifecycle";
 
 /**
  * Edge Socket.IO /messaging client. Cloud-mode browsers use Supabase Realtime
@@ -28,8 +33,7 @@ export function useMessagingSocket(opts: {
   useEffect(() => {
     if (!enabled || !auth.accessToken) return;
 
-    const socket = io(`${getWsBaseUrl()}/messaging`, {
-      transports: ["websocket", "polling"],
+    const socket = createManagedSocket(`${getWsBaseUrl()}/messaging`, {
       auth: { token: auth.accessToken },
     });
     socketRef.current = socket;
@@ -39,8 +43,10 @@ export function useMessagingSocket(opts: {
       if (parsed.success) onEventRef.current(parsed.data);
     });
 
+    const cancelConnect = scheduleSocketConnect(socket);
     return () => {
-      socket.disconnect();
+      cancelConnect();
+      teardownSocket(socket, ["messaging.event"]);
       socketRef.current = null;
     };
   }, [enabled, auth.accessToken]);

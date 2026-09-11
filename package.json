@@ -31,6 +31,7 @@
     "supabase:reset": "supabase db reset",
     "supabase:migration": "supabase migration new",
     "supabase:migrate:local": "supabase migration up",
+    "docs:manual-entry-pdf": "node scripts/generate-manual-entry-pdf.mjs",
     "supabase:types": "supabase gen types typescript --local"
   },
   "devDependencies": {

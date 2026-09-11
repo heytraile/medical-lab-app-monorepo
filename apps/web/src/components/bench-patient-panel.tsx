@@ -96,7 +96,7 @@ function SectionLabel({
   trailing?: ReactNode;
 }) {
   return (
-    <div className="mb-2 flex items-baseline justify-between gap-2">
+    <div className="mb-3 flex items-baseline justify-between gap-2">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         {children}
       </p>
@@ -248,12 +248,12 @@ export function BenchPatientPanel({
           return (
             <li
               key={r.id}
-              className="rounded-xl border border-border bg-background p-3 shadow-sm"
+              className="rounded-xl border border-border bg-background p-4 shadow-sm"
               style={{
                 boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag, ctx)}`,
               }}
             >
-              <div className="flex items-baseline justify-between gap-3 pl-1">
+              <div className="flex items-baseline justify-between gap-4">
                 <div className="min-w-0">
                   <p className="break-words text-base font-semibold leading-snug">
                     {r.testCode}
@@ -273,7 +273,7 @@ export function BenchPatientPanel({
                   ) : null}
                 </span>
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-1">
+              <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <AlarmSign flag={r.flag} ctx={ctx} />
                 <FlagChip
                   flag={r.flag}
@@ -283,7 +283,7 @@ export function BenchPatientPanel({
                 />
                 <WorkflowStatusChip status={r.status ?? "pending_review"} />
               </div>
-              <p className="mt-2 pl-1 text-sm leading-snug text-muted-foreground">
+              <p className="mt-2.5 text-sm leading-snug text-muted-foreground">
                 <span className="font-mono text-xs tracking-tight text-foreground/80">
                   {r.accessionNumber}
                 </span>
@@ -294,12 +294,12 @@ export function BenchPatientPanel({
                   {new Date(r.observedAt).toLocaleString()}
                 </span>
               </p>
-              <div className="mt-1 pl-1">
+              <div className="mt-2">
                 <ManualAttribution result={r} />
               </div>
               {canEditManualResult(r) &&
               editableAccessionNumbers.has(r.accessionNumber) ? (
-                <div className="mt-2.5 pl-1">
+                <div className="mt-3">
                   <ManualResultEntryButton
                     accessionNumber={r.accessionNumber}
                     testCode={r.orderedTestCode ?? r.testCode}
@@ -335,7 +335,7 @@ export function BenchPatientPanel({
             return (
               <li
                 key={row.accessionNumber}
-                className="rounded-xl border border-border bg-muted/15 p-3"
+                className="rounded-xl border border-border bg-muted/15 p-4"
               >
                 <Link
                   to="/orders"
@@ -370,7 +370,7 @@ export function BenchPatientPanel({
                   className="mt-3"
                 />
                 {accessionSummary ? (
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <div className="mt-4 flex flex-wrap items-center gap-2.5">
                     {accessionSummary.allReleased &&
                     accessionSummary.missingExpectedCount > 0 ? (
                       <Badge variant="warn">Released incomplete</Badge>
@@ -413,7 +413,7 @@ export function BenchPatientPanel({
                 {row.pending.map((t) => (
                   <li
                     key={`${row.accessionNumber}-${t.orderedTestCode}-${t.componentCode}`}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/25 bg-amber-500/5 px-2.5 py-2"
+                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3"
                   >
                     <div className="min-w-0 text-sm">
                       <span className="font-mono text-xs">
@@ -586,7 +586,7 @@ export function BenchPatientPanel({
       <header
         className={cn(
           "shrink-0 border-b border-border",
-          embedded ? "px-4 pb-3 pt-2" : "px-4 py-3",
+          embedded ? "px-5 pb-3 pt-2" : "px-5 py-4 lg:px-6",
         )}
       >
         {embedded ? (
@@ -637,7 +637,7 @@ export function BenchPatientPanel({
       <ScrollContainer className="min-h-0 flex-1">
         <div
           className={cn(
-            "space-y-6 px-4 py-4",
+            "space-y-7 px-5 py-5 lg:px-6 lg:py-6",
             embedded && "pb-[max(1.25rem,env(safe-area-inset-bottom))]",
           )}
         >

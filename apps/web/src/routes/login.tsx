@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { LoginFormSchema, type LoginFormValues } from "@drax-lis/contracts";
@@ -77,9 +77,16 @@ function LoginPage() {
     reValidateMode: "onChange",
   });
 
-  const signedIn = Boolean(auth.accessToken);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // SSR has no localStorage; defer auth UI until client mount + auth.ready so
+  // server and client render the same shell (avoids hydration mismatch).
+  const signedIn =
+    mounted && auth.ready && Boolean(auth.accessToken);
   const [showDevAccounts, setShowDevAccounts] = useState(false);
   const showRealForm = !isCloudMode || supabaseConfigured;
+  const authUiReady = mounted && auth.ready;
 
   async function goAfterAuth() {
     void navigate({ to: dest });
@@ -115,7 +122,17 @@ function LoginPage() {
           </p>
         </div>
 
-        {signedIn && auth.needsDeviceEnrollment ? (
+        {!authUiReady ? (
+          <div
+            className="space-y-3 rounded-xl border border-border bg-card p-4"
+            aria-busy="true"
+            aria-label="Loading sign-in"
+          >
+            <div className="h-4 w-32 animate-pulse rounded bg-muted" />
+            <div className="h-10 w-full animate-pulse rounded bg-muted" />
+            <div className="h-10 w-full animate-pulse rounded bg-muted" />
+          </div>
+        ) : signedIn && auth.needsDeviceEnrollment ? (
           <DeviceEnrollmentForm onDone={() => void goAfterAuth()} />
         ) : signedIn ? (
           <div className="space-y-4 rounded-xl border border-border bg-card p-4">
