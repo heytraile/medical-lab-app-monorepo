@@ -30,6 +30,20 @@ export function collectionTypeLabel(type: CollectionType): string {
   }
 }
 
+/** Short label for tube routing lines (ZPL). */
+export function collectionTypeLabelShort(type: CollectionType): string {
+  switch (type) {
+    case "blood":
+      return "Bld";
+    case "urine":
+      return "Ur";
+    case "stool":
+      return "St";
+    default:
+      return "Oth";
+  }
+}
+
 export function pickCollectionTypeForTests(
   hints: Array<string | undefined>,
 ): CollectionType {

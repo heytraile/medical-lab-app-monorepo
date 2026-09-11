@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   AlertTriangle,
@@ -16,10 +16,11 @@ import {
 import { cn } from "../lib/utils";
 import { Button } from "./ui/button";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "./ui/popover";
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
 import { ScrollContainer } from "./ui/scroll-container";
 
 function relativeTime(iso: string): string {
@@ -172,6 +173,7 @@ function Section({
 
 export function NotificationCenter() {
   const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
   const {
     notifications,
     unreadCount,
@@ -188,6 +190,7 @@ export function NotificationCenter() {
     // Opening a review request to look at it is not the same as signing it
     // off, so only the explicit Acknowledge button clears one.
     if (item.source !== "review") markRead(item.id);
+    setOpen(false);
     if (item.accessionNumber) {
       void navigate({
         to: "/bench",
@@ -215,8 +218,8 @@ export function NotificationCenter() {
   const earlier = rest.filter((n) => !isToday(n.at));
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
@@ -257,12 +260,12 @@ export function NotificationCenter() {
             </span>
           )}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        className="flex w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden p-0"
+      </DialogTrigger>
+      <DialogContent
+        className="flex w-[min(24rem,calc(100vw-2rem))] max-w-[min(24rem,calc(100vw-2rem))] flex-col overflow-hidden p-0"
         onWheel={(e) => e.stopPropagation()}
       >
+        <DialogTitle className="sr-only">Notifications</DialogTitle>
         <div className="shrink-0 flex items-center justify-between border-b border-border px-3 py-2.5">
           <div>
             <p className="text-sm font-semibold">Notifications</p>
@@ -334,8 +337,8 @@ export function NotificationCenter() {
             </>
           )}
         </ScrollContainer>
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }
 

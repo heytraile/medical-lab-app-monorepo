@@ -47,6 +47,15 @@ const NAV_HITS: SearchHit[] = [
     href: "/orders",
   },
   {
+    id: "nav-settings",
+    kind: "nav",
+    title: "Lab settings",
+    subtitle: "Accession grouping & label routing text",
+    haystack:
+      "settings lab routing accession labels consolidate granular department text per specimen admin",
+    href: "/settings",
+  },
+  {
     id: "nav-sync",
     kind: "nav",
     title: "Connection",

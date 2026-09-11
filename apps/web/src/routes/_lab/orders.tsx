@@ -21,11 +21,12 @@ import {
   type AccessionSession,
   type OrderSelectionSnapshot,
 } from "../../lib/accession-sessions";
+import { buildSpecimenLabelInput } from "@drax-lis/catalog";
+import { findContainersByAccession } from "../../lib/label-preview-from-specimen";
 import {
-  buildLabelPreviewFromSpecimen,
-  fetchEdgeLabelPreviewForSpecimen,
-  findContainersByAccession,
-} from "../../lib/label-preview-from-specimen";
+  buildLabelPreviewFromPrintGroup,
+  labelPrintGroupsFromSpecimenRows,
+} from "../../lib/label-print-preview";
 import {
   MultiLabelPreviewPanel,
   type LabelPreviewItem,
@@ -35,6 +36,7 @@ import {
   actorDisplayName,
   parseOrderedTests,
   parsePatientJson,
+  patientDisplayNameFromJson,
 } from "../../lib/specimen-display";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 import { useScanInput } from "../../lib/use-barcode-scanner";
@@ -48,7 +50,6 @@ import {
   useIsWorkstation,
   useShowWorkstationChrome,
 } from "../../lib/use-media-query";
-import { patientDisplayNameFromJson } from "../../lib/specimen-display";
 import { cn } from "../../lib/utils";
 
 type OrdersSearch = { accession?: string };
@@ -449,37 +450,74 @@ function OrdersLookupDetail({
     return findContainersByAccession(specimens, trimmed);
   }, [session?.tubes, trimmed, specimens]);
 
+  const labelRouting = catalogQ.data?.labelRouting;
+  const labelPrintGroups = useMemo(
+    () => labelPrintGroupsFromSpecimenRows(containerRows, labelRouting),
+    [containerRows, labelRouting],
+  );
+
   const edgePreviewQueries = useQueries({
-    queries: containerRows.map((tube) => ({
+    queries: labelPrintGroups.map((group) => ({
       queryKey: [
         "orders-label-preview",
-        tube.id,
-        tube.departmentKey,
-        tube.accessionNumber,
+        group.primarySpecimenNumber,
+        group.catalogCategory,
+        group.orderedTestCodes.join(","),
       ],
-      queryFn: () => fetchEdgeLabelPreviewForSpecimen(tube),
-      enabled: Boolean(tube.id),
+      queryFn: async () => {
+        const tube =
+          containerRows.find((r) => r.id === group.specimenIds[0]) ??
+          containerRows[0]!;
+        const patient = parsePatientJson(tube.patientJson);
+        const displayName = patientDisplayNameFromJson(tube.patientJson);
+        try {
+          const res = await api.printPreview(
+            buildSpecimenLabelInput({
+              accessionNumber: tube.accessionNumber,
+              specimenNumber: group.primarySpecimenNumber,
+              patientName: displayName === "—" ? "Unknown" : displayName,
+              barcode: group.primaryBarcode,
+              dateOfBirth: patient?.dateOfBirth,
+              collectionType: group.collectionType,
+              departmentKey: group.departmentKey,
+              catalogCategory: group.catalogCategory,
+              departmentLabel: group.departmentLabel,
+              orderedTestCodes: group.orderedTestCodes,
+              mrn: patient?.mrn,
+              routing: labelRouting,
+            }),
+          );
+          return { fields: res.fields, edgeFailed: false };
+        } catch {
+          return {
+            fields: buildLabelPreviewFromPrintGroup(group, tube, labelRouting),
+            edgeFailed: true,
+          };
+        }
+      },
+      enabled: Boolean(containerRows.length),
       staleTime: 400,
     })),
   });
 
   const previewLabels = useMemo((): LabelPreviewItem[] => {
-    return containerRows.map((tube, i) => {
-      const key = tube.departmentKey ?? tube.id;
-      const tubeTests = tube.orderedTests?.length
-        ? tube.orderedTests
-        : parseOrderedTests(tube.orderedTestsJson);
+    return labelPrintGroups.map((group, i) => {
+      const key =
+        group.specimenIds[0] ?? group.primarySpecimenNumber ?? `label-${i}`;
+      const tube =
+        containerRows.find((r) => r.id === group.specimenIds[0]) ??
+        containerRows[0]!;
       return {
         id: key,
-        specimenType: tube.collectionType ?? tube.specimenType ?? "blood",
+        specimenType: group.collectionType,
         fields:
           edgePreviewQueries[i]?.data?.fields ??
-          buildLabelPreviewFromSpecimen(tube),
+          buildLabelPreviewFromPrintGroup(group, tube, labelRouting),
         accessionNumber: tube.accessionNumber,
-        testCount: tubeTests.length,
+        testCount: group.orderedTestCodes.length,
       };
     });
-  }, [containerRows, edgePreviewQueries]);
+  }, [containerRows, labelPrintGroups, edgePreviewQueries, labelRouting]);
 
   const previewLoading =
     containerRows.length > 0 &&

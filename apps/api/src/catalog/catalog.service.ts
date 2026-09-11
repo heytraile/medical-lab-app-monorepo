@@ -1,13 +1,16 @@
 import { Injectable, Logger, OnModuleInit } from "@nestjs/common";
 import { SupabaseService } from "../supabase/supabase.module";
 import {
-  CATALOG_CATEGORIES,
   CATALOG_VERSION,
   DRAX_HALL_LAB,
+  DRAX_HALL_ROUTING_POLICY,
   DHMS_CATALOG_ITEMS,
   DHMS_PANELS,
   buildPanelsWithMembers,
+  catalogPolicyFields,
+  normalizeLabRoutingPolicy,
   type CatalogItemSeed,
+  type LabRoutingPolicy,
 } from "@drax-lis/catalog";
 import type { CatalogResponse } from "@drax-lis/contracts";
 
@@ -33,10 +36,11 @@ export class CatalogService implements OnModuleInit {
 
   private memoryCatalog(): CatalogResponse {
     const panels = buildPanelsWithMembers();
+    const policyFields = catalogPolicyFields(DRAX_HALL_ROUTING_POLICY);
     return {
       labId: DRAX_HALL_LAB.id,
       labName: DRAX_HALL_LAB.name,
-      categories: [...CATALOG_CATEGORIES],
+      ...policyFields,
       items: DHMS_CATALOG_ITEMS.map((i) => ({
         code: i.code,
         name: i.name,
@@ -262,7 +266,7 @@ export class CatalogService implements OnModuleInit {
   private async fetchFromDb(labId: string): Promise<CatalogResponse> {
     const client = this.supabase.client!;
     const [{ data: lab }, { data: items }, { data: panels }] = await Promise.all([
-      client.from("labs").select("id, name").eq("id", labId).single(),
+      client.from("labs").select("id, name, settings").eq("id", labId).single(),
       client
         .from("test_catalog_items")
         .select("code, name, category, specimen_hint, fasting_required")
@@ -320,10 +324,22 @@ export class CatalogService implements OnModuleInit {
       }
     }
 
+    const labSettings = (lab as { settings?: unknown } | null)?.settings;
+    const rawRouting =
+      labSettings &&
+      typeof labSettings === "object" &&
+      "routing" in (labSettings as object)
+        ? (labSettings as { routing: unknown }).routing
+        : undefined;
+    const routingPolicy: LabRoutingPolicy = rawRouting
+      ? normalizeLabRoutingPolicy(rawRouting)
+      : DRAX_HALL_ROUTING_POLICY;
+    const policyFields = catalogPolicyFields(routingPolicy);
+
     return {
       labId,
       labName: (lab as { name: string })?.name ?? DRAX_HALL_LAB.name,
-      categories: [...CATALOG_CATEGORIES],
+      ...policyFields,
       items: (items ?? []).map((i) => ({
         code: (i as { code: string }).code,
         name: (i as { name: string }).name,

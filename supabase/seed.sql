@@ -204,6 +204,46 @@ values (
       'email', 'lab@draxhall.local',
       'website', 'https://draxhall.local',
       'disclaimer', 'For clinical use only. Verify critical values before therapeutic decisions. This report contains released results only.'
+    ),
+    'routing', jsonb_build_object(
+      'consolidated', jsonb_build_object(
+        'mode', 'consolidated',
+        'splitByCollectionType', true,
+        'departments', jsonb_build_array(
+          jsonb_build_object(
+            'key', 'hematology',
+            'label', 'Hematology',
+            'labelShort', 'Hema',
+            'categories', jsonb_build_array('haematology', 'anaemia')
+          ),
+          jsonb_build_object(
+            'key', 'chemistry',
+            'label', 'Chemistry',
+            'labelShort', 'Chem',
+            'categories', jsonb_build_array(
+              'blood_chemistry',
+              'cardiac_enzymes',
+              'endocrinology',
+              'immunology',
+              'special_chemistry',
+              'urine_chemistry',
+              'drugs_of_abuse',
+              'therapeutic_drug'
+            )
+          ),
+          jsonb_build_object(
+            'key', 'microbiology',
+            'label', 'Microbiology',
+            'labelShort', 'Micro B',
+            'categories', jsonb_build_array('bacteriology', 'faeces_misc')
+          )
+        )
+      ),
+      'accession', jsonb_build_object('mode', 'granular'),
+      'labels', jsonb_build_object(
+        'mode', 'consolidated',
+        'splitByCollectionType', true
+      )
     )
   )
 )

@@ -21,6 +21,7 @@ import {
   type PatientListItem,
 } from "../../lib/api";
 import { buildDraftLabelPreview } from "../../lib/label-preview-draft";
+import { buildSpecimenLabelInput } from "@drax-lis/catalog";
 import { AccessioningShell } from "../../components/accessioning/accessioning-shell";
 import {
   MultiLabelPreviewPanel,
@@ -71,6 +72,7 @@ const EMPTY_SELECTIONS: OrderSelection[] = [];
 
 type RegisteredSpecimenLabel = {
   accessionNumber: string;
+  specimenId?: string;
   departmentKey: string;
   departmentLabel: string;
   specimenType: string;
@@ -140,9 +142,12 @@ function AccessionPage() {
   const panelCount = selections.filter((s) => s.kind === "panel").length;
   const individualCount = selections.filter((s) => s.kind === "test").length;
 
+  const accessionRouting = catalogQ.data?.accessionRouting;
+  const labelRouting = catalogQ.data?.labelRouting;
+
   const departmentGroups = useMemo(
-    () => groupTestsByDepartment(expandedTests),
-    [expandedTests],
+    () => groupTestsByDepartment(expandedTests, accessionRouting),
+    [expandedTests, accessionRouting],
   );
 
   const isRegistered = registeredSpecimens.length > 0;
@@ -154,20 +159,27 @@ function AccessionPage() {
         "print-preview",
         selected?.id,
         group.departmentKey,
+        group.collectionType,
         group.tests.map((t) => t.code).join(","),
         selected?.mrn,
       ],
       queryFn: () =>
-        api.printPreview({
-          accessionNumber: "Assigns on accession",
-          specimenNumber: "Assigns per tube",
-          patientName: selected!.displayName,
-          barcode: "Assigns per tube",
-          dateOfBirth: selected!.dateOfBirth,
-          specimenType: group.collectionType,
-          departmentLabel: group.departmentLabel,
-          mrn: selected!.mrn,
-        }),
+        api.printPreview(
+          buildSpecimenLabelInput({
+            accessionNumber: "Assigns on accession",
+            specimenNumber: "Assigns per tube",
+            patientName: selected!.displayName,
+            barcode: "Assigns per tube",
+            dateOfBirth: selected!.dateOfBirth,
+            collectionType: group.collectionType,
+            departmentKey: group.departmentKey,
+            catalogCategory: group.tests[0]?.category ?? group.departmentKey,
+            departmentLabel: group.departmentLabel,
+            orderedTestCodes: group.tests.map((t) => t.code),
+            mrn: selected!.mrn,
+            routing: labelRouting,
+          }),
+        ),
       enabled:
         Boolean(selected) && !isRegistered && group.tests.length > 0,
       staleTime: 400,
@@ -178,12 +190,17 @@ function AccessionPage() {
     mutationFn: (accessionNumber: string) =>
       api.reprintLabel({ accessionNumber, copies }),
     onSuccess: (result) => {
-      const byDepartment = new Map(
-        (result.labels ?? []).map((l) => [l.departmentKey ?? "", l]),
+      const bySpecimen = new Map(
+        (result.labels ?? []).map((l) => [
+          l.specimenId ?? l.departmentKey ?? "",
+          l,
+        ]),
       );
       setRegisteredSpecimens((prev) =>
         prev.map((item) => {
-          const match = byDepartment.get(item.departmentKey);
+          const match = bySpecimen.get(
+            item.specimenId ?? item.departmentKey,
+          );
           if (!match) return item;
           return {
             ...item,
@@ -250,6 +267,7 @@ function AccessionPage() {
         collectedByJobTitle: specimenInfo.collectedByJobTitle,
         selections: deferredSelections,
         specimens: batchSpecimens,
+        labelRouting,
       });
 
       if (requisitionId && data.accessionNumber) {
@@ -262,43 +280,33 @@ function AccessionPage() {
       return { data, batchSpecimens };
     },
     onSuccess: ({ data, batchSpecimens }) => {
+      const acc = data.accessionNumber;
+      const labelGroups = data.labelGroups ?? [];
+      const previews = data.labelPreviews ?? [];
       setRegisteredSpecimens(
-        data.specimens.map((specimen, i) => {
-          const group = batchSpecimens[i];
-          const acc = data.accessionNumber ?? specimen.accessionNumber;
+        previews.map((labelPreview, i) => {
+          const meta = labelGroups[i];
+          const batchItem = batchSpecimens[i];
+          const specimen = data.specimens[i];
           const printResult = data.printResults?.[i];
-          const collectionType =
-            group?.collectionType ?? specimen.specimenType ?? "blood";
           return {
             accessionNumber: acc,
-            departmentKey: group?.departmentKey ?? "general",
-            departmentLabel: group?.departmentLabel ?? "General",
-            specimenType: collectionType,
-            labelPreview:
-              data.labelPreviews[i] ??
-              printResult?.fields ??
-              previewQueries[i]?.data?.fields ??
-              (selected
-                ? {
-                    ...buildDraftLabelPreview(
-                      selected,
-                      group?.departmentLabel ?? "General",
-                      collectionType,
-                    ),
-                    accessionNumber: acc,
-                    barcode: acc,
-                    departmentLabel: group?.departmentLabel,
-                  }
-                : {
-                    accessionNumber: acc,
-                    patientName: "",
-                    barcode: acc,
-                    dateOfBirth: "",
-                    orderedTests: "",
-                    specimenType: collectionType,
-                    departmentLabel: group?.departmentLabel,
-                    printedAt: new Date().toISOString(),
-                  }),
+            specimenId:
+              specimen?.id ?? meta?.specimenIds?.[0] ?? undefined,
+            departmentKey:
+              batchItem?.departmentKey ?? meta?.departmentKey ?? `label-${i}`,
+            departmentLabel:
+              batchItem?.departmentLabel ??
+              meta?.departmentLabel ??
+              labelPreview.departmentLabel ??
+              labelPreview.routingLine ??
+              "Label",
+            specimenType:
+              batchItem?.collectionType ??
+              meta?.collectionType ??
+              labelPreview.specimenType ??
+              "blood",
+            labelPreview,
             printStatus: printResult
               ? { ok: printResult.ok, error: printResult.error }
               : printLabel
@@ -396,7 +404,7 @@ function AccessionPage() {
   const previewLabels = useMemo((): LabelPreviewItem[] => {
     if (registeredSpecimens.length > 0) {
       return registeredSpecimens.map((item, i) => ({
-        id: `${item.departmentKey}-${i}`,
+        id: item.specimenId ?? `${item.departmentKey}-${i}`,
         specimenType: item.specimenType,
         fields: item.labelPreview,
         accessionNumber: item.accessionNumber,
@@ -406,21 +414,23 @@ function AccessionPage() {
     if (!selected || departmentGroups.length === 0) return [];
     return departmentGroups.map((group, i) => {
       return {
-        id: `${group.departmentKey}-${i}`,
+        id: `${group.departmentKey}-${group.collectionType}-${i}`,
         specimenType: group.collectionType,
         fields:
           previewQueries[i]?.data?.fields ??
-          buildDraftLabelPreview(
-            selected,
-            group.departmentLabel,
-            group.collectionType,
-          ),
+          buildDraftLabelPreview(selected, group, labelRouting),
         accessionNumber: null,
         printStatus: null,
         testCount: group.tests.length,
       };
     });
-  }, [registeredSpecimens, selected, departmentGroups, previewQueries]);
+  }, [
+    registeredSpecimens,
+    selected,
+    departmentGroups,
+    previewQueries,
+    labelRouting,
+  ]);
 
   const previewPhase = isRegistered
     ? "registered"
@@ -683,6 +693,7 @@ function AccessionPage() {
                 value={specimenInfo}
                 onChange={setSpecimenInfo}
                 expandedTests={expandedTests}
+                accessionRouting={catalogQ.data?.accessionRouting}
                 currentUserId={auth.session?.user?.id ?? auth.profile?.id}
               />
 

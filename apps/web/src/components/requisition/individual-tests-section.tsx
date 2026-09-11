@@ -32,6 +32,11 @@ export function IndividualTestsSection({
     [catalog.items],
   );
 
+  const categoryTabs =
+    catalog.catalogCategories?.length > 0
+      ? catalog.catalogCategories
+      : catalog.categories;
+
   const selectedCountByCategory = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const sel of selections) {
@@ -48,7 +53,7 @@ export function IndividualTestsSection({
   const activeCategoryLabel =
     tab === ALL_TESTS_CATEGORY
       ? "all tests"
-      : (catalog.categories.find((c) => c.id === tab)?.label ?? tab);
+      : (categoryTabs.find((c) => c.id === tab)?.label ?? tab);
 
   const q = testSearch.trim().toLowerCase();
   const baseItems =
@@ -84,7 +89,7 @@ export function IndividualTestsSection({
           count={totalIndividual}
           onClick={() => setTab(ALL_TESTS_CATEGORY)}
         />
-        {catalog.categories.map((c) => (
+        {categoryTabs.map((c) => (
           <CategoryPill
             key={c.id}
             label={c.label}

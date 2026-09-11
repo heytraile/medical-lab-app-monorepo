@@ -27,10 +27,11 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { FormField } from "./forms/form-field";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "./ui/popover";
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
 import { cn } from "../lib/utils";
 
 type Props = {
@@ -182,7 +183,7 @@ export function PatientReportExportMenu({
   }
 
   return (
-    <Popover
+    <Dialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
@@ -193,7 +194,7 @@ export function PatientReportExportMenu({
         }
       }}
     >
-      <PopoverTrigger asChild>
+      <DialogTrigger asChild>
         <Button
           type="button"
           variant={variant}
@@ -219,8 +220,9 @@ export function PatientReportExportMenu({
             </>
           ) : null}
         </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-64 p-1">
+      </DialogTrigger>
+      <DialogContent className="w-64 max-w-[calc(100vw-2rem)] p-1">
+        <DialogTitle className="sr-only">Export patient report</DialogTitle>
         <p className="px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {accessionNumber
             ? `Released · ${accessionNumber}`
@@ -347,8 +349,8 @@ export function PatientReportExportMenu({
             {error}
           </p>
         ) : null}
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }
 

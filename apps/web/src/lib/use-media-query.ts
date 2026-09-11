@@ -5,10 +5,15 @@ export const MEDIA_TOUCH_PRIMARY = "(pointer: coarse)";
 
 /**
  * Hybrid tablets (e.g. iPad Pro + keyboard) — touchscreen still available even
- * when primary pointer reports fine.
+ * when primary pointer reports fine. Typography scale uses the same bounds via
+ * the `touch-tablet:` variant in styles.css.
  */
 export const MEDIA_HYBRID_TABLET =
   "(any-pointer: coarse) and (max-width: 1535px)";
+
+/** CSS media query paired with `@custom-variant touch-tablet`. */
+export const MEDIA_TOUCH_TABLET =
+  "(min-width: 768px) and (any-pointer: coarse) and (max-width: 1535px)";
 
 /** Mouse/trackpad workstation — sidebar from ~1100px up. */
 export const MEDIA_FINE_POINTER_DESKTOP =

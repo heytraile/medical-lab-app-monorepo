@@ -204,7 +204,9 @@ export function BenchGroupRow({
       role={patient ? "button" : undefined}
       aria-label={
         patient
-          ? `Open ${formatName(patient)} in patient panel`
+          ? selected
+            ? `Close detail for ${formatName(patient)}`
+            : `Open ${formatName(patient)} in patient panel`
           : undefined
       }
       className={cn(

@@ -40,7 +40,7 @@ export function MobileBottomNav({ onMore }: Props) {
       className="shrink-0 border-t border-border bg-card/95 backdrop-blur-md"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <ul className="grid h-14 grid-cols-5">
+      <ul className="grid h-14 grid-cols-5 touch-tablet:h-16">
         {PRIMARY_TABS.map(({ to, label, icon: Icon }) => {
           const active =
             pathname === to || pathname.startsWith(`${to}/`);
@@ -49,13 +49,13 @@ export function MobileBottomNav({ onMore }: Props) {
               <Link
                 to={to}
                 className={cn(
-                  "flex h-full flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium transition-colors",
+                  "flex h-full flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium transition-colors touch-tablet:text-xs",
                   active
                     ? "text-accent"
                     : "text-muted-foreground hover:text-foreground",
                 )}
               >
-                <Icon className="size-5 shrink-0" aria-hidden />
+                <Icon className="size-5 shrink-0 touch-tablet:size-[1.375rem]" aria-hidden />
                 <span className="truncate">{label}</span>
               </Link>
             </li>
@@ -66,13 +66,13 @@ export function MobileBottomNav({ onMore }: Props) {
             type="button"
             onClick={onMore}
             className={cn(
-              "flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium transition-colors",
+              "flex h-full w-full flex-col items-center justify-center gap-0.5 px-1 text-[10px] font-medium transition-colors touch-tablet:text-xs",
               !isPrimaryActive
                 ? "text-accent"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
-            <MoreHorizontal className="size-5 shrink-0" aria-hidden />
+            <MoreHorizontal className="size-5 shrink-0 touch-tablet:size-[1.375rem]" aria-hidden />
             <span className="truncate">More</span>
           </button>
         </li>

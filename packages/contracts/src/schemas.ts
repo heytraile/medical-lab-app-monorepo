@@ -234,6 +234,36 @@ export const PrintResultSchema = z.object({
 });
 export type PrintResult = z.infer<typeof PrintResultSchema>;
 
+export const RoutingDepartmentDefSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  labelShort: z.string(),
+  categories: z.array(z.string()),
+});
+
+export const LabRoutingSettingsSchema = z.object({
+  mode: z.enum(["granular", "consolidated"]),
+  splitByCollectionType: z.boolean(),
+  departments: z.array(RoutingDepartmentDefSchema),
+});
+
+export type RoutingDepartmentDef = z.infer<typeof RoutingDepartmentDefSchema>;
+export type LabRoutingSettings = z.infer<typeof LabRoutingSettingsSchema>;
+
+export const LabRoutingScopeConfigSchema = z.object({
+  mode: z.enum(["granular", "consolidated"]),
+  splitByCollectionType: z.boolean().optional(),
+});
+
+export const LabRoutingPolicySchema = z.object({
+  consolidated: LabRoutingSettingsSchema,
+  accession: LabRoutingScopeConfigSchema,
+  labels: LabRoutingScopeConfigSchema,
+});
+
+export type LabRoutingScopeConfig = z.infer<typeof LabRoutingScopeConfigSchema>;
+export type LabRoutingPolicy = z.infer<typeof LabRoutingPolicySchema>;
+
 export const RegisterSpecimensBatchItemSchema = z.object({
   /** Requisition category key, e.g. haematology, blood_chemistry. */
   departmentKey: z.string().min(1).optional(),
@@ -268,15 +298,25 @@ export const RegisterSpecimensBatchRequestSchema = z.object({
     )
     .optional(),
   specimens: z.array(RegisterSpecimensBatchItemSchema).min(1),
+  /** Effective label routing for consolidated routing text on edge print. */
+  labelRouting: LabRoutingSettingsSchema.optional(),
 });
 export type RegisterSpecimensBatchRequest = z.infer<
   typeof RegisterSpecimensBatchRequestSchema
 >;
 
+export const LabelGroupMetaSchema = z.object({
+  departmentKey: z.string(),
+  departmentLabel: z.string(),
+  collectionType: z.string(),
+  specimenIds: z.array(z.string()),
+});
+
 export const RegisterSpecimensBatchResponseSchema = z.object({
   /** Single accession number shared by every routing label on the form. */
   accessionNumber: z.string().min(1),
   specimens: z.array(SpecimenSchema),
+  labelGroups: z.array(LabelGroupMetaSchema).optional(),
   labelPreviews: z.array(LabelPreviewFieldsSchema),
   printResults: z.array(PrintResultSchema.optional()).optional(),
 });
@@ -408,14 +448,42 @@ export const CatalogPanelSchema = z.object({
 });
 export type CatalogPanel = z.infer<typeof CatalogPanelSchema>;
 
+export const CatalogCategoryTabSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+});
+
 export const CatalogResponseSchema = z.object({
   labId: z.string(),
   labName: z.string(),
-  categories: z.array(z.object({ id: z.string(), label: z.string() })),
+  /** Always granular form categories (12 tabs). */
+  catalogCategories: z.array(CatalogCategoryTabSchema),
+  /** @deprecated Use catalogCategories — kept for compat. */
+  categories: z.array(CatalogCategoryTabSchema),
+  routingPolicy: LabRoutingPolicySchema,
+  accessionRouting: LabRoutingSettingsSchema,
+  labelRouting: LabRoutingSettingsSchema,
+  /** Effective label routing — alias of labelRouting. */
+  routing: LabRoutingSettingsSchema,
+  routingDepartments: z.array(
+    z.object({ id: z.string(), label: z.string(), labelShort: z.string() }),
+  ),
   items: z.array(CatalogItemSchema),
   panels: z.array(CatalogPanelSchema),
 });
 export type CatalogResponse = z.infer<typeof CatalogResponseSchema>;
+
+export const LabRoutingPolicyPatchSchema = z.object({
+  accession: LabRoutingScopeConfigSchema.partial().optional(),
+  labels: LabRoutingScopeConfigSchema.partial().optional(),
+});
+
+export const LabSettingsResponseSchema = z.object({
+  labId: z.string(),
+  labName: z.string(),
+  routingPolicy: LabRoutingPolicySchema,
+});
+export type LabSettingsResponse = z.infer<typeof LabSettingsResponseSchema>;
 
 export const SpecimenTypeSchema = z.enum([
   "blood",

@@ -86,7 +86,7 @@ Requires sign-in (cloud JWT). Lab branding (address, phone, logo URL) lives in `
 
 The **Bench Review** screen is the tech’s day board:
 
-- **Awaiting run** tab — accession-first work queue for registered orders still missing instrument or manual results. The left list shows accession number and patient; **select an accession** to see tubes, pending/received tests, and manual entry in the detail pane. Use this **before** results arrive so machine operators know what to run without opening Accession History or Test lookup. Rows drop off when expected work is complete or the accession is submitted/released.
+- **Awaiting run** tab — accession-first work queue for registered orders still missing instrument or manual results. The list shows accession number and patient. On **desktop** (persistent sidebar), selecting an accession opens a **docked detail pane** beside the list (tubes, pending/received tests, manual entry). On **phone and tablet**, tapping a row **expands it inline** (chevron accordion, one open at a time) so the list stays visible; tap **Full view** for the optional bottom sheet when you need a larger panel. Use this **before** results arrive so machine operators know what to run without opening Accession History or Test lookup. Rows drop off when expected work is complete or the accession is submitted/released.
 - Live list of today’s **results** on **All / Pending review / Flagged / Released** tabs (edge Socket.IO + cloud query).
 - Filters: instrument, pending vs released, flagged/critical, accession search (`?q=`). Active search/analyzer filters show as clearable chips. On **Awaiting run**, the analyzer filter narrows to accessions with incomplete work for that machine.
 - Deep-linking **Open in Bench** with an accession filter on a results tab: if the specimen is registered but no instrument or manual results exist yet, Bench shows a **Waiting for results** empty state (ordered tests, links to Labels / Accession History, and **Enter result** for any manual/hybrid components). A search with no matching specimen shows **No matching results** plus Clear.
@@ -103,7 +103,9 @@ These assignments are **provisional** until Drax Hall confirms them against the 
 
 **Manual-only accessions:** order manual catalog tests at Accession → **Open in Bench** (`?q=` accession) → waiting state → **Enter result** for each required manual component → result rows appear on Bench for the normal submit → authorize → release path. You do not need an instrument result first.
 
-When a patient is opened on Bench:
+On **phone and tablet**, patient rows on **All / Pending / Flagged / Released** expand inline (chevron) to show a **Needs action** overview first (pending manual components with **Enter result**, pending instrument/send-out tests from the order), then saved result rows below. **Full view** opens the optional patient sheet for release actions, export, and multi-accession work. **Desktop** table expand uses the same overview; selecting a row still opens the side-by-side patient panel when the sidebar is visible. On desktop, where a row click **opens** the side panel (patient result tabs, Release queue, Accession history), click the selected row again to close it (Esc and the panel **X** still work). **Awaiting run** keeps a persistent side-by-side detail pane on desktop—row clicks switch accessions only; there is no close control on that pane (no **X**, no re-click to dismiss).
+
+When a patient is opened on Bench (desktop panel or **Full view** sheet):
 
 1. **Ordered tests** lists everything on the requisition (with **Manual** / **Send-out** badges at accession and on Bench).
 2. **Awaiting manual result** lists every required manual component that does not yet have a result row.

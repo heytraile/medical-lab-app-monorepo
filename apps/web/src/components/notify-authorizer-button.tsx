@@ -11,7 +11,12 @@ import { api, type ReviewRequest } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+} from "./ui/dialog";
 import { cn } from "../lib/utils";
 import { flagLabel } from "./result-status";
 import type { BenchGroupSummary } from "./bench-group-row";
@@ -131,14 +136,14 @@ export function NotifyAuthorizerButton({
   const patientLabel = summary.patient?.displayName ?? summary.fallbackLabel;
 
   return (
-    <Popover
+    <Dialog
       open={open}
       onOpenChange={(next) => {
         setOpen(next);
         if (!next) reset({ note: "" });
       }}
     >
-      <PopoverTrigger asChild>
+      <DialogTrigger asChild>
         <Button
           type="button"
           variant="outline"
@@ -149,9 +154,9 @@ export function NotifyAuthorizerButton({
           <BellRing className="mr-1.5 size-3.5" aria-hidden />
           Notify
         </Button>
-      </PopoverTrigger>
-      <PopoverContent className="p-3">
-        <p className="text-sm font-semibold">Request sign-off</p>
+      </DialogTrigger>
+      <DialogContent className="max-w-md p-3">
+        <DialogTitle className="text-sm font-semibold">Request sign-off</DialogTitle>
         <p className="mt-1 text-xs text-muted-foreground">
           Alerts everyone who can sign off on results, in the app and by email.
         </p>
@@ -227,7 +232,7 @@ export function NotifyAuthorizerButton({
             </Button>
           </div>
         </form>
-      </PopoverContent>
-    </Popover>
+      </DialogContent>
+    </Dialog>
   );
 }

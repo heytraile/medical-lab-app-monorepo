@@ -7,6 +7,7 @@ import { ReviewRequestsModule } from "./review-requests/review-requests.module";
 import { CatalogModule } from "./catalog/catalog.module";
 import { LabRequisitionsModule } from "./lab-requisitions/lab-requisitions.module";
 import { LabStaffModule } from "./lab-staff/lab-staff.module";
+import { LabsModule } from "./labs/labs.module";
 import { AuthModule } from "./auth/auth.module";
 import { AuditModule } from "./audit/audit.module";
 import { MessagingCloudModule } from "./messaging/messaging-cloud.module";
@@ -23,6 +24,7 @@ import { MessagingCloudModule } from "./messaging/messaging-cloud.module";
     CatalogModule,
     LabRequisitionsModule,
     LabStaffModule,
+    LabsModule,
     MessagingCloudModule,
   ],
 })

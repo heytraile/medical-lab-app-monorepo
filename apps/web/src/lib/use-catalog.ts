@@ -1,19 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  CATALOG_CATEGORIES,
   DRAX_HALL_LAB,
+  DRAX_HALL_ROUTING_POLICY,
   DHMS_CATALOG_ITEMS,
   buildPanelsWithMembers,
+  catalogPolicyFields,
 } from "@drax-lis/catalog";
 import type { CatalogResponse } from "@drax-lis/contracts";
 import { api } from "./api";
 
 function localCatalog(): CatalogResponse {
   const panels = buildPanelsWithMembers();
+  const policyFields = catalogPolicyFields(DRAX_HALL_ROUTING_POLICY);
   return {
     labId: DRAX_HALL_LAB.id,
     labName: DRAX_HALL_LAB.name,
-    categories: [...CATALOG_CATEGORIES],
+    ...policyFields,
     items: DHMS_CATALOG_ITEMS.map((i) => ({
       code: i.code,
       name: i.name,

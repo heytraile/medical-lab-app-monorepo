@@ -18,6 +18,8 @@ export type SelectProps = {
   className?: string;
   id?: string;
   "aria-label"?: string;
+  /** Inside a centered modal — keep the menu below the trigger instead of flipping to the viewport top. */
+  inModal?: boolean;
 };
 
 export function Select({
@@ -29,6 +31,7 @@ export function Select({
   className,
   id,
   "aria-label": ariaLabel,
+  inModal = false,
 }: SelectProps) {
   const [open, setOpen] = React.useState(false);
   const [highlightIndex, setHighlightIndex] = React.useState(-1);
@@ -113,7 +116,7 @@ export function Select({
           disabled={disabled}
           onKeyDown={onTriggerKeyDown}
           className={cn(
-            "group flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm",
+            "group flex h-9 w-full items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2 text-sm shadow-sm touch-tablet:h-10 touch-tablet:px-3.5 touch-tablet:text-[0.9375rem]",
             "transition-[border-color,box-shadow,background-color] duration-200 ease-out",
             "hover:border-border/80 hover:bg-card/90",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -145,7 +148,8 @@ export function Select({
           align="start"
           side="bottom"
           sideOffset={6}
-          collisionPadding={8}
+          collisionPadding={inModal ? 16 : 8}
+          avoidCollisions={!inModal}
           onOpenAutoFocus={(e) => e.preventDefault()}
           style={triggerWidth ? { width: triggerWidth } : undefined}
           className={cn(

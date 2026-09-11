@@ -17,6 +17,7 @@ import {
   UserRound,
   Users,
   UserCog,
+  Settings,
   Wifi,
   MessageSquare,
 } from "lucide-react";
@@ -368,6 +369,14 @@ function SidebarBody({
               collapsed={collapsed}
               onNavigate={onNavigate}
             />
+            <NavItem
+              to="/settings"
+              icon={Settings}
+              label="Lab settings"
+              active={pathname === "/settings"}
+              collapsed={collapsed}
+              onNavigate={onNavigate}
+            />
           </div>
         )}
 
@@ -599,7 +608,7 @@ function NavItem({
   title,
   onNavigate,
 }: {
-  to: "/bench" | "/accession" | "/labels" | "/orders" | "/sync" | "/messages" | "/release" | "/patients" | "/profile" | "/staff";
+  to: "/bench" | "/accession" | "/labels" | "/orders" | "/sync" | "/messages" | "/release" | "/patients" | "/profile" | "/staff" | "/settings";
   search?: { analyzer?: string; q?: string };
   icon: React.ComponentType<{ className?: string }>;
   label: string;

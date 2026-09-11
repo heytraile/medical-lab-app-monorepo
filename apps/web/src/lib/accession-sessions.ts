@@ -1,4 +1,8 @@
-import { CATALOG_CATEGORY_ORDER } from "@drax-lis/catalog";
+import {
+  ROUTING_PRESET_GRANULAR,
+  routingDepartmentSortIndex,
+  type LabRoutingSettings,
+} from "@drax-lis/catalog";
 import type { SpecimenOrderedTest, SpecimenRow } from "./api";
 
 export type OrderSelectionSnapshot = {
@@ -94,17 +98,15 @@ function mergeOrderedSelections(
 
 const COLLECTION_TYPE_ORDER = ["blood", "urine", "stool", "other"];
 
-function sortTubes(a: SpecimenRow, b: SpecimenRow): number {
+function sortTubes(
+  a: SpecimenRow,
+  b: SpecimenRow,
+  routing: LabRoutingSettings = ROUTING_PRESET_GRANULAR,
+): number {
   const aKey = a.departmentKey ?? "";
   const bKey = b.departmentKey ?? "";
-  const ai = CATALOG_CATEGORY_ORDER.indexOf(
-    aKey as (typeof CATALOG_CATEGORY_ORDER)[number],
-  );
-  const bi = CATALOG_CATEGORY_ORDER.indexOf(
-    bKey as (typeof CATALOG_CATEGORY_ORDER)[number],
-  );
-  const ao = ai === -1 ? 99 : ai;
-  const bo = bi === -1 ? 99 : bi;
+  const ao = routingDepartmentSortIndex(aKey, routing);
+  const bo = routingDepartmentSortIndex(bKey, routing);
   if (ao !== bo) return ao - bo;
   const aiType = COLLECTION_TYPE_ORDER.indexOf(
     (a.collectionType ?? a.specimenType ?? "blood").toLowerCase(),
@@ -121,6 +123,7 @@ function sortTubes(a: SpecimenRow, b: SpecimenRow): number {
  */
 export function groupSpecimensIntoSessions(
   rows: SpecimenRow[],
+  routing: LabRoutingSettings = ROUTING_PRESET_GRANULAR,
 ): AccessionSession[] {
   const byKey = new Map<string, SpecimenRow[]>();
   for (const row of rows) {
@@ -132,7 +135,7 @@ export function groupSpecimensIntoSessions(
 
   const sessions: AccessionSession[] = [];
   for (const [key, tubes] of byKey) {
-    const sorted = [...tubes].sort(sortTubes);
+    const sorted = [...tubes].sort((a, b) => sortTubes(a, b, routing));
     const primary = sorted[0]!;
     const registeredAt = sorted.reduce(
       (latest, t) => (t.registeredAt > latest ? t.registeredAt : latest),

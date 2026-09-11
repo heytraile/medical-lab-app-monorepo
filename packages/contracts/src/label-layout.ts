@@ -105,8 +105,14 @@ export type SpecimenLabelInput = {
   dateOfBirth?: string | null;
   orderedTests?: string[];
   specimenType?: string;
-  /** Lab routing department shown on the label (e.g. Blood Chemistry). */
+  /** Full routing department (UI / search). */
   departmentLabel?: string;
+  /** Short routing department for the routing line (e.g. Chem). */
+  departmentLabelShort?: string;
+  /** Short collection type on routing line (e.g. Bld). */
+  collectionLabelShort?: string;
+  /** When false, omit collection from routing line even if collectionLabelShort is set. */
+  includeCollectionOnRouting?: boolean;
   mrn?: string;
 };
 
@@ -139,6 +145,11 @@ type LayoutProfile = {
   nameMaxLines: number;
   nameLineSpacing: number;
   routingY: number;
+  testsY: number;
+  testsMaxLines: number;
+  testsFont: number;
+  testsLineSpacing: number;
+  testsMaxCharsPerLine: number;
   barcodeY: number;
   barcodeHeight: number;
   accessionFont: number;
@@ -158,7 +169,12 @@ function layoutProfileFor(size: LabelSizeSpec): LayoutProfile {
       nameMaxLines: 2,
       nameLineSpacing: 6,
       routingY: 148,
-      barcodeY: 188,
+      testsY: 168,
+      testsMaxLines: 3,
+      testsFont: 18,
+      testsLineSpacing: 4,
+      testsMaxCharsPerLine: 52,
+      barcodeY: 228,
       barcodeHeight: 72,
       accessionFont: 36,
       specimenFont: 28,
@@ -176,6 +192,11 @@ function layoutProfileFor(size: LabelSizeSpec): LayoutProfile {
       nameMaxLines: 2,
       nameLineSpacing: 2,
       routingY: 52,
+      testsY: 0,
+      testsMaxLines: 0,
+      testsFont: 0,
+      testsLineSpacing: 0,
+      testsMaxCharsPerLine: 0,
       barcodeY: 66,
       barcodeHeight: 28,
       accessionFont: 16,
@@ -193,13 +214,18 @@ function layoutProfileFor(size: LabelSizeSpec): LayoutProfile {
     nameY: 40,
     nameMaxLines: 2,
     nameLineSpacing: 4,
-    routingY: 72,
-    barcodeY: 88,
-    barcodeHeight: 40,
+    routingY: 66,
+    testsY: 80,
+    testsMaxLines: 3,
+    testsFont: 10,
+    testsLineSpacing: 2,
+    testsMaxCharsPerLine: 44,
+    barcodeY: 118,
+    barcodeHeight: 36,
     accessionFont: 18,
     specimenFont: 14,
     nameFont: 13,
-    routingFont: 12,
+    routingFont: 11,
   };
 }
 
@@ -276,14 +302,20 @@ export function formatTestLines(
   return { lines, overflowCount };
 }
 
-function formatRoutingLine(
-  departmentLabel: string,
+export function formatRoutingLine(
+  departmentLabelShort: string,
   dateOfBirth: string,
+  collectionLabelShort?: string | null,
+  includeCollection = false,
 ): string {
-  const dept = departmentLabel.trim() || "General";
+  const dept = departmentLabelShort.trim() || "Gen";
+  const parts: string[] = [dept];
+  if (includeCollection && collectionLabelShort?.trim()) {
+    parts.push(collectionLabelShort.trim());
+  }
   const dob = dateOfBirth.trim();
-  if (!dob || dob === "DOB —") return dept;
-  return `${dept} · ${dob}`;
+  if (dob && dob !== "DOB —") parts.push(dob);
+  return parts.join(" · ");
 }
 
 export function formatSpecimenLabel(
@@ -291,11 +323,41 @@ export function formatSpecimenLabel(
   size: LabelSizeSpec = LABEL_SIZES[DEFAULT_LABEL_SIZE_ID],
   printedAt = new Date().toISOString(),
 ): FormattedSpecimenLabel {
+  const profile = layoutProfileFor(size);
   const dob = input.dateOfBirth?.trim() || "DOB —";
-  const dept = input.departmentLabel?.trim() || "General";
+  const deptShort =
+    input.departmentLabelShort?.trim() ||
+    input.departmentLabel?.trim() ||
+    "General";
+  const includeCollection = input.includeCollectionOnRouting !== false;
+  const routingLine = formatRoutingLine(
+    deptShort,
+    dob,
+    input.collectionLabelShort,
+    includeCollection && Boolean(input.collectionLabelShort?.trim()),
+  );
   const specimenNumber =
     input.specimenNumber?.trim() || input.barcode.trim() || input.accessionNumber;
   const patientLine = formatPatientNameWithMrn(input.patientName, input.mrn);
+
+  const testCodes = (input.orderedTests ?? [])
+    .map((c) => c.trim())
+    .filter(Boolean);
+  const { lines, overflowCount } =
+    profile.testsMaxLines > 0 && testCodes.length
+      ? formatTestLines(
+          testCodes,
+          profile.testsMaxLines,
+          profile.testsMaxCharsPerLine,
+        )
+      : { lines: [] as string[], overflowCount: 0 };
+  const testLines =
+    overflowCount > 0 && lines.length
+      ? [
+          ...lines.slice(0, -1),
+          `${lines[lines.length - 1]!} +${overflowCount}`,
+        ]
+      : lines;
 
   return {
     size,
@@ -303,14 +365,16 @@ export function formatSpecimenLabel(
     specimenNumber: sanitizeZplText(specimenNumber),
     patientName: sanitizeZplText(patientLine),
     dateOfBirth: dob,
-    routingLine: sanitizeZplText(formatRoutingLine(dept, dob)),
-    testLines: [],
-    orderedTests: "",
-    testsOverflowCount: 0,
+    routingLine: sanitizeZplText(routingLine),
+    testLines: testLines.map(sanitizeZplText),
+    orderedTests: testLines.join(", "),
+    testsOverflowCount: overflowCount,
     barcode: sanitizeZplText(input.barcode),
     printedAt,
     specimenType: input.specimenType?.trim() || "blood",
-    departmentLabel: sanitizeZplText(dept),
+    departmentLabel: sanitizeZplText(
+      input.departmentLabel?.trim() || deptShort,
+    ),
     mrn: input.mrn,
     widthDots: size.widthDots,
     heightDots: size.heightDots,
@@ -332,7 +396,11 @@ export function buildSpecimenLabelZpl(formatted: FormattedSpecimenLabel): string
 ^FO${x},${profile.specimenY}^A0N,${profile.specimenFont},${profile.specimenFont}^FD${formatted.specimenNumber}^FS
 ^FO${x},${profile.nameY}^A0N,${profile.nameFont},${profile.nameFont}^FB${w},${profile.nameMaxLines},${profile.nameLineSpacing},L,0^FD${formatted.patientName}^FS
 ^FO${x},${profile.routingY}^A0N,${profile.routingFont},${profile.routingFont}^FB${w},1,0,L,0^FD${formatted.routingLine}^FS
-^FO${x},${profile.barcodeY}^BY1.5,2,${profile.barcodeHeight}^BCN,${profile.barcodeHeight},Y,N,N^FD${formatted.barcode}^FS
+${
+  profile.testsMaxLines > 0 && formatted.testLines.length
+    ? `^FO${x},${profile.testsY}^A0N,${profile.testsFont},${profile.testsFont}^FB${w},${profile.testsMaxLines},${profile.testsLineSpacing},L,0^FD${formatted.testLines.join("\\&")}^FS\n`
+    : ""
+}^FO${x},${profile.barcodeY}^BY1.5,2,${profile.barcodeHeight}^BCN,${profile.barcodeHeight},Y,N,N^FD${formatted.barcode}^FS
 ^XZ
 `;
 }

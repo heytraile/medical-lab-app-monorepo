@@ -1,11 +1,18 @@
 import * as React from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
+import {
+  modalCenterPositionClass,
+  modalDefaultWidthClass,
+  modalMaxHeightClass,
+  modalSurfaceClass,
+} from "../../lib/modal-layout";
 import { cn } from "../../lib/utils";
 
 export const Dialog = RadixDialog.Root;
 export const DialogPortal = RadixDialog.Portal;
 export const DialogClose = RadixDialog.Close;
+export const DialogTrigger = RadixDialog.Trigger;
 
 export const DialogOverlay = React.forwardRef<
   React.ElementRef<typeof RadixDialog.Overlay>,
@@ -31,9 +38,11 @@ export const DialogContent = React.forwardRef<
     <RadixDialog.Content
       ref={ref}
       className={cn(
-        // On a phone the dialog starts near the top and scrolls internally;
-        // a 15% offset would push a tall dialog off the bottom of the screen.
-        "fixed left-1/2 top-4 z-50 max-h-[calc(100svh-2rem)] w-[calc(100%-1rem)] max-w-lg -translate-x-1/2 overflow-y-auto rounded-xl border border-border bg-card p-0 shadow-2xl outline-none sm:top-[15%] sm:w-full",
+        modalCenterPositionClass,
+        modalMaxHeightClass,
+        modalDefaultWidthClass,
+        modalSurfaceClass,
+        "p-0",
         className,
       )}
       {...props}

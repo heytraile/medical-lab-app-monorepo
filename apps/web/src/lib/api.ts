@@ -1,6 +1,7 @@
 import type {
   ActorSnapshot,
   CatalogResponse,
+  LabSettingsResponse,
   DeviceEnrollmentCodeCreate,
   DeviceEnrollmentCodeResponse,
   DeviceEnrollRequest,
@@ -31,7 +32,7 @@ import type {
 } from "@drax-lis/contracts";
 import { getStoredDevice } from "./device";
 
-export type { ReviewRequest, ReviewRequestCreate, CatalogResponse, LabRequisition };
+export type { ReviewRequest, ReviewRequestCreate, CatalogResponse, LabRequisition, LabSettingsResponse };
 export type { StaffCollector, StaffMember, StaffMemberCreate, StaffMemberUpdate };
 export type { PatientReportPayload, ReleaseQueueGroup };
 export type {
@@ -569,11 +570,15 @@ export const api = {
   printPreview: (body: {
     accessionNumber: string;
     patientName: string;
+    specimenNumber?: string;
     barcode?: string;
     dateOfBirth?: string | null;
     orderedTests?: string[];
     specimenType?: string;
     departmentLabel?: string;
+    departmentLabelShort?: string;
+    collectionLabelShort?: string;
+    includeCollectionOnRouting?: boolean;
     mrn?: string;
   }) =>
     request<{ zpl: string; fields: LabelPreviewFields }>("/print/preview", {
@@ -584,10 +589,15 @@ export const api = {
   printLabel: (body: {
     accessionNumber: string;
     patientName: string;
+    specimenNumber?: string;
     barcode?: string;
     dateOfBirth?: string | null;
     orderedTests?: string[];
     specimenType?: string;
+    departmentLabel?: string;
+    departmentLabelShort?: string;
+    collectionLabelShort?: string;
+    includeCollectionOnRouting?: boolean;
     mrn?: string;
     copies?: number;
   }) =>
@@ -819,6 +829,21 @@ export const api = {
     request<CatalogResponse>("/catalog", {
       baseUrl: CLOUD_API_URL,
       auth: false,
+    }),
+  getLabSettings: () =>
+    request<LabSettingsResponse>("/labs/settings", {
+      baseUrl: CLOUD_API_URL,
+      auth: true,
+    }),
+  patchLabRoutingSettings: (body: {
+    accession?: { mode?: "granular" | "consolidated"; splitByCollectionType?: boolean };
+    labels?: { mode?: "granular" | "consolidated"; splitByCollectionType?: boolean };
+  }) =>
+    request<LabSettingsResponse & CatalogResponse>("/labs/settings/routing", {
+      method: "PATCH",
+      body: JSON.stringify(body),
+      baseUrl: CLOUD_API_URL,
+      auth: true,
     }),
   createRequisition: (body: RequisitionCreate) =>
     request<LabRequisition>("/requisitions", {

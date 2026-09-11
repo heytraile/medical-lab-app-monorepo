@@ -164,6 +164,7 @@ export function CommandPalette({ open, onOpenChange }: Props) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
+        className="max-w-xl"
         aria-describedby={undefined}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >

@@ -42,7 +42,9 @@ Patient (MRN7001)
         └── Specimen DH202609100001-03  ← Urine cup
 ```
 
-**Important:** We no longer give each tube its own accession number. One form → **one accession** → **one or more specimen IDs** (one label per routing department).
+**Important:** We no longer give each tube its own accession number. One form → **one accession** → **one or more specimen IDs** (one label per **routing department**).
+
+At Drax Hall, routing departments are **Hematology**, **Chemistry**, and **Microbiology**. Chemistry may split again by collection type (blood vs urine), so an Executive-style order can produce three or four labels under one accession. Each label lists abbreviated test codes for **that tube only**. See [ROUTING_DEPARTMENTS.md](./ROUTING_DEPARTMENTS.md).
 
 More detail: [REQUISITION.md](./REQUISITION.md) (identifiers section).
 

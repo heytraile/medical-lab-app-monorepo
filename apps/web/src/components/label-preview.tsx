@@ -151,6 +151,22 @@ export function LabelPreview({
                 {routingLine}
               </p>
             ) : null}
+            {fields.testLines?.length ? (
+              <div className="space-y-0.5">
+                {fields.testLines.map((line, i) => (
+                  <p
+                    key={i}
+                    className="break-words font-mono text-[8px] leading-snug text-zinc-800"
+                  >
+                    {line}
+                  </p>
+                ))}
+              </div>
+            ) : fields.orderedTests?.trim() ? (
+              <p className="break-words font-mono text-[8px] leading-snug text-zinc-800">
+                {fields.orderedTests}
+              </p>
+            ) : null}
           </div>
           <div className="mt-0.5 shrink-0">
             <svg

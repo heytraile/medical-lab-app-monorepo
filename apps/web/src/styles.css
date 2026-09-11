@@ -2,15 +2,51 @@
 @import "@drax-lis/tailwind-config";
 
 @custom-variant dark (&:where(.dark, .dark *));
+/* iPad Pro and other touch tablets: compact chrome, large viewport — see use-media-query. */
+@custom-variant touch-tablet (
+  @media (min-width: 768px) and (any-pointer: coarse) and (max-width: 1535px)
+);
 
 @layer base {
   * {
     @apply border-border;
   }
 
+  html {
+    font-size: 100%;
+  }
+
+  /* Nudge rem-based Tailwind type (text-sm, buttons, inputs) on touch tablets. */
+  @media (min-width: 768px) and (any-pointer: coarse) and (max-width: 1535px) {
+    html {
+      font-size: 106.25%;
+    }
+  }
+
+  @media (min-width: 1024px) and (any-pointer: coarse) and (max-width: 1535px) {
+    html {
+      font-size: 112.5%;
+    }
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans);
+  }
+}
+
+@layer utilities {
+  /* Arbitrary text-[10px]/[11px] classes ignore rem scale — lift on touch tablets. */
+  @media (min-width: 768px) and (any-pointer: coarse) and (max-width: 1535px) {
+    :is(.text-\[10px\]) {
+      font-size: 0.75rem;
+      line-height: 1.125rem;
+    }
+
+    :is(.text-\[11px\]) {
+      font-size: 0.8125rem;
+      line-height: 1.25rem;
+    }
   }
 }
 

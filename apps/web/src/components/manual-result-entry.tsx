@@ -25,7 +25,11 @@ import {
 } from "./ui/dialog";
 import { ConfirmAccessionActionDialog } from "./confirm-accession-action-dialog";
 import { manualEntryButtonLabel } from "../lib/manual-entry-label";
+import { useIsCompactChrome } from "../lib/use-media-query";
 import { cn } from "../lib/utils";
+
+const nativeSelectClassName =
+  "flex h-9 w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 const FLAG_OPTIONS = [
   { value: "unknown", label: "Unknown" },
@@ -51,13 +55,34 @@ function SchemaField({
   value,
   onChange,
   disabled,
+  useNativeSelect,
 }: {
   field: ManualEntryField;
   value: string;
   onChange: (next: string) => void;
   disabled: boolean;
+  useNativeSelect: boolean;
 }) {
   if (field.type === "select") {
+    if (useNativeSelect) {
+      return (
+        <select
+          id={`manual-${field.id}`}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className={nativeSelectClassName}
+        >
+          <option value="">{`Select ${field.label.toLowerCase()}…`}</option>
+          {(field.options ?? []).map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
     return (
       <Select
         id={`manual-${field.id}`}
@@ -68,6 +93,7 @@ function SchemaField({
           ...(field.options ?? []),
         ]}
         disabled={disabled}
+        inModal
       />
     );
   }
@@ -134,6 +160,7 @@ export function ManualResultEntryDialog({
 }) {
   const auth = useAuth();
   const queryClient = useQueryClient();
+  const useNativeSelect = useIsCompactChrome();
   const schema = useMemo(
     () => getManualEntrySchema(testCode, resultComponentCode),
     [testCode, resultComponentCode],
@@ -375,6 +402,7 @@ export function ManualResultEntryDialog({
                         }))
                       }
                       disabled={!auth.accessToken || busy}
+                      useNativeSelect={useNativeSelect}
                     />
                   </div>
                 ))}
@@ -412,13 +440,30 @@ export function ManualResultEntryDialog({
                   <label htmlFor="manual-flag" className="text-sm font-medium">
                     Flag
                   </label>
-                  <Select
-                    id="manual-flag"
-                    value={flag}
-                    onValueChange={setFlag}
-                    options={FLAG_OPTIONS}
-                    disabled={!auth.accessToken || busy}
-                  />
+                  {useNativeSelect ? (
+                    <select
+                      id="manual-flag"
+                      value={flag}
+                      onChange={(e) => setFlag(e.target.value)}
+                      disabled={!auth.accessToken || busy}
+                      className={nativeSelectClassName}
+                    >
+                      {FLAG_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <Select
+                      id="manual-flag"
+                      value={flag}
+                      onValueChange={setFlag}
+                      options={FLAG_OPTIONS}
+                      disabled={!auth.accessToken || busy}
+                      inModal
+                    />
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">

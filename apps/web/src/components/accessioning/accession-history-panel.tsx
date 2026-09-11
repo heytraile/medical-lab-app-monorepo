@@ -223,7 +223,15 @@ export function AccessionHistoryPanel({
                     "flex w-full flex-col gap-1 px-3 py-3 text-left transition-colors",
                     active ? "bg-accent/10" : "hover:bg-muted/40",
                   )}
-                  onClick={() => setSelectedKey(session.key)}
+                  onClick={() => {
+                    if (showWorkstationChrome) {
+                      setSelectedKey((prev) =>
+                        prev === session.key ? "" : session.key,
+                      );
+                    } else {
+                      setSelectedKey(session.key);
+                    }
+                  }}
                 >
                   <span className="flex items-start justify-between gap-2">
                     <span className="min-w-0 truncate font-medium">

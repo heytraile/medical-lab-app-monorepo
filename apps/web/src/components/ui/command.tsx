@@ -1,47 +1,15 @@
 import * as React from "react";
-import * as RadixDialog from "@radix-ui/react-dialog";
 import { Command as CommandPrimitive } from "cmdk";
 import { Search, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { ScrollContainer } from "./scroll-container";
 
-export const Dialog = RadixDialog.Root;
-export const DialogPortal = RadixDialog.Portal;
-
-export const DialogOverlay = React.forwardRef<
-  React.ElementRef<typeof RadixDialog.Overlay>,
-  React.ComponentPropsWithoutRef<typeof RadixDialog.Overlay>
->(({ className, ...props }, ref) => (
-  <RadixDialog.Overlay
-    ref={ref}
-    className={cn(
-      "fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px]",
-      className,
-    )}
-    {...props}
-  />
-));
-DialogOverlay.displayName = RadixDialog.Overlay.displayName;
-
-export const DialogContent = React.forwardRef<
-  React.ElementRef<typeof RadixDialog.Content>,
-  React.ComponentPropsWithoutRef<typeof RadixDialog.Content>
->(({ className, children, ...props }, ref) => (
-  <DialogPortal>
-    <DialogOverlay />
-    <RadixDialog.Content
-      ref={ref}
-      className={cn(
-        "fixed left-1/2 top-[18%] z-50 w-full max-w-xl -translate-x-1/2 rounded-xl border border-border bg-card p-0 shadow-2xl outline-none",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </RadixDialog.Content>
-  </DialogPortal>
-));
-DialogContent.displayName = RadixDialog.Content.displayName;
+export {
+  Dialog,
+  DialogContent,
+  DialogOverlay,
+  DialogPortal,
+} from "./dialog";
 
 export const Command = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive>,

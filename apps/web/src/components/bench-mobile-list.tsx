@@ -1,7 +1,8 @@
 import type { MouseEvent } from "react";
 import type { Row } from "@tanstack/react-table";
-import { ChevronRight } from "lucide-react";
-import type { BenchResult } from "../lib/api";
+import { ChevronRight, PanelRightOpen } from "lucide-react";
+import type { BenchResult, SpecimenRow } from "../lib/api";
+import { BenchGroupExpandOverview } from "./bench-group-expand-overview";
 import { analyzerLabel } from "../lib/analyzers";
 import { cn } from "../lib/utils";
 import { usePatientNameOrder } from "../lib/patient-name-order";
@@ -13,6 +14,7 @@ import { NotifyAuthorizerButton } from "./notify-authorizer-button";
 import { SubmitForReleaseButton } from "./submit-for-release-button";
 import { RecallFromReleaseButton } from "./recall-from-release-button";
 import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
 import type { BenchGroupSummary } from "./bench-group-row";
 import {
   AlarmSign,
@@ -35,19 +37,21 @@ import {
 export function BenchMobileList({
   rows,
   groupSummaries,
-  selectedPatientId,
+  allResults,
+  specimens,
   focusedResultId,
   focusedRef,
-  onSelectPatient,
+  onOpenPatientPanel,
   onToggleGroup,
   onJumpToFlag,
 }: {
   rows: Row<BenchResult>[];
   groupSummaries: Map<string, BenchGroupSummary>;
-  selectedPatientId: string | null;
+  allResults: BenchResult[];
+  specimens: SpecimenRow[];
   focusedResultId: string | null;
   focusedRef: React.RefObject<HTMLElement | null>;
-  onSelectPatient: (id: string) => void;
+  onOpenPatientPanel: (patientId: string) => void;
   onToggleGroup: (row: Row<BenchResult>) => void;
   onJumpToFlag: (row: Row<BenchResult>, summary: BenchGroupSummary) => void;
 }) {
@@ -64,18 +68,11 @@ export function BenchMobileList({
         const name = summary.patient
           ? formatName(summary.patient)
           : summary.fallbackLabel;
-        const selected =
-          summary.patient?.id != null &&
-          summary.patient.id === selectedPatientId;
 
         const patientId = summary.patient?.id;
 
         function stopCardSelect(e: MouseEvent) {
           e.stopPropagation();
-        }
-
-        function openPatient() {
-          if (patientId) onSelectPatient(patientId);
         }
 
         return (
@@ -87,10 +84,10 @@ export function BenchMobileList({
                 ? "bg-sky-200 dark:bg-sky-900/50"
                 : "bg-card hover:bg-lab-ok/10 dark:hover:bg-lab-ok/20",
               summary.hasAlarm && "border-l-[3px] border-l-lab-alarm",
-              selected && "ring-1 ring-inset ring-accent/40",
+              open && "ring-1 ring-inset ring-accent/40",
             )}
           >
-            <div className="flex items-start gap-2 p-3">
+            <div className="flex items-start gap-1 p-3">
               <button
                 type="button"
                 onClick={() => onToggleGroup(row)}
@@ -110,24 +107,20 @@ export function BenchMobileList({
 
               <div
                 className={cn(
-                  "min-w-0 flex-1 space-y-1.5",
-                  patientId && "cursor-pointer",
+                  "min-w-0 flex-1 cursor-pointer space-y-1.5",
                 )}
-                onClick={patientId ? openPatient : undefined}
-                onKeyDown={
-                  patientId
-                    ? (e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          openPatient();
-                        }
-                      }
-                    : undefined
-                }
-                tabIndex={patientId ? 0 : undefined}
-                role={patientId ? "button" : undefined}
+                onClick={() => onToggleGroup(row)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    onToggleGroup(row);
+                  }
+                }}
+                tabIndex={0}
+                role="button"
+                aria-expanded={open}
                 aria-label={
-                  patientId ? `Open ${name} in patient panel` : undefined
+                  open ? `Collapse ${name}` : `Expand ${name}`
                 }
               >
                 <div className="flex min-w-0 items-center gap-2">
@@ -135,11 +128,11 @@ export function BenchMobileList({
                   {summary.patient ? (
                     <span
                       className={cn(
-                        "min-w-0 truncate rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight",
+                        "min-w-0 truncate rounded-md px-2 py-1 text-left text-base font-bold leading-snug tracking-tight touch-tablet:text-lg",
                         open
                           ? "bg-white/75 dark:bg-sky-950/70 dark:text-foreground"
                           : "bg-muted",
-                        selected && "text-accent",
+                        open && "text-accent",
                       )}
                     >
                       {name}
@@ -151,7 +144,7 @@ export function BenchMobileList({
                   )}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground touch-tablet:text-sm">
                   {summary.patient && (
                     <span className="font-mono text-[11px]">
                       {summary.patient.mrn}
@@ -221,10 +214,34 @@ export function BenchMobileList({
                   />
                 </div>
               </div>
+
+              {patientId ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="mt-0.5 h-8 shrink-0 gap-1 px-2 text-xs text-muted-foreground"
+                  onClick={(e) => {
+                    stopCardSelect(e);
+                    onOpenPatientPanel(patientId);
+                  }}
+                  aria-label={`Open full view for ${name}`}
+                >
+                  <PanelRightOpen className="size-4" aria-hidden />
+                  <span className="sr-only sm:not-sr-only">Full view</span>
+                </Button>
+              ) : null}
             </div>
 
             {open && (
-              <div className="space-y-2 px-3 pb-3 pl-6">
+              <div className="space-y-3 px-3 pb-3 pl-6">
+                <BenchGroupExpandOverview
+                  summary={summary}
+                  results={allResults.filter((result) =>
+                    summary.accessionNumbers.includes(result.accessionNumber),
+                  )}
+                  specimens={specimens}
+                />
                 {row.subRows.map((sub) => (
                   <ResultCard
                     key={sub.id}

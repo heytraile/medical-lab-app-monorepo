@@ -1,29 +1,29 @@
 import { Link } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 import { Copy, ExternalLink, X } from "lucide-react";
-import {
-  missingManualResultRequirements,
-  normalizeCode,
-  type MissingExpectedResult,
-} from "@drax-lis/catalog";
+import { missingManualResultRequirements } from "@drax-lis/catalog";
 import type { BenchWorkQueueRow, WorkQueueTestItem } from "../lib/bench-work-queue";
 import type { BenchResult } from "../lib/api";
 import { toCompletenessResultsForAccession } from "../lib/bench-work-queue";
 import { manualAccessionAccess } from "../lib/manual-results";
 import { WorkQueueTestList } from "./bench-work-queue-tests";
-import { ManualResultEntryButton } from "./manual-result-entry";
+import { groupPendingManualByTest } from "../lib/bench-pending-overview";
 import { SpecimenAccessionStatusChip } from "./result-status";
-import { Badge } from "./ui/badge";
+import { WorkQueueManualActions } from "./work-queue-manual-actions";
 import { Button } from "./ui/button";
 import { ScrollContainer } from "./ui/scroll-container";
 import { SheetCloseButton } from "./ui/sheet";
 import { cn } from "../lib/utils";
 
+export type BenchWorkQueueDetailVariant = "docked" | "sheet" | "inline";
+
 type Props = {
   row: BenchWorkQueueRow | null;
   results: BenchResult[];
   onClose?: () => void;
+  /** @deprecated Prefer `variant="sheet"`. */
   embedded?: boolean;
+  variant?: BenchWorkQueueDetailVariant;
   className?: string;
 };
 
@@ -48,50 +48,30 @@ function CopyAccessionButton({ accessionNumber }: { accessionNumber: string }) {
   );
 }
 
-function ManualAccessBadge({
-  access,
-}: {
-  access: "submitted" | "released";
-}) {
-  return (
-    <Badge variant={access === "released" ? "muted" : "warn"}>
-      {access === "released"
-        ? "Not resulted before release"
-        : "Locked while awaiting authorization"}
-    </Badge>
-  );
+function resolveVariant(
+  variant: BenchWorkQueueDetailVariant | undefined,
+  embedded: boolean | undefined,
+): BenchWorkQueueDetailVariant {
+  if (variant) return variant;
+  if (embedded) return "sheet";
+  return "docked";
 }
 
-function groupPendingManualByTest(
-  items: MissingExpectedResult[],
-): Map<string, MissingExpectedResult[]> {
-  const map = new Map<string, MissingExpectedResult[]>();
-  for (const item of items) {
-    const key = normalizeCode(item.orderedTestCode);
-    const bucket = map.get(key);
-    if (bucket) bucket.push(item);
-    else map.set(key, [item]);
-  }
-  return map;
-}
-
-export function BenchWorkQueueDetail({
+function BenchWorkQueueDetailBody({
   row,
   results,
-  onClose,
-  embedded,
-  className,
-}: Props) {
+  variant,
+}: {
+  row: BenchWorkQueueRow;
+  results: BenchResult[];
+  variant: BenchWorkQueueDetailVariant;
+}) {
   const accessionResults = useMemo(
-    () =>
-      row
-        ? results.filter((r) => r.accessionNumber === row.accessionNumber)
-        : [],
-    [results, row],
+    () => results.filter((r) => r.accessionNumber === row.accessionNumber),
+    [results, row.accessionNumber],
   );
 
   const pendingManual = useMemo(() => {
-    if (!row) return [];
     const orderedCodes = row.tests.map((t) => t.code);
     return missingManualResultRequirements(
       orderedCodes,
@@ -110,55 +90,116 @@ export function BenchWorkQueueDetail({
   );
 
   const renderTestActions = useCallback(
-    (test: WorkQueueTestItem) => {
-      if (!row) return null;
-
-      const components =
-        pendingManualByTest.get(normalizeCode(test.code)) ?? [];
-      if (components.length === 0) return null;
-
-      const showHybridHint =
-        test.status === "awaiting_instrument" &&
-        components.some((item) => item.workflow === "hybrid");
-
-      if (manualAccess !== "editable") {
-        return (
-          <div className="space-y-1.5">
-            {showHybridHint ? (
-              <p className="text-xs text-muted-foreground">
-                Manual component available
-              </p>
-            ) : null}
-            <ManualAccessBadge access={manualAccess} />
-          </div>
-        );
-      }
-
-      return (
-        <div className="space-y-2">
-          {showHybridHint ? (
-            <p className="text-xs font-medium text-amber-900 dark:text-amber-200">
-              Manual entry available — instrument result not required first
-            </p>
-          ) : null}
-          <div className="flex flex-wrap items-center gap-2">
-            {components.map((item) => (
-              <ManualResultEntryButton
-                key={`${item.orderedTestCode}-${item.componentCode}`}
-                accessionNumber={row.accessionNumber}
-                testCode={item.orderedTestCode}
-                testName={item.orderedTestName}
-                resultComponentCode={item.componentCode}
-                resultComponentName={item.componentName}
-                siblingManualCount={components.length}
-              />
-            ))}
-          </div>
-        </div>
-      );
-    },
-    [row, pendingManualByTest, manualAccess],
+    (test: WorkQueueTestItem) => (
+      <WorkQueueManualActions
+        accessionNumber={row.accessionNumber}
+        test={test}
+        manualAccess={manualAccess}
+        pendingManualByTest={pendingManualByTest}
+      />
+    ),
+    [row.accessionNumber, pendingManualByTest, manualAccess],
   );
+
+  const contentPadding =
+    variant === "inline" ? "px-3 py-3 sm:px-4" : "px-4 py-4 sm:px-5";
+
+  return (
+    <div className={contentPadding}>
+      <div className={cn("space-y-5", variant === "inline" && "space-y-4")}>
+        {row.tubes.length > 0 ? (
+          <section>
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Tubes ({row.tubes.length})
+            </p>
+            <ul className="flex flex-wrap gap-2">
+              {row.tubes.map((tube) => (
+                <li
+                  key={tube.specimenId}
+                  className="rounded-lg border border-border bg-muted/30 px-2.5 py-1.5"
+                >
+                  <span className="block font-mono text-xs font-medium text-foreground">
+                    {tube.specimenId}
+                  </span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    {tube.departmentLabel}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
+
+        <section>
+          <WorkQueueTestList
+            tests={row.tests}
+            renderTestActions={renderTestActions}
+          />
+        </section>
+
+        <p className="text-xs text-muted-foreground">
+          Registered {new Date(row.registeredAt).toLocaleString()}
+          {row.collectedByName ? ` · Collector: ${row.collectedByName}` : ""}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function BenchWorkQueueDetailFooter({
+  accessionNumber,
+  variant,
+}: {
+  accessionNumber: string;
+  variant: BenchWorkQueueDetailVariant;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex shrink-0 flex-wrap gap-2 border-t border-border bg-muted/20",
+        variant === "inline"
+          ? "px-3 py-2.5 sm:px-4"
+          : "px-4 py-2.5 sm:px-5",
+      )}
+    >
+      <CopyAccessionButton accessionNumber={accessionNumber} />
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 text-xs"
+        asChild
+      >
+        <Link to="/labels" search={{ accession: accessionNumber }}>
+          Reprint labels
+        </Link>
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1 text-xs"
+        asChild
+      >
+        <Link to="/orders" search={{ accession: accessionNumber }}>
+          Test lookup
+          <ExternalLink className="size-3" aria-hidden />
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+export function BenchWorkQueueDetail({
+  row,
+  results,
+  onClose,
+  embedded,
+  variant: variantProp,
+  className,
+}: Props) {
+  const variant = resolveVariant(variantProp, embedded);
+  const pendingCount = row ? row.tests.length - row.receivedCount : 0;
 
   if (!row) {
     return (
@@ -176,13 +217,27 @@ export function BenchWorkQueueDetail({
     );
   }
 
-  const pendingCount = row.tests.length - row.receivedCount;
+  if (variant === "inline") {
+    return (
+      <div className={cn("border-t border-border bg-muted/20", className)}>
+        <BenchWorkQueueDetailBody
+          row={row}
+          results={results}
+          variant="inline"
+        />
+        <BenchWorkQueueDetailFooter
+          accessionNumber={row.accessionNumber}
+          variant="inline"
+        />
+      </div>
+    );
+  }
 
   return (
     <div
       className={cn(
         "flex min-h-0 min-w-0 flex-col overflow-hidden bg-card",
-        embedded
+        variant === "sheet"
           ? "h-full min-h-0 flex-1 rounded-none border-0 shadow-none"
           : "rounded-xl border border-border shadow-sm",
         className,
@@ -191,10 +246,10 @@ export function BenchWorkQueueDetail({
       <div
         className={cn(
           "shrink-0 border-b border-border",
-          embedded ? "px-4 pb-3 pt-2 sm:px-5" : "px-4 py-3 sm:px-5",
+          variant === "sheet" ? "px-4 pb-3 pt-2 sm:px-5" : "px-4 py-3 sm:px-5",
         )}
       >
-        {embedded ? (
+        {variant === "sheet" ? (
           <div
             className="mx-auto mb-3 h-1 w-10 rounded-full bg-muted-foreground/35"
             aria-hidden
@@ -226,7 +281,7 @@ export function BenchWorkQueueDetail({
               </span>
             </div>
           </div>
-          {embedded ? (
+          {variant === "sheet" ? (
             <SheetCloseButton className="-mr-1 -mt-1 shrink-0" />
           ) : onClose ? (
             <Button
@@ -243,65 +298,17 @@ export function BenchWorkQueueDetail({
         </div>
       </div>
 
-      <ScrollContainer className="min-h-0 flex-1 px-4 py-4 sm:px-5">
-        <div className="space-y-5">
-          {row.tubes.length > 0 ? (
-            <section>
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Tubes ({row.tubes.length})
-              </p>
-              <ul className="flex flex-wrap gap-2">
-                {row.tubes.map((tube) => (
-                  <li
-                    key={tube.specimenId}
-                    className="rounded-lg border border-border bg-muted/30 px-2.5 py-1.5"
-                  >
-                    <span className="block font-mono text-xs font-medium text-foreground">
-                      {tube.specimenId}
-                    </span>
-                    <span className="block text-[11px] text-muted-foreground">
-                      {tube.departmentLabel}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-
-          <section>
-            <WorkQueueTestList
-              tests={row.tests}
-              renderTestActions={renderTestActions}
-            />
-          </section>
-
-          <p className="text-xs text-muted-foreground">
-            Registered {new Date(row.registeredAt).toLocaleString()}
-            {row.collectedByName ? ` · Collector: ${row.collectedByName}` : ""}
-          </p>
-        </div>
+      <ScrollContainer className="min-h-0 flex-1">
+        <BenchWorkQueueDetailBody
+          row={row}
+          results={results}
+          variant={variant}
+        />
       </ScrollContainer>
-
-      <div className="flex shrink-0 flex-wrap gap-2 border-t border-border bg-muted/20 px-4 py-2.5 sm:px-5">
-        <CopyAccessionButton accessionNumber={row.accessionNumber} />
-        <Button type="button" variant="outline" size="sm" className="h-7 text-xs" asChild>
-          <Link to="/labels" search={{ accession: row.accessionNumber }}>
-            Reprint labels
-          </Link>
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="h-7 gap-1 text-xs"
-          asChild
-        >
-          <Link to="/orders" search={{ accession: row.accessionNumber }}>
-            Test lookup
-            <ExternalLink className="size-3" aria-hidden />
-          </Link>
-        </Button>
-      </div>
+      <BenchWorkQueueDetailFooter
+        accessionNumber={row.accessionNumber}
+        variant={variant}
+      />
     </div>
   );
 }

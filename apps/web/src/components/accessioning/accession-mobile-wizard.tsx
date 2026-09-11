@@ -390,6 +390,7 @@ export function AccessionMobileWizard({
                 value={specimenInfo}
                 onChange={onSpecimenInfoChange}
                 expandedTests={expandedTests}
+                accessionRouting={catalog?.accessionRouting}
                 currentUserId={currentUserId}
               />
               <div className="rounded-xl border border-border bg-card px-4 py-3">

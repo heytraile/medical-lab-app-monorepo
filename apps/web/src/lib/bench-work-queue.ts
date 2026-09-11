@@ -9,7 +9,7 @@ import {
   type MissingExpectedResult,
   type ReceivedResultForCompleteness,
 } from "@drax-lis/catalog";
-import type { BenchResult, SpecimenRow } from "./api";
+import type { BenchResult } from "./api";
 import type { AccessionSession } from "./accession-sessions";
 
 export type WorkQueueTestStatus =
@@ -212,3 +212,4 @@ export function queueRowMatchesAnalyzerFilter(
       t.status === "awaiting_instrument" && t.analyzerId === analyzer,
   );
 }
+

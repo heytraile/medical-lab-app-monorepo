@@ -116,7 +116,7 @@ function LabShell() {
                     "flex shrink-0 items-center border-b border-border",
                     showSidebar
                       ? "min-h-12 gap-2 px-6 py-0"
-                      : "min-h-14 gap-2.5 px-5 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-8",
+                      : "min-h-14 touch-tablet:min-h-[3.75rem] gap-2.5 px-3 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-5 lg:px-8",
                   )}
                 >
                   <div
@@ -129,10 +129,10 @@ function LabShell() {
                       <FlaskConical className="size-4" aria-hidden />
                     </div>
                     <div className="min-w-0 leading-tight">
-                      <p className="truncate font-display text-sm font-semibold tracking-tight">
+                      <p className="truncate font-display text-sm font-semibold tracking-tight touch-tablet:text-base">
                         Drax Hall LIS
                       </p>
-                      <p className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">
+                      <p className="truncate text-[10px] uppercase tracking-wider text-muted-foreground touch-tablet:text-xs">
                         Workbench
                       </p>
                     </div>
@@ -161,7 +161,7 @@ function LabShell() {
                           "overflow-hidden",
                           showSidebar
                             ? "px-5 py-4 lg:px-8 lg:py-5"
-                            : "p-0 px-6 pt-3 lg:px-8",
+                            : "p-0 px-3 pt-2 sm:px-5 lg:px-8",
                         )
                       : "overflow-y-auto p-4 sm:p-6 md:p-8 lg:px-8",
                   )}

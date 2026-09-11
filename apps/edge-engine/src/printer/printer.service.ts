@@ -4,6 +4,11 @@ import {
 } from "@nestjs/common";
 import * as net from "net";
 import {
+  buildSpecimenLabelInput,
+  DRAX_HALL_ROUTING_SETTINGS,
+  type LabRoutingSettings,
+} from "@drax-lis/catalog";
+import {
   buildSpecimenLabelDocument,
   formattedToPreviewFields,
   resolveLabelSize,
@@ -18,8 +23,14 @@ export type LabelPayload = {
   dateOfBirth?: string | null;
   orderedTests?: string[];
   specimenType?: string;
+  departmentKey?: string;
+  catalogCategory?: string;
   departmentLabel?: string;
+  departmentLabelShort?: string;
+  collectionLabelShort?: string;
+  includeCollectionOnRouting?: boolean;
   mrn?: string;
+  routing?: LabRoutingSettings;
 };
 
 export type { LabelPreviewFields };
@@ -115,18 +126,40 @@ export class PrinterService {
     zpl: string;
     fields: LabelPreviewFields;
   } {
+    const barcode =
+      opts.barcode ?? opts.specimenNumber ?? opts.accessionNumber;
+    const input =
+      opts.departmentLabelShort != null
+        ? {
+            accessionNumber: opts.accessionNumber,
+            specimenNumber: opts.specimenNumber,
+            patientName: opts.patientName,
+            barcode,
+            dateOfBirth: opts.dateOfBirth,
+            orderedTests: opts.orderedTests,
+            specimenType: opts.specimenType,
+            departmentLabel: opts.departmentLabel,
+            departmentLabelShort: opts.departmentLabelShort,
+            collectionLabelShort: opts.collectionLabelShort,
+            includeCollectionOnRouting: opts.includeCollectionOnRouting,
+            mrn: opts.mrn,
+          }
+        : buildSpecimenLabelInput({
+            accessionNumber: opts.accessionNumber,
+            specimenNumber: opts.specimenNumber,
+            patientName: opts.patientName,
+            barcode,
+            dateOfBirth: opts.dateOfBirth,
+            departmentKey: opts.departmentKey,
+            catalogCategory: opts.catalogCategory ?? opts.departmentKey,
+            departmentLabel: opts.departmentLabel,
+            collectionType: opts.specimenType,
+            orderedTestCodes: opts.orderedTests,
+            mrn: opts.mrn,
+            routing: opts.routing ?? DRAX_HALL_ROUTING_SETTINGS,
+          });
     const { formatted, zpl } = buildSpecimenLabelDocument(
-      {
-        accessionNumber: opts.accessionNumber,
-        specimenNumber: opts.specimenNumber,
-        patientName: opts.patientName,
-        barcode: opts.barcode ?? opts.specimenNumber ?? opts.accessionNumber,
-        dateOfBirth: opts.dateOfBirth,
-        orderedTests: opts.orderedTests,
-        specimenType: opts.specimenType,
-        departmentLabel: opts.departmentLabel,
-        mrn: opts.mrn,
-      },
+      input,
       this.labelSize,
     );
     return { zpl, fields: formattedToPreviewFields(formatted) };
@@ -140,7 +173,9 @@ export class PrinterService {
       barcode: "DH202608260001-01",
       dateOfBirth: "1980-01-01",
       specimenType: "blood",
-      departmentLabel: "Blood Chemistry",
+      departmentKey: "chemistry",
+      departmentLabel: "Chemistry",
+      orderedTests: ["CREATININE", "LIPIDS"],
       mrn: "MRN-TEST",
     });
   }

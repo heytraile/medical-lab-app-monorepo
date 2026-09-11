@@ -10,6 +10,11 @@ import { HardenedAuthGuard } from "../auth/hardened-auth.guard";
 import { PrismaService } from "../prisma/prisma.service";
 import { displayName } from "../patients/patient-normalize";
 import {
+  DRAX_HALL_ROUTING_POLICY,
+  groupSpecimensForLabelPrint,
+  resolveRoutingForScope,
+} from "@drax-lis/catalog";
+import {
   LabelPayload,
   PrinterService,
 } from "./printer.service";
@@ -39,18 +44,7 @@ export class PrinterController {
     @Body()
     body: LabelPayload & { copies?: number },
   ) {
-    const { zpl, fields } = this.printer.buildSpecimenLabel({
-      accessionNumber: body.accessionNumber,
-      specimenNumber: body.specimenNumber,
-      patientName: body.patientName,
-      barcode: body.barcode ?? body.specimenNumber ?? body.accessionNumber,
-      dateOfBirth: body.dateOfBirth,
-      orderedTests: body.orderedTests,
-      specimenType: body.specimenType,
-      departmentLabel: body.departmentLabel,
-      mrn: body.mrn,
-    });
-    return { zpl, fields };
+    return this.buildLabelFromBody(body);
   }
 
   @Post("label")
@@ -59,17 +53,7 @@ export class PrinterController {
     @Body()
     body: LabelPayload & { copies?: number },
   ) {
-    const { zpl, fields } = this.printer.buildSpecimenLabel({
-      accessionNumber: body.accessionNumber,
-      specimenNumber: body.specimenNumber,
-      patientName: body.patientName,
-      barcode: body.barcode ?? body.specimenNumber ?? body.accessionNumber,
-      dateOfBirth: body.dateOfBirth,
-      orderedTests: body.orderedTests,
-      specimenType: body.specimenType,
-      departmentLabel: body.departmentLabel,
-      mrn: body.mrn,
-    });
+    const { zpl, fields } = this.buildLabelFromBody(body);
     const result = await this.printer.printZpl(zpl, body.copies);
     return { ...result, zpl, fields };
   }
@@ -119,25 +103,47 @@ export class PrinterController {
       accession?.patient ?? null,
     );
 
-    const labels = [];
-    for (const specimen of containers) {
-      const { zpl, fields } = this.printer.buildSpecimenLabel({
+    const labelRouting = resolveRoutingForScope(
+      DRAX_HALL_ROUTING_POLICY,
+      "labels",
+    );
+    const printGroups = groupSpecimensForLabelPrint(
+      containers.map((specimen) => ({
+        id: specimen.id,
         accessionNumber: specimen.accessionNumber,
-        specimenNumber: specimen.specimenNumber ?? specimen.barcode,
-        patientName: ctx.patientName,
+        specimenNumber: specimen.specimenNumber ?? undefined,
         barcode: specimen.barcode,
-        dateOfBirth: ctx.dateOfBirth,
-        specimenType: specimen.collectionType ?? specimen.specimenType,
+        departmentKey: specimen.departmentKey,
         departmentLabel: specimen.departmentLabel,
+        collectionType: specimen.collectionType ?? specimen.specimenType,
+        orderedTestCodes: this.orderedTestCodesFromSpecimen(specimen),
+      })),
+      labelRouting,
+    );
+
+    const labels = [];
+    for (const group of printGroups) {
+      const { zpl, fields } = this.printer.buildSpecimenLabel({
+        accessionNumber: containers[0]!.accessionNumber,
+        specimenNumber: group.primarySpecimenNumber,
+        patientName: ctx.patientName,
+        barcode: group.primaryBarcode,
+        dateOfBirth: ctx.dateOfBirth,
+        specimenType: group.collectionType,
+        departmentKey: group.departmentKey,
+        catalogCategory: group.catalogCategory,
+        departmentLabel: group.departmentLabel,
+        orderedTests: group.orderedTestCodes,
         mrn: ctx.mrn,
+        routing: labelRouting,
       });
       const result = await this.printer.printZpl(zpl, body.copies);
       labels.push({
         ...result,
         zpl,
         fields,
-        specimenId: specimen.id,
-        departmentKey: specimen.departmentKey,
+        specimenId: group.specimenIds[0],
+        departmentKey: group.departmentKey,
       });
     }
 
@@ -158,6 +164,40 @@ export class PrinterController {
     const { zpl, fields } = this.printer.buildTestLabel();
     const result = await this.printer.printZpl(zpl, body.copies ?? 1);
     return { ...result, zpl, fields };
+  }
+
+  private buildLabelFromBody(body: LabelPayload & { copies?: number }) {
+    const { zpl, fields } = this.printer.buildSpecimenLabel({
+      accessionNumber: body.accessionNumber,
+      specimenNumber: body.specimenNumber,
+      patientName: body.patientName,
+      barcode: body.barcode ?? body.specimenNumber ?? body.accessionNumber,
+      dateOfBirth: body.dateOfBirth,
+      orderedTests: body.orderedTests,
+      specimenType: body.specimenType,
+      departmentKey: body.departmentKey,
+      catalogCategory: body.catalogCategory ?? body.departmentKey,
+      departmentLabel: body.departmentLabel,
+      departmentLabelShort: body.departmentLabelShort,
+      collectionLabelShort: body.collectionLabelShort,
+      includeCollectionOnRouting: body.includeCollectionOnRouting,
+      mrn: body.mrn,
+      routing: body.routing,
+    });
+    return { zpl, fields };
+  }
+
+  private orderedTestCodesFromSpecimen(specimen: {
+    orderedTestsJson: string;
+  }): string[] {
+    try {
+      const parsed = JSON.parse(specimen.orderedTestsJson) as Array<{
+        code?: string;
+      }>;
+      return parsed.map((t) => String(t.code ?? "").trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
   }
 
   private resolvePatientContext(

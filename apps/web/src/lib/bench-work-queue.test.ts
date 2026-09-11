@@ -99,4 +99,29 @@ describe("bench work queue helpers", () => {
     );
     assert.equal(tests[0]?.status, "received");
   });
+
+  it("surfaces awaiting manual alongside received instrument results", () => {
+    const tests = buildWorkQueueTestItems(
+      ["CBC", "GROUP_RH"],
+      [
+        result({
+          id: "r1",
+          accessionNumber: "DH1",
+          testCode: "CBC",
+          analyzerId: "sysmex_xs1000i",
+        }),
+      ],
+    );
+    assert.ok(
+      tests.some(
+        (t) => t.code === "GROUP_RH" && t.status === "awaiting_manual",
+      ),
+    );
+    assert.equal(tests.filter((t) => t.status !== "received").length, 1);
+  });
+
+  it("marks manual-only orders as awaiting manual before any results", () => {
+    const tests = buildWorkQueueTestItems(["GROUP_RH"], []);
+    assert.equal(tests[0]?.status, "awaiting_manual");
+  });
 });

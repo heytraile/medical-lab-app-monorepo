@@ -13,6 +13,12 @@ import { SyncService } from "../sync/sync.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { displayName } from "../patients/patient-normalize";
 import { PatientsService } from "../patients/patients.service";
+import {
+  DRAX_HALL_ROUTING_POLICY,
+  groupSpecimensForLabelPrint,
+  resolveRoutingForScope,
+  type LabRoutingSettings,
+} from "@drax-lis/catalog";
 import { formatSpecimenNumber } from "./specimen-number";
 
 type IdentityConfirmation = {
@@ -62,6 +68,7 @@ type BatchRegisterInput = {
     specimenType?: string;
     orderedTests: Array<{ code: string; name?: string }>;
   }>;
+  labelRouting?: LabRoutingSettings;
 } & CollectorInput;
 
 type ResolvedRegistration = {
@@ -501,6 +508,7 @@ export class SpecimensService {
       patientName: resolved.patientName,
       patientPayload: resolved.patientPayload,
       orderedTests,
+      departmentKey: "general",
       departmentLabel: "General",
       collectionType,
       identityConfirmationJson: resolved.identityConfirmationJson,
@@ -611,7 +619,55 @@ export class SpecimensService {
       return { accession, results, accessionNumber };
     });
 
-    const specimens = [];
+    const specimens = created.results.map((item) => item.specimen);
+
+    const containerPayload = created.results.map((item) => ({
+      departmentKey: item.specimen.departmentKey,
+      departmentLabel: item.departmentLabel,
+      collectionType: item.collectionType,
+      orderedTests: item.orderedTests,
+      barcode: item.barcode,
+      specimenNumber: item.specimenNumber,
+      specimenId: item.specimen.id,
+    }));
+
+    await this.finalizeContainer({
+      accession: created.accession,
+      specimen: created.results[0]!.specimen,
+      patient: resolved.patient,
+      patientName: resolved.patientName,
+      patientPayload: resolved.patientPayload,
+      orderedTests: created.results[0]!.orderedTests,
+      departmentKey: created.results[0]!.specimen.departmentKey,
+      departmentLabel: created.results[0]!.departmentLabel,
+      collectionType: created.results[0]!.collectionType,
+      identityConfirmationJson: resolved.identityConfirmationJson,
+      printLabel: false,
+      copies: input.copies,
+      actor,
+      syncAccession: true,
+      allOrderedTests,
+      containers: containerPayload,
+    });
+
+    const labelRouting =
+      input.labelRouting ??
+      resolveRoutingForScope(DRAX_HALL_ROUTING_POLICY, "labels");
+
+    const labelGroups = groupSpecimensForLabelPrint(
+      created.results.map((item) => ({
+        id: item.specimen.id,
+        accessionNumber: item.accessionNumber,
+        specimenNumber: item.specimenNumber,
+        barcode: item.barcode,
+        departmentKey: item.specimen.departmentKey,
+        departmentLabel: item.departmentLabel,
+        collectionType: item.collectionType,
+        orderedTestCodes: item.orderedTests.map((t) => t.code),
+      })),
+      labelRouting,
+    );
+
     const labelPreviews: ReturnType<
       PrinterService["buildSpecimenLabel"]
     >["fields"][] = [];
@@ -626,38 +682,28 @@ export class SpecimensService {
       | undefined
     > = [];
 
-    const containerPayload = created.results.map((item) => ({
-      departmentKey: item.specimen.departmentKey,
-      departmentLabel: item.departmentLabel,
-      collectionType: item.collectionType,
-      orderedTests: item.orderedTests,
-      barcode: item.barcode,
-      specimenNumber: item.specimenNumber,
-      specimenId: item.specimen.id,
-    }));
-
-    for (let i = 0; i < created.results.length; i++) {
-      const item = created.results[i]!;
-      const finalized = await this.finalizeContainer({
-        accession: created.accession,
-        specimen: item.specimen,
-        patient: resolved.patient,
+    for (const group of labelGroups) {
+      const built = this.printer.buildSpecimenLabel({
+        accessionNumber: created.accessionNumber,
+        specimenNumber: group.primarySpecimenNumber,
         patientName: resolved.patientName,
-        patientPayload: resolved.patientPayload,
-        orderedTests: item.orderedTests,
-        departmentLabel: item.departmentLabel,
-        collectionType: item.collectionType,
-        identityConfirmationJson: resolved.identityConfirmationJson,
-        printLabel: input.printLabel,
-        copies: input.copies,
-        actor,
-        syncAccession: i === 0,
-        allOrderedTests,
-        containers: containerPayload,
+        barcode: group.primaryBarcode,
+        dateOfBirth: resolved.patient.dateOfBirth,
+        specimenType: group.collectionType,
+        departmentKey: group.departmentKey,
+        catalogCategory: group.catalogCategory,
+        departmentLabel: group.departmentLabel,
+        orderedTests: group.orderedTestCodes,
+        mrn: resolved.patient.mrn,
+        routing: labelRouting,
       });
-      specimens.push(item.specimen);
-      labelPreviews.push(finalized.labelPreview);
-      printResults.push(finalized.printResult);
+      labelPreviews.push(built.fields);
+      if (input.printLabel !== false) {
+        const sent = await this.printer.printZpl(built.zpl, input.copies);
+        printResults.push({ ...sent, zpl: built.zpl, fields: built.fields });
+      } else {
+        printResults.push(undefined);
+      }
     }
 
     await this.maybeQueueIdentityReview(
@@ -669,6 +715,12 @@ export class SpecimensService {
     return {
       accessionNumber: created.accessionNumber,
       specimens,
+      labelGroups: labelGroups.map((g) => ({
+        departmentKey: g.departmentKey,
+        departmentLabel: g.departmentLabel,
+        collectionType: g.collectionType,
+        specimenIds: g.specimenIds,
+      })),
       labelPreviews,
       printResults,
     };
@@ -916,6 +968,7 @@ export class SpecimensService {
     patientName: string;
     patientPayload: ResolvedRegistration["patientPayload"];
     orderedTests: Array<{ code: string; name?: string }>;
+    departmentKey: string;
     departmentLabel: string;
     collectionType: string;
     identityConfirmationJson: string | null;
@@ -941,6 +994,7 @@ export class SpecimensService {
       patientName,
       patientPayload,
       orderedTests,
+      departmentKey,
       departmentLabel,
       collectionType,
       identityConfirmationJson,
@@ -1005,7 +1059,9 @@ export class SpecimensService {
       barcode,
       dateOfBirth: patient.dateOfBirth,
       specimenType: collectionType,
+      departmentKey,
       departmentLabel,
+      orderedTests: orderedTests.map((t) => t.code),
       mrn: patient.mrn,
     };
     const built = this.printer.buildSpecimenLabel(labelPayload);

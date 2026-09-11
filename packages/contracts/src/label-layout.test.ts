@@ -76,6 +76,30 @@ describe("formatSpecimenLabel", () => {
     assert.equal(formatted.routingLine, "Blood Chemistry · 1988-03-14");
   });
 
+  it("formats short routing line with collection and test block", () => {
+    const { zpl, formatted } = buildSpecimenLabelDocument(
+      {
+        accessionNumber: "DH202608260001",
+        specimenNumber: "DH202608260001-01",
+        patientName: "Jane Doe",
+        barcode: "DH202608260001-01",
+        orderedTests: ["CBC", "CREATININE"],
+        specimenType: "blood",
+        departmentLabel: "Chemistry",
+        departmentLabelShort: "Chem",
+        collectionLabelShort: "Bld",
+        includeCollectionOnRouting: true,
+        mrn: "MRN-1001",
+        dateOfBirth: "1990-01-15",
+      },
+      LABEL_SIZES.tube_2x1,
+    );
+    assert.equal(formatted.routingLine, "Chem · Bld · 1990-01-15");
+    assert.ok(formatted.testLines.length > 0);
+    assert.match(zpl, /Chem · Bld · 1990-01-15/);
+    assert.match(zpl, /CBC/);
+  });
+
   it("builds compact zpl without timestamp or 2d barcode", () => {
     const { zpl, formatted } = buildSpecimenLabelDocument(
       {

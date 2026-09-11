@@ -17,6 +17,7 @@ import {
   getGroupedRowModel,
   getSortedRowModel,
   type ExpandedState,
+  type Row,
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
@@ -34,6 +35,7 @@ import {
 import { BenchPatientPanel } from "../../components/bench-patient-panel";
 import { BenchEmptyState } from "../../components/bench-empty-state";
 import { BenchMobileList } from "../../components/bench-mobile-list";
+import { BenchGroupExpandOverview } from "../../components/bench-group-expand-overview";
 import { BenchWorkQueue } from "../../components/bench-work-queue";
 import { BenchWorkQueueDetail } from "../../components/bench-work-queue-detail";
 import { buildBenchWorkQueue } from "../../lib/bench-work-queue-build";
@@ -65,6 +67,7 @@ import { ScrollContainer } from "../../components/ui/scroll-container";
 import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { findSpecimenByAccession } from "../../lib/label-preview-from-specimen";
 import { cn } from "../../lib/utils";
+import { toggleSelection } from "../../lib/toggle-selection";
 
 /** Stable group key — unlinked specimens group by accession, not into one bucket. */
 function groupKeyFor(row: BenchResult): string {
@@ -150,6 +153,16 @@ function BenchPage() {
   const [selectedQueueAccession, setSelectedQueueAccession] = useState<
     string | null
   >(null);
+  /** Touch inline accordion — awaiting run. */
+  const [expandedQueueAccession, setExpandedQueueAccession] = useState<
+    string | null
+  >(null);
+  /** Optional full-view sheet — awaiting run (touch only). */
+  const [queuePanelAccession, setQueuePanelAccession] = useState<
+    string | null
+  >(null);
+  /** Optional full-view sheet — All tab patients (touch only). */
+  const [patientPanelId, setPatientPanelId] = useState<string | null>(null);
   // Every group starts collapsed and stays that way until the tech opens it;
   // only an active search overrides this (see below).
   const [expanded, setExpanded] = useState<ExpandedState>({});
@@ -376,9 +389,74 @@ function BenchPage() {
     );
   }, [workQueueRows, selectedQueueAccession]);
 
+  const queuePanelRow = useMemo(() => {
+    if (!queuePanelAccession) return null;
+    return (
+      workQueueRows.find(
+        (row) =>
+          row.accessionNumber.toUpperCase() ===
+          queuePanelAccession.toUpperCase(),
+      ) ?? null
+    );
+  }, [workQueueRows, queuePanelAccession]);
+
+  const patientPanelResults = useMemo(
+    () =>
+      patientPanelId
+        ? data.filter((r) => r.patient?.id === patientPanelId)
+        : [],
+    [data, patientPanelId],
+  );
+
+  const patientPanelSummary = useMemo(() => {
+    if (!patientPanelId) return null;
+    const fromResults = patientPanelResults.find(
+      (r) => r.patient?.id === patientPanelId,
+    )?.patient;
+    if (fromResults) return fromResults;
+    const queueRow = workQueueRows.find(
+      (row) => row.patientId === patientPanelId,
+    );
+    return queueRow?.patientSummary ?? null;
+  }, [patientPanelId, patientPanelResults, workQueueRows]);
+
+  const handleSelectPatient = (id: string) => {
+    if (!showSidebar) return;
+    setSelectedPatientId((prev) => toggleSelection(prev, id));
+  };
+
   const handleSelectQueueRow = (row: BenchWorkQueueRow) => {
+    if (!showSidebar) return;
     setSelectedQueueAccession(row.accessionNumber);
     setSelectedPatientId(null);
+  };
+
+  const handleToggleQueueExpand = (row: BenchWorkQueueRow) => {
+    const acc = row.accessionNumber;
+    setExpandedQueueAccession((prev) =>
+      prev?.toUpperCase() === acc.toUpperCase() ? null : acc,
+    );
+  };
+
+  const handleOpenQueuePanel = (row: BenchWorkQueueRow) => {
+    setQueuePanelAccession(row.accessionNumber);
+  };
+
+  const handleToggleGroup = (row: Row<BenchResult>) => {
+    if (showSidebar) {
+      row.toggleExpanded();
+      return;
+    }
+    const rowId = row.id;
+    if (row.getIsExpanded()) {
+      setExpanded({});
+    } else {
+      setExpanded({ [rowId]: true });
+    }
+  };
+
+  const handleOpenPatientPanel = (patientId: string) => {
+    setPatientPanelId(patientId);
   };
 
   useEffect(() => {
@@ -386,6 +464,8 @@ function BenchPage() {
 
     if (workQueueRows.length === 0) {
       setSelectedQueueAccession(null);
+      setExpandedQueueAccession(null);
+      setQueuePanelAccession(null);
       return;
     }
 
@@ -398,18 +478,44 @@ function BenchPage() {
       );
 
     if (!stillVisible) {
-      if (showSidebar || isWorkstation) {
+      if (showSidebar) {
         setSelectedQueueAccession(workQueueRows[0]!.accessionNumber);
       } else {
         setSelectedQueueAccession(null);
       }
-      return;
-    }
-
-    if ((showSidebar || isWorkstation) && !selectedQueueAccession) {
+    } else if (showSidebar && !selectedQueueAccession) {
       setSelectedQueueAccession(workQueueRows[0]!.accessionNumber);
     }
-  }, [tab, workQueueRows, selectedQueueAccession, showSidebar, isWorkstation]);
+
+    if (
+      expandedQueueAccession &&
+      !workQueueRows.some(
+        (row) =>
+          row.accessionNumber.toUpperCase() ===
+          expandedQueueAccession.toUpperCase(),
+      )
+    ) {
+      setExpandedQueueAccession(null);
+    }
+
+    if (
+      queuePanelAccession &&
+      !workQueueRows.some(
+        (row) =>
+          row.accessionNumber.toUpperCase() ===
+          queuePanelAccession.toUpperCase(),
+      )
+    ) {
+      setQueuePanelAccession(null);
+    }
+  }, [
+    tab,
+    workQueueRows,
+    selectedQueueAccession,
+    expandedQueueAccession,
+    queuePanelAccession,
+    showSidebar,
+  ]);
 
   const formatObserved = (iso: string) => new Date(iso).toLocaleString();
 
@@ -597,19 +703,12 @@ function BenchPage() {
   const title = analyzer ? analyzerLabel(analyzer) : "All machines";
   const showWorkQueue = tab === "awaiting_run";
   const queueSplitDocked =
-    showWorkQueue &&
-    Boolean(selectedQueueAccession) &&
-    (showSidebar || isWorkstation);
-  const queueUseSheet =
-    showWorkQueue &&
-    Boolean(selectedQueueAccession) &&
-    !showSidebar &&
-    !isWorkstation;
-  const resultsSplit = !showWorkQueue && Boolean(selectedPatientId);
-  const split = (showWorkQueue ? Boolean(selectedQueueAccession) : resultsSplit);
-  /** Side-by-side detail on desktop sidebar and tablet landscape; phone uses sheet. */
-  const splitDocked =
-    queueSplitDocked || (resultsSplit && showSidebar);
+    showWorkQueue && Boolean(selectedQueueAccession) && showSidebar;
+  const resultsSplit =
+    !showWorkQueue && Boolean(selectedPatientId) && showSidebar;
+  const split = showWorkQueue ? queueSplitDocked : resultsSplit;
+  /** Side-by-side detail only with persistent desktop sidebar. */
+  const splitDocked = queueSplitDocked || resultsSplit;
   const hasUrlFilter = Boolean(q || analyzer);
 
   const emptyState = (
@@ -693,7 +792,7 @@ function BenchPage() {
                         summary.patient.id === selectedPatientId
                       }
                       onToggle={row.getToggleExpandedHandler()}
-                      onSelectPatient={setSelectedPatientId}
+                      onSelectPatient={handleSelectPatient}
                       onJumpToFlag={() => {
                         row.toggleExpanded(true);
                         const target = row.subRows.find(
@@ -702,6 +801,24 @@ function BenchPage() {
                         setFocusedResultId(target?.original.id ?? null);
                       }}
                     />
+                    {isOpen ? (
+                      <tr className="bg-sky-50 dark:bg-sky-950/60">
+                        <td
+                          colSpan={visibleColumnCount}
+                          className="border-b border-border px-4 py-4 pl-12"
+                        >
+                          <BenchGroupExpandOverview
+                            summary={summary}
+                            results={data.filter((result) =>
+                              summary.accessionNumbers.includes(
+                                result.accessionNumber,
+                              ),
+                            )}
+                            specimens={specimensQ.data ?? []}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
                   </Fragment>
                 );
               }
@@ -770,17 +887,22 @@ function BenchPage() {
     emptyState
   ) : (
     <ScrollContainer className="min-h-0 min-w-0 flex-1">
-      <div className="space-y-3 p-1 pb-4">
+      <div className="space-y-3 pb-4">
         <BenchMobileList
           rows={modelRows}
           groupSummaries={groupSummaries}
-          selectedPatientId={selectedPatientId}
+          allResults={data}
+          specimens={specimensQ.data ?? []}
           focusedResultId={focusedResultId}
           focusedRef={focusedRowRef}
-          onSelectPatient={setSelectedPatientId}
-          onToggleGroup={(row) => row.toggleExpanded()}
+          onOpenPatientPanel={handleOpenPatientPanel}
+          onToggleGroup={handleToggleGroup}
           onJumpToFlag={(row, summary) => {
-            row.toggleExpanded(true);
+            if (showSidebar) {
+              row.toggleExpanded(true);
+            } else {
+              setExpanded({ [row.id]: true });
+            }
             const target = row.subRows.find(
               (sr) => sr.original.flag === summary.worstFlag,
             );
@@ -801,7 +923,7 @@ function BenchPage() {
               isCompactWorkstation ? "gap-3" : "gap-5",
               workstationViewportClass,
             )
-          : "flex h-full min-h-0 flex-col gap-2 p-3",
+          : "flex h-full min-h-0 flex-col gap-2 px-1.5 py-2 sm:px-3 sm:py-3",
         !isCompactWorkstation &&
           isWorkstation &&
           !splitDocked &&
@@ -883,17 +1005,25 @@ function BenchPage() {
 
       <div
         className={cn(
-          "flex shrink-0 flex-wrap items-center justify-between",
-          isCompactWorkstation ? "gap-2" : "gap-3",
+          "flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2",
+          isCompactWorkstation && "gap-x-2",
         )}
       >
         <Tabs
           value={tab}
           onValueChange={(v) => {
             setTab(v as TabFilter);
-            if (v !== "awaiting_run") setSelectedQueueAccession(null);
-            if (v === "awaiting_run") setSelectedPatientId(null);
+            if (v !== "awaiting_run") {
+              setSelectedQueueAccession(null);
+              setExpandedQueueAccession(null);
+              setQueuePanelAccession(null);
+            }
+            if (v === "awaiting_run") {
+              setSelectedPatientId(null);
+              setPatientPanelId(null);
+            }
           }}
+          className="shrink-0"
         >
           <TabsList className={isCompactWorkstation ? "h-8" : undefined}>
             <TabsTrigger value="awaiting_run">Awaiting run</TabsTrigger>
@@ -903,17 +1033,19 @@ function BenchPage() {
             <TabsTrigger value="flagged">Flagged</TabsTrigger>
           </TabsList>
         </Tabs>
-        <div className="flex flex-wrap items-center gap-2">
+        <div
+          className={cn(
+            "flex min-w-[min(100%,22rem)] flex-wrap items-center gap-2",
+            isCompactWorkstation
+              ? "w-full basis-full"
+              : "min-w-0 flex-1 basis-full justify-end sm:basis-auto",
+          )}
+        >
           <Input
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
             placeholder="Search accession, specimen ID, patient, test…"
-            className={cn(
-              "h-8 text-sm",
-              isCompactWorkstation
-                ? "w-[min(100%,12rem)]"
-                : "w-[min(100%,16rem)]",
-            )}
+            className="h-8 w-full min-w-0 text-sm"
             aria-label="Filter bench results"
           />
           {!showWorkQueue && groupSummaries.size > 0 ? (
@@ -959,9 +1091,10 @@ function BenchPage() {
             <button
               type="button"
               onClick={clearQ}
-              className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-xs font-medium text-foreground hover:bg-muted"
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-border bg-muted/60 px-2.5 py-1 text-left text-xs font-medium text-foreground hover:bg-muted"
             >
-              Search: <span className="font-mono">{q}</span>
+              Search:{" "}
+              <span className="min-w-0 break-all font-mono">{q}</span>
               <X className="size-3.5 opacity-70" aria-hidden />
               <span className="sr-only">Clear search</span>
             </button>
@@ -1023,7 +1156,12 @@ function BenchPage() {
             <BenchWorkQueue
               rows={workQueueRows}
               selectedAccession={selectedQueueAccession}
+              expandedAccession={expandedQueueAccession}
               onSelectRow={handleSelectQueueRow}
+              onToggleExpand={handleToggleQueueExpand}
+              onOpenPanel={handleOpenQueuePanel}
+              dockedDetail={showSidebar}
+              results={data}
               isLoading={specimensQ.isLoading}
               analyzerFilter={analyzer}
               className={cn(
@@ -1034,7 +1172,6 @@ function BenchPage() {
               <BenchWorkQueueDetail
                 row={selectedQueueRow}
                 results={data}
-                onClose={() => setSelectedQueueAccession(null)}
                 className="min-h-0 min-w-0"
               />
             ) : null}
@@ -1068,19 +1205,19 @@ function BenchPage() {
       </div>
 
       <Sheet
-        open={queueUseSheet}
-        onOpenChange={(open) => !open && setSelectedQueueAccession(null)}
+        open={Boolean(queuePanelAccession) && !showSidebar}
+        onOpenChange={(open) => !open && setQueuePanelAccession(null)}
       >
         <SheetContent
           side="bottom"
           label="Awaiting run detail"
           className="flex flex-col p-0"
         >
-          {selectedQueueRow ? (
+          {queuePanelRow ? (
             <BenchWorkQueueDetail
-              row={selectedQueueRow}
+              row={queuePanelRow}
               results={data}
-              embedded
+              variant="sheet"
               className="min-h-0 flex-1"
             />
           ) : null}
@@ -1088,16 +1225,16 @@ function BenchPage() {
       </Sheet>
 
       <Sheet
-        open={!showWorkQueue && Boolean(selectedPatientId) && !showSidebar}
-        onOpenChange={(open) => !open && setSelectedPatientId(null)}
+        open={Boolean(patientPanelId) && !showSidebar}
+        onOpenChange={(open) => !open && setPatientPanelId(null)}
       >
         <SheetContent side="bottom" label="Patient results" className="p-0">
-          {selectedPatientId && (
+          {patientPanelId && (
             <BenchPatientPanel
-              patientId={selectedPatientId}
-              summary={selectedSummary}
-              results={selectedResults}
-              onClose={() => setSelectedPatientId(null)}
+              patientId={patientPanelId}
+              summary={patientPanelSummary}
+              results={patientPanelResults}
+              onClose={() => setPatientPanelId(null)}
               embedded
             />
           )}

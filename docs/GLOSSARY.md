@@ -13,6 +13,7 @@ First customer: Drax Hall Clinical Laboratory. Product intent: multi-lab LIS.
 | --- | --- |
 | [Product & architecture](#product--architecture) | LIS, edge, cloud, sync concepts |
 | [Clinical workflow](#clinical-workflow) | Bench Review, release, STAT |
+| [Routing & catalog](#routing--catalog) | Catalog category vs lab routing department |
 | [Hardware & links](#hardware--links) | RS-232, TCP, printers, serial |
 | [Analyzer protocols](#analyzer-protocols) | ASTM, HL7, MLLP, record types |
 | [Our software stack](#our-software-stack) | Nest, Prisma, Supabase, web tools |
@@ -107,6 +108,21 @@ Codes below are **common clinical abbreviations**. Exact strings from Sysmex / M
 | **Specimen type** | What physical sample a test needs (`blood`, `serum`, `urine`, …) | Drives multi-tube accession — see [SPECIMEN_COLLECTION_GUIDE.md](./SPECIMEN_COLLECTION_GUIDE.md) |
 
 Full workflow rules: [WORKFLOW.md](./WORKFLOW.md). Requisition & catalog: [REQUISITION.md](./REQUISITION.md). **Plain-English draw guide:** [SPECIMEN_COLLECTION_GUIDE.md](./SPECIMEN_COLLECTION_GUIDE.md).
+
+---
+
+## Routing & catalog
+
+| Term | Meaning | Why it matters here |
+| --- | --- | --- |
+| **Catalog category** | Fixed test taxonomy key on each catalog item (`haematology`, `blood_chemistry`, …) | 12 granular keys in `@drax-lis/catalog`; used for fulfillment and reporting |
+| **Routing department** | Lab-configurable bucket for tubes and labels | Stored in `labs.settings.routing`; scopes: accession vs labels |
+| **Routing policy** | `consolidated` preset + accession/labels mode toggles | Admin **Lab settings** — default: granular accession (specimen count), consolidated labels (routing text only) |
+| **labelShort** | Abbreviated routing name on the ZPL line (e.g. `Chem`, `Hema`) | Printed as `Chem · Bld · 1980-01-01` on tube labels |
+| **splitByCollectionType** | When true, same routing dept splits by blood vs urine vs stool | Executive panel → separate chemistry blood and chemistry urine tubes |
+| **Per-tube ordered tests** | `orderedTestsJson` on each specimen row | Label prints abbreviated codes for **that tube only** |
+
+Full routing model: [ROUTING_DEPARTMENTS.md](./ROUTING_DEPARTMENTS.md).
 
 ---
 

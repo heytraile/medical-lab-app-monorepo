@@ -10,6 +10,7 @@ import {
   useShowSidebar,
 } from "../lib/use-media-query";
 import { cn } from "../lib/utils";
+import { equalsAccession, toggleSelection } from "../lib/toggle-selection";
 
 type Props = {
   groups: ReleaseQueueGroup[];
@@ -100,7 +101,16 @@ export function ReleaseQueueMasterDetail({
             key={`${group.queuePhase}-${group.accessionNumber}`}
             group={group}
             selected={selectedAccession === group.accessionNumber}
-            onSelect={() => setSelectedAccession(group.accessionNumber)}
+            onSelect={() => {
+              const acc = group.accessionNumber;
+              if (showSidebar) {
+                setSelectedAccession((prev) =>
+                  toggleSelection(prev, acc, equalsAccession),
+                );
+              } else {
+                setSelectedAccession(acc);
+              }
+            }}
             canRelease={canRelease}
             releasingAccession={releasingAccession}
             onReleaseAccession={onReleaseAccession}

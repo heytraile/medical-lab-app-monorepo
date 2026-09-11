@@ -2,7 +2,9 @@ import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   groupTestsByDepartment,
+  ROUTING_PRESET_GRANULAR,
   type ExpandedOrderedTest,
+  type LabRoutingSettings,
 } from "@drax-lis/catalog";
 import type { SpecimenInfo, StaffCollector } from "@drax-lis/contracts";
 import { api, ApiError } from "../../lib/api";
@@ -38,6 +40,7 @@ type Props = {
   value: SpecimenInfo;
   onChange: (next: SpecimenInfo) => void;
   expandedTests?: ExpandedOrderedTest[];
+  accessionRouting?: LabRoutingSettings;
   currentUserId?: string | null;
   className?: string;
 };
@@ -46,6 +49,7 @@ export function SpecimenInformationSection({
   value,
   onChange,
   expandedTests = [],
+  accessionRouting = ROUTING_PRESET_GRANULAR,
   currentUserId,
   className,
 }: Props) {
@@ -93,8 +97,8 @@ export function SpecimenInformationSection({
   }, [currentUserId, collectors, value.collectedByStaffId]);
 
   const requiredLabels = useMemo(
-    () => groupTestsByDepartment(expandedTests),
-    [expandedTests],
+    () => groupTestsByDepartment(expandedTests, accessionRouting),
+    [expandedTests, accessionRouting],
   );
 
   function onCollectorChange(staffId: string) {

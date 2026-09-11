@@ -4,7 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "../../lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 touch-tablet:text-[0.9375rem] [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 touch-tablet:[&_svg]:size-[1.125rem]",
   {
     variants: {
       variant: {
@@ -18,10 +18,10 @@ const buttonVariants = cva(
           "justify-start text-sidebar-foreground hover:bg-sidebar-muted data-[active=true]:bg-sidebar-accent data-[active=true]:text-accent-foreground",
       },
       size: {
-        default: "h-9 px-3 py-2",
-        sm: "h-8 rounded-md px-2.5 text-xs",
-        lg: "h-10 rounded-md px-4",
-        icon: "h-9 w-9",
+        default: "h-9 px-3 py-2 touch-tablet:h-10 touch-tablet:px-3.5",
+        sm: "h-8 rounded-md px-2.5 text-xs touch-tablet:h-9 touch-tablet:px-3 touch-tablet:text-sm",
+        lg: "h-10 rounded-md px-4 touch-tablet:h-11 touch-tablet:px-5",
+        icon: "h-9 w-9 touch-tablet:h-10 touch-tablet:w-10",
       },
     },
     defaultVariants: {

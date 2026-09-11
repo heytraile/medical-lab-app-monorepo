@@ -21,6 +21,7 @@ import { Route as LabPatientsRouteImport } from './routes/_lab/patients'
 import { Route as LabProfileRouteImport } from './routes/_lab/profile'
 import { Route as LabRegisterRouteImport } from './routes/_lab/register'
 import { Route as LabReleaseRouteImport } from './routes/_lab/release'
+import { Route as LabSettingsRouteImport } from './routes/_lab/settings'
 import { Route as LabStaffRouteImport } from './routes/_lab/staff'
 import { Route as LabSyncRouteImport } from './routes/_lab/sync'
 
@@ -83,6 +84,11 @@ const LabReleaseRoute = LabReleaseRouteImport.update({
   path: '/release',
   getParentRoute: () => LabRoute,
 } as any)
+const LabSettingsRoute = LabSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => LabRoute,
+} as any)
 const LabStaffRoute = LabStaffRouteImport.update({
   id: '/staff',
   path: '/staff',
@@ -106,6 +112,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof LabProfileRoute
   '/register': typeof LabRegisterRoute
   '/release': typeof LabReleaseRoute
+  '/settings': typeof LabSettingsRoute
   '/staff': typeof LabStaffRoute
   '/sync': typeof LabSyncRoute
 }
@@ -121,6 +128,7 @@ export interface FileRoutesByTo {
   '/profile': typeof LabProfileRoute
   '/register': typeof LabRegisterRoute
   '/release': typeof LabReleaseRoute
+  '/settings': typeof LabSettingsRoute
   '/staff': typeof LabStaffRoute
   '/sync': typeof LabSyncRoute
 }
@@ -138,6 +146,7 @@ export interface FileRoutesById {
   '/_lab/profile': typeof LabProfileRoute
   '/_lab/register': typeof LabRegisterRoute
   '/_lab/release': typeof LabReleaseRoute
+  '/_lab/settings': typeof LabSettingsRoute
   '/_lab/staff': typeof LabStaffRoute
   '/_lab/sync': typeof LabSyncRoute
 }
@@ -155,6 +164,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/register'
     | '/release'
+    | '/settings'
     | '/staff'
     | '/sync'
   fileRoutesByTo: FileRoutesByTo
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/register'
     | '/release'
+    | '/settings'
     | '/staff'
     | '/sync'
   id:
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/_lab/profile'
     | '/_lab/register'
     | '/_lab/release'
+    | '/_lab/settings'
     | '/_lab/staff'
     | '/_lab/sync'
   fileRoutesById: FileRoutesById
@@ -282,6 +294,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LabReleaseRouteImport
       parentRoute: typeof LabRoute
     }
+    '/_lab/settings': {
+      id: '/_lab/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof LabSettingsRouteImport
+      parentRoute: typeof LabRoute
+    }
     '/_lab/staff': {
       id: '/_lab/staff'
       path: '/staff'
@@ -309,6 +328,7 @@ interface LabRouteChildren {
   LabProfileRoute: typeof LabProfileRoute
   LabRegisterRoute: typeof LabRegisterRoute
   LabReleaseRoute: typeof LabReleaseRoute
+  LabSettingsRoute: typeof LabSettingsRoute
   LabStaffRoute: typeof LabStaffRoute
   LabSyncRoute: typeof LabSyncRoute
 }
@@ -323,6 +343,7 @@ const LabRouteChildren: LabRouteChildren = {
   LabProfileRoute: LabProfileRoute,
   LabRegisterRoute: LabRegisterRoute,
   LabReleaseRoute: LabReleaseRoute,
+  LabSettingsRoute: LabSettingsRoute,
   LabStaffRoute: LabStaffRoute,
   LabSyncRoute: LabSyncRoute,
 }

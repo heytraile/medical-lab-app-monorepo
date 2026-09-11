@@ -3,14 +3,18 @@ import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScanLine } from "lucide-react";
 import { accessionInputField } from "@drax-lis/contracts";
+import { buildSpecimenLabelInput } from "@drax-lis/catalog";
 import { ApiError, api, type LabelPreviewFields } from "../../lib/api";
 import {
-  buildLabelPreviewFromSpecimen,
-  fetchEdgeLabelPreviewForSpecimen,
   findContainersByAccession,
   PRINT_API_UNAVAILABLE_MSG,
   TEST_LABEL_PREVIEW,
 } from "../../lib/label-preview-from-specimen";
+import {
+  buildLabelPreviewFromPrintGroup,
+  labelPrintGroupsFromSpecimenRows,
+} from "../../lib/label-print-preview";
+import { useCatalog } from "../../lib/use-catalog";
 import { useScanInput } from "../../lib/use-barcode-scanner";
 import { AccessioningShell } from "../../components/accessioning/accessioning-shell";
 import {
@@ -29,6 +33,7 @@ import {
 } from "../../lib/use-media-query";
 import {
   actorDisplayName,
+  parsePatientJson,
   patientDisplayNameFromJson,
 } from "../../lib/specimen-display";
 import { groupSpecimensIntoSessions } from "../../lib/accession-sessions";
@@ -78,6 +83,9 @@ function LabelsPage() {
   );
   const selectedRowRef = useRef<HTMLButtonElement | null>(null);
 
+  const catalogQ = useCatalog();
+  const labelRouting = catalogQ.data?.labelRouting;
+
   const specimensQ = useQuery({
     queryKey: ["specimens", debouncedFilter.trim()],
     queryFn: () => api.specimens(debouncedFilter.trim() || undefined),
@@ -101,18 +109,53 @@ function LabelsPage() {
     return findContainersByAccession(specimensQ.data, activeAccession);
   }, [activeAccession, specimensQ.data]);
 
+  const labelPrintGroups = useMemo(
+    () => labelPrintGroupsFromSpecimenRows(containerRows, labelRouting),
+    [containerRows, labelRouting],
+  );
+
   const edgePreviewQueries = useQueries({
-    queries: containerRows.map((row) => ({
+    queries: labelPrintGroups.map((group) => ({
       queryKey: [
         "print-preview",
         "labels",
-        row.id,
-        row.departmentKey,
-        row.accessionNumber,
+        group.primarySpecimenNumber,
+        group.catalogCategory,
+        group.orderedTestCodes.join(","),
         specimensQ.dataUpdatedAt,
       ],
-      queryFn: () => fetchEdgeLabelPreviewForSpecimen(row),
-      enabled: Boolean(row.id),
+      queryFn: async () => {
+        const row =
+          containerRows.find((r) => r.id === group.specimenIds[0]) ??
+          containerRows[0]!;
+        const patient = parsePatientJson(row.patientJson);
+        const displayName = patientDisplayNameFromJson(row.patientJson);
+        try {
+          const res = await api.printPreview(
+            buildSpecimenLabelInput({
+              accessionNumber: row.accessionNumber,
+              specimenNumber: group.primarySpecimenNumber,
+              patientName: displayName === "—" ? "Unknown" : displayName,
+              barcode: group.primaryBarcode,
+              dateOfBirth: patient?.dateOfBirth,
+              collectionType: group.collectionType,
+              departmentKey: group.departmentKey,
+              catalogCategory: group.catalogCategory,
+              departmentLabel: group.departmentLabel,
+              orderedTestCodes: group.orderedTestCodes,
+              mrn: patient?.mrn,
+              routing: labelRouting,
+            }),
+          );
+          return { fields: res.fields, edgeFailed: false };
+        } catch {
+          return {
+            fields: buildLabelPreviewFromPrintGroup(group, row, labelRouting),
+            edgeFailed: true,
+          };
+        }
+      },
+      enabled: Boolean(containerRows.length),
       staleTime: 400,
     })),
   });
@@ -147,24 +190,31 @@ function LabelsPage() {
         },
       ];
     }
-    return containerRows.map((row, i) => {
-      const key = row.departmentKey ?? row.id;
+    return labelPrintGroups.map((group, i) => {
+      const key =
+        group.specimenIds[0] ?? group.primarySpecimenNumber ?? `label-${i}`;
+      const row =
+        containerRows.find((r) => r.id === group.specimenIds[0]) ??
+        containerRows[0]!;
       return {
         id: key,
-        specimenType: row.collectionType ?? row.specimenType ?? "blood",
+        specimenType: group.collectionType,
         fields:
           edgePreviewQueries[i]?.data?.fields ??
-          buildLabelPreviewFromSpecimen(row),
+          buildLabelPreviewFromPrintGroup(group, row, labelRouting),
         accessionNumber: row.accessionNumber,
         printStatus: reprintStatuses[key] ?? null,
+        testCount: group.orderedTestCodes.length,
       };
     });
   }, [
     containerRows,
+    labelPrintGroups,
     edgePreviewQueries,
     reprintStatuses,
     testPreview,
     printStatus,
+    labelRouting,
   ]);
 
   const previewPhase =
@@ -248,7 +298,7 @@ function LabelsPage() {
     onSuccess: (data) => {
       const statuses: Record<string, { ok: boolean; error?: string }> = {};
       for (const label of data.labels ?? []) {
-        const key = label.departmentKey ?? label.specimenId ?? "label";
+        const key = label.specimenId ?? label.departmentKey ?? "label";
         statuses[key] = { ok: label.ok, error: label.error };
       }
       if (!data.labels?.length && data.fields) {

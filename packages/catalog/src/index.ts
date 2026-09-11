@@ -18,6 +18,45 @@ export {
 } from "./group-tests-by-specimen-bucket";
 
 export {
+  DRAX_HALL_ROUTING_POLICY,
+  DRAX_HALL_ROUTING_SETTINGS,
+  ROUTING_PRESET_CONSOLIDATED_DHMS,
+  ROUTING_PRESET_GRANULAR,
+  catalogCategoriesForUi,
+  catalogPolicyFields,
+  catalogRoutingFields,
+  normalizeLabRoutingPolicy,
+  normalizeLabRoutingSettings,
+  resolveRoutingDepartment,
+  resolveRoutingDepartmentByKey,
+  resolveRoutingForScope,
+  routingDepartmentSortIndex,
+  routingDepartmentsForUi,
+  type LabRoutingPolicy,
+  type LabRoutingScopeConfig,
+  type LabRoutingSettings,
+  type ResolvedRoutingDepartment,
+  type RoutingDepartmentDef,
+  type RoutingMode,
+} from "./routing-departments";
+
+export {
+  groupSpecimensForLabelPrint,
+  type LabelPrintGroup,
+  type SpecimenForLabelPrint,
+} from "./label-print-groups";
+
+export {
+  abbreviateTestCodeForLabel,
+  abbreviateTestsForLabel,
+} from "./label-test-abbrev";
+
+export {
+  buildSpecimenLabelInput,
+  type SpecimenLabelInputFields,
+} from "./specimen-label-input";
+
+export {
   CATALOG_CATEGORY_LABELS,
   CATALOG_CATEGORY_ORDER,
   categoryLabel,
@@ -26,6 +65,7 @@ export {
 
 export {
   collectionTypeLabel,
+  collectionTypeLabelShort,
   normalizeCollectionType,
   type CollectionType,
 } from "./collection-type";
