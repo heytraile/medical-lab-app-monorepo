@@ -323,7 +323,7 @@ function OrdersLookupPage() {
         <AccessioningShell
           wide
           title="Test lookup"
-          description="Read-only view of what was ordered for an accession — for phlebotomy and collection."
+          description="Read-only view of what was ordered for an accession. Bench operators can also use Bench → Awaiting run for incomplete work."
         >
           {layout}
         </AccessioningShell>
@@ -335,7 +335,7 @@ function OrdersLookupPage() {
     <AccessioningShell
       wide
       title="Test lookup"
-      description="Read-only view of what was ordered for an accession — for phlebotomy and collection."
+      description="Read-only view of what was ordered for an accession. Bench operators can also use Bench → Awaiting run for incomplete work."
     >
       {layout}
     </AccessioningShell>

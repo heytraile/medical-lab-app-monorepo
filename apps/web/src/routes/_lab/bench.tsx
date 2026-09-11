@@ -34,6 +34,10 @@ import {
 import { BenchPatientPanel } from "../../components/bench-patient-panel";
 import { BenchEmptyState } from "../../components/bench-empty-state";
 import { BenchMobileList } from "../../components/bench-mobile-list";
+import { BenchWorkQueue } from "../../components/bench-work-queue";
+import { BenchWorkQueueDetail } from "../../components/bench-work-queue-detail";
+import { buildBenchWorkQueue } from "../../lib/bench-work-queue-build";
+import type { BenchWorkQueueRow } from "../../lib/bench-work-queue";
 import { Sheet, SheetContent } from "../../components/ui/sheet";
 import {
   useIsCompactWorkstation,
@@ -126,7 +130,12 @@ const columnHelper = createColumnHelper<BenchResult>();
 const GROUPING = ["patientGroup"];
 const NO_RESULTS: BenchResult[] = [];
 
-type TabFilter = "all" | "pending" | "flagged" | "released";
+type TabFilter =
+  | "all"
+  | "awaiting_run"
+  | "pending"
+  | "flagged"
+  | "released";
 
 function BenchPage() {
   const { analyzer, q } = Route.useSearch();
@@ -138,6 +147,9 @@ function BenchPage() {
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(
     null,
   );
+  const [selectedQueueAccession, setSelectedQueueAccession] = useState<
+    string | null
+  >(null);
   // Every group starts collapsed and stays that way until the tech opens it;
   // only an active search overrides this (see below).
   const [expanded, setExpanded] = useState<ExpandedState>({});
@@ -212,6 +224,17 @@ function BenchPage() {
     queryFn: () => api.specimens(),
     refetchInterval: 10_000,
   });
+
+  const workQueueRows = useMemo(
+    () =>
+      buildBenchWorkQueue({
+        specimens: specimensQ.data ?? [],
+        results: data,
+        analyzerId: analyzer,
+        query: q,
+      }),
+    [specimensQ.data, data, analyzer, q],
+  );
 
   const debouncedQ = useDebouncedValue(q ?? "", 150);
   const deferredQ = useDeferredValue(debouncedQ.trim().toLowerCase());
@@ -332,11 +355,61 @@ function BenchPage() {
 
   const selectedSummary = useMemo(() => {
     if (!selectedPatientId) return null;
-    return (
-      selectedResults.find((r) => r.patient?.id === selectedPatientId)
-        ?.patient ?? null
+    const fromResults = selectedResults.find(
+      (r) => r.patient?.id === selectedPatientId,
+    )?.patient;
+    if (fromResults) return fromResults;
+    const queueRow = workQueueRows.find(
+      (row) => row.patientId === selectedPatientId,
     );
-  }, [selectedPatientId, selectedResults]);
+    return queueRow?.patientSummary ?? null;
+  }, [selectedPatientId, selectedResults, workQueueRows]);
+
+  const selectedQueueRow = useMemo(() => {
+    if (!selectedQueueAccession) return null;
+    return (
+      workQueueRows.find(
+        (row) =>
+          row.accessionNumber.toUpperCase() ===
+          selectedQueueAccession.toUpperCase(),
+      ) ?? null
+    );
+  }, [workQueueRows, selectedQueueAccession]);
+
+  const handleSelectQueueRow = (row: BenchWorkQueueRow) => {
+    setSelectedQueueAccession(row.accessionNumber);
+    setSelectedPatientId(null);
+  };
+
+  useEffect(() => {
+    if (tab !== "awaiting_run") return;
+
+    if (workQueueRows.length === 0) {
+      setSelectedQueueAccession(null);
+      return;
+    }
+
+    const stillVisible =
+      selectedQueueAccession &&
+      workQueueRows.some(
+        (row) =>
+          row.accessionNumber.toUpperCase() ===
+          selectedQueueAccession.toUpperCase(),
+      );
+
+    if (!stillVisible) {
+      if (showSidebar || isWorkstation) {
+        setSelectedQueueAccession(workQueueRows[0]!.accessionNumber);
+      } else {
+        setSelectedQueueAccession(null);
+      }
+      return;
+    }
+
+    if ((showSidebar || isWorkstation) && !selectedQueueAccession) {
+      setSelectedQueueAccession(workQueueRows[0]!.accessionNumber);
+    }
+  }, [tab, workQueueRows, selectedQueueAccession, showSidebar, isWorkstation]);
 
   const formatObserved = (iso: string) => new Date(iso).toLocaleString();
 
@@ -522,9 +595,21 @@ function BenchPage() {
   const allExpanded = table.getIsAllRowsExpanded();
 
   const title = analyzer ? analyzerLabel(analyzer) : "All machines";
-  const split = Boolean(selectedPatientId);
-  /** Side-by-side patient panel only on full desktop; tablets use bottom sheet. */
-  const splitDocked = split && showSidebar;
+  const showWorkQueue = tab === "awaiting_run";
+  const queueSplitDocked =
+    showWorkQueue &&
+    Boolean(selectedQueueAccession) &&
+    (showSidebar || isWorkstation);
+  const queueUseSheet =
+    showWorkQueue &&
+    Boolean(selectedQueueAccession) &&
+    !showSidebar &&
+    !isWorkstation;
+  const resultsSplit = !showWorkQueue && Boolean(selectedPatientId);
+  const split = (showWorkQueue ? Boolean(selectedQueueAccession) : resultsSplit);
+  /** Side-by-side detail on desktop sidebar and tablet landscape; phone uses sheet. */
+  const splitDocked =
+    queueSplitDocked || (resultsSplit && showSidebar);
   const hasUrlFilter = Boolean(q || analyzer);
 
   const emptyState = (
@@ -741,34 +826,58 @@ function BenchPage() {
           </h2>
           {!isCompactWorkstation ? (
             <p className="mt-1 text-sm text-muted-foreground">
-              Live results from instruments and manual entry
-              {q ? ` · filter “${q}”` : ""}.
-              {split ? " Click a patient row to focus; Esc closes." : ""}{" "}
-              Expand a patient row to see test-level values. New accessions with
-              no results yet show as waiting when you search by accession.
+              {showWorkQueue ? (
+                <>
+                  Accession work queue for registered orders
+                  {q ? ` · filter “${q}”` : ""}. Select an accession to see
+                  tubes and pending tests.
+                </>
+              ) : (
+                <>
+                  Live results from instruments and manual entry
+                  {q ? ` · filter “${q}”` : ""}.
+                  {split ? " Click a patient row to focus; Esc closes." : ""}{" "}
+                  Expand a patient row to see test-level values. Use{" "}
+                  <strong className="font-medium text-foreground">
+                    Awaiting run
+                  </strong>{" "}
+                  to see registered accessions before results arrive.
+                </>
+              )}
             </p>
           ) : (
             <p className="mt-0.5 text-xs text-muted-foreground">
               {q ? `Filter “${q}” · ` : ""}
-              Tap a patient for details · expand rows for tests
+              {showWorkQueue
+                ? "Select an accession to see pending tests"
+                : "Tap a patient for details · expand rows for tests"}
             </p>
           )}
         </div>
         <span className="text-xs text-muted-foreground">
-          {isFetching
+          {isFetching || specimensQ.isFetching
             ? "Refreshing…"
-            : `${groupSummaries.size} ${
-                groupSummaries.size === 1 ? "patient" : "patients"
-              } · ${filtered.length} of ${data.length} results`}
+            : showWorkQueue
+              ? `${workQueueRows.length} awaiting · ${data.length} results`
+              : `${groupSummaries.size} ${
+                  groupSummaries.size === 1 ? "patient" : "patients"
+                } · ${filtered.length} of ${data.length} results`}
         </span>
       </div>
       ) : (
-        <div className="flex shrink-0 items-center justify-between gap-2">
+        <div className="flex shrink-0 flex-col gap-0.5">
           <p className="text-sm text-muted-foreground">
-            {isFetching
+            {isFetching || specimensQ.isFetching
               ? "Refreshing…"
-              : `${groupSummaries.size} patient${groupSummaries.size === 1 ? "" : "s"}`}
+              : showWorkQueue
+                ? `${workQueueRows.length} awaiting · ${data.length} results`
+                : `${groupSummaries.size} patient${groupSummaries.size === 1 ? "" : "s"}`}
           </p>
+          {showWorkQueue ? (
+            <p className="text-xs text-muted-foreground">
+              Tap an accession to see pending tests
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -778,8 +887,16 @@ function BenchPage() {
           isCompactWorkstation ? "gap-2" : "gap-3",
         )}
       >
-        <Tabs value={tab} onValueChange={(v) => setTab(v as TabFilter)}>
+        <Tabs
+          value={tab}
+          onValueChange={(v) => {
+            setTab(v as TabFilter);
+            if (v !== "awaiting_run") setSelectedQueueAccession(null);
+            if (v === "awaiting_run") setSelectedPatientId(null);
+          }}
+        >
           <TabsList className={isCompactWorkstation ? "h-8" : undefined}>
+            <TabsTrigger value="awaiting_run">Awaiting run</TabsTrigger>
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="pending">Pending review</TabsTrigger>
             <TabsTrigger value="released">Released</TabsTrigger>
@@ -799,7 +916,7 @@ function BenchPage() {
             )}
             aria-label="Filter bench results"
           />
-          {groupSummaries.size > 0 ? (
+          {!showWorkQueue && groupSummaries.size > 0 ? (
             <>
               <PatientNameOrderSelect className="w-[9.5rem]" />
               {/* A phone has no thead to click, so the sort needs its own
@@ -872,7 +989,11 @@ function BenchPage() {
         </div>
       ) : null}
 
-      {isLoading && <p className="text-muted-foreground">Loading results…</p>}
+      {(isLoading || (showWorkQueue && specimensQ.isLoading)) && (
+        <p className="text-muted-foreground">
+          {showWorkQueue ? "Loading work queue…" : "Loading results…"}
+        </p>
+      )}
       {error && (
         <p className="text-sm text-lab-danger">
           Could not load results. Check that the lab system is running and try
@@ -886,14 +1007,39 @@ function BenchPage() {
           splitDocked &&
             cn(
               "grid items-stretch gap-5",
-              isCompactWorkstation
-                ? "grid-cols-[minmax(0,1fr)_minmax(16rem,42%)]"
-                : "grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)] lg:gap-6",
+              showWorkQueue
+                ? isCompactWorkstation
+                  ? "grid-cols-[minmax(0,0.85fr)_minmax(16rem,1.15fr)]"
+                  : "grid-cols-[minmax(0,0.8fr)_minmax(18rem,1.2fr)] lg:gap-6"
+                : isCompactWorkstation
+                  ? "grid-cols-[minmax(0,1fr)_minmax(16rem,42%)]"
+                  : "grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.9fr)] lg:gap-6",
             ),
           !splitDocked && "flex flex-col",
         )}
       >
-        {useListLayout ? (
+        {showWorkQueue ? (
+          <>
+            <BenchWorkQueue
+              rows={workQueueRows}
+              selectedAccession={selectedQueueAccession}
+              onSelectRow={handleSelectQueueRow}
+              isLoading={specimensQ.isLoading}
+              analyzerFilter={analyzer}
+              className={cn(
+                queueSplitDocked ? "min-h-0" : "min-h-0 flex-1",
+              )}
+            />
+            {queueSplitDocked ? (
+              <BenchWorkQueueDetail
+                row={selectedQueueRow}
+                results={data}
+                onClose={() => setSelectedQueueAccession(null)}
+                className="min-h-0 min-w-0"
+              />
+            ) : null}
+          </>
+        ) : useListLayout ? (
           benchList
         ) : (
           /* Grey canvas: the gaps between patient blocks are this showing through. */
@@ -910,7 +1056,7 @@ function BenchPage() {
         )}
 
         {/* Docked beside the list/table from lg+ (workstation). Phone uses Sheet. */}
-        {splitDocked ? (
+        {splitDocked && !showWorkQueue ? (
           <BenchPatientPanel
             patientId={selectedPatientId!}
             summary={selectedSummary}
@@ -922,7 +1068,27 @@ function BenchPage() {
       </div>
 
       <Sheet
-        open={Boolean(selectedPatientId) && !showSidebar}
+        open={queueUseSheet}
+        onOpenChange={(open) => !open && setSelectedQueueAccession(null)}
+      >
+        <SheetContent
+          side="bottom"
+          label="Awaiting run detail"
+          className="flex flex-col p-0"
+        >
+          {selectedQueueRow ? (
+            <BenchWorkQueueDetail
+              row={selectedQueueRow}
+              results={data}
+              embedded
+              className="min-h-0 flex-1"
+            />
+          ) : null}
+        </SheetContent>
+      </Sheet>
+
+      <Sheet
+        open={!showWorkQueue && Boolean(selectedPatientId) && !showSidebar}
         onOpenChange={(open) => !open && setSelectedPatientId(null)}
       >
         <SheetContent side="bottom" label="Patient results" className="p-0">

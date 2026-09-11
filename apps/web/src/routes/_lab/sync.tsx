@@ -40,8 +40,11 @@ function SyncPage() {
     },
   });
 
-  const needsAttention =
-    (data?.pending ?? 0) > 0 || (data?.failed ?? 0) > 0;
+  const pending = data?.pending ?? 0;
+  const syncing = data?.syncing ?? 0;
+  const failed = data?.failed ?? 0;
+  const waitingToSend = pending + syncing;
+  const needsAttention = waitingToSend > 0 || failed > 0;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-4 lg:space-y-5">
@@ -65,11 +68,17 @@ function SyncPage() {
               If work looks stuck after you submit results, try{" "}
               <strong>Send now</strong>.
             </p>
+            <p className="mt-2 text-sm text-muted-foreground">
+              When the lab is active, <strong>Waiting to send</strong> may flicker
+              between 0 and 1 — that is normal if <strong>Could not send</strong>{" "}
+              stays at 0. Worry if failed counts rise or waiting stays stuck for
+              several minutes.
+            </p>
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
             Sync queue on this lab PC. Tap <strong>Send now</strong> if work looks
-            stuck.
+            stuck. A count flickering 0↔1 is normal when failed is 0.
           </p>
         )}
         <div className="mt-3">
@@ -117,25 +126,38 @@ function SyncPage() {
               <div
                 className={cn(
                   "rounded-xl border p-5 shadow-sm",
-                  needsAttention && (data.pending ?? 0) > 0
+                  needsAttention && waitingToSend > 0
                     ? "border-amber-500/40 bg-amber-500/10"
                     : "border-border bg-card",
                 )}
               >
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                  Waiting to send now
+                  Waiting to send
                 </p>
                 <p className="mt-1 text-3xl font-semibold text-foreground sm:text-4xl">
-                  {formatCount(data.pending)}
+                  {formatCount(waitingToSend)}
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Sync messages not yet accepted by the central system.
+                  Queued or in flight — sync messages not yet accepted by the
+                  central system.
+                  {syncing > 0 ? (
+                    <>
+                      {" "}
+                      <span className="font-medium text-foreground">
+                        {formatCount(syncing)} sending now
+                      </span>
+                      {pending > 0
+                        ? ` · ${formatCount(pending)} still queued`
+                        : null}
+                      .
+                    </>
+                  ) : null}
                 </p>
               </div>
               <div
                 className={cn(
                   "rounded-xl border p-5 shadow-sm",
-                  (data.failed ?? 0) > 0
+                  failed > 0
                     ? "border-lab-danger/40 bg-lab-danger/10"
                     : "border-border bg-card",
                 )}
@@ -144,7 +166,7 @@ function SyncPage() {
                   Could not send
                 </p>
                 <p className="mt-1 text-3xl font-semibold text-foreground sm:text-4xl">
-                  {formatCount(data.failed)}
+                  {formatCount(failed)}
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">
                   Last send attempt failed — try Send now.
@@ -152,17 +174,6 @@ function SyncPage() {
               </div>
             </div>
           </div>
-
-          {(data.syncing ?? 0) > 0 && (
-            <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 p-4 shadow-sm">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Sending now
-              </p>
-              <p className="mt-1 text-xl font-semibold text-foreground">
-                {formatCount(data.syncing)}
-              </p>
-            </div>
-          )}
 
           <div className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-3">
             <p className="text-xs text-muted-foreground">

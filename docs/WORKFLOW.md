@@ -86,9 +86,10 @@ Requires sign-in (cloud JWT). Lab branding (address, phone, logo URL) lives in `
 
 The **Bench Review** screen is the tech’s day board:
 
-- Live list of today’s **results** (edge Socket.IO + cloud query) — Bench is **results-first**, not a list of bare specimens.
-- Filters: instrument, pending vs released, flagged/critical, accession search (`?q=`). Active search/analyzer filters show as clearable chips.
-- Deep-linking **Open in Bench** with an accession filter: if the specimen is registered but no instrument or manual results exist yet, Bench shows a **Waiting for results** empty state (ordered tests, links to Labels / Accession History, and **Enter result** for any manual/hybrid components). A search with no matching specimen shows **No matching results** plus Clear.
+- **Awaiting run** tab — accession-first work queue for registered orders still missing instrument or manual results. The left list shows accession number and patient; **select an accession** to see tubes, pending/received tests, and manual entry in the detail pane. Use this **before** results arrive so machine operators know what to run without opening Accession History or Test lookup. Rows drop off when expected work is complete or the accession is submitted/released.
+- Live list of today’s **results** on **All / Pending review / Flagged / Released** tabs (edge Socket.IO + cloud query).
+- Filters: instrument, pending vs released, flagged/critical, accession search (`?q=`). Active search/analyzer filters show as clearable chips. On **Awaiting run**, the analyzer filter narrows to accessions with incomplete work for that machine.
+- Deep-linking **Open in Bench** with an accession filter on a results tab: if the specimen is registered but no instrument or manual results exist yet, Bench shows a **Waiting for results** empty state (ordered tests, links to Labels / Accession History, and **Enter result** for any manual/hybrid components). A search with no matching specimen shows **No matching results** plus Clear.
 - Tech can open a result, review analytically, add tech notes (later).
 - Tech **cannot** flip status to `released`.
 

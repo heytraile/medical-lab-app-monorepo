@@ -413,7 +413,7 @@ export function BenchPatientPanel({
                 {row.pending.map((t) => (
                   <li
                     key={`${row.accessionNumber}-${t.orderedTestCode}-${t.componentCode}`}
-                    className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/25 bg-amber-500/5 px-4 py-3"
+                    className="flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="min-w-0 text-sm">
                       <span className="font-mono text-xs">
@@ -436,23 +436,26 @@ export function BenchPatientPanel({
                             : "Manual"}
                       </Badge>
                     </div>
-                    {row.access === "editable" ? (
-                      <ManualResultEntryButton
-                        accessionNumber={row.accessionNumber}
-                        testCode={t.orderedTestCode}
-                        testName={t.orderedTestName}
-                        resultComponentCode={t.componentCode}
-                        resultComponentName={t.componentName}
-                      />
-                    ) : (
-                      <Badge
-                        variant={row.access === "released" ? "muted" : "warn"}
-                      >
-                        {row.access === "released"
-                          ? "Not resulted before release"
-                          : "Locked while awaiting authorization"}
-                      </Badge>
-                    )}
+                    <div className="shrink-0 sm:ml-auto">
+                      {row.access === "editable" ? (
+                        <ManualResultEntryButton
+                          accessionNumber={row.accessionNumber}
+                          testCode={t.orderedTestCode}
+                          testName={t.orderedTestName}
+                          resultComponentCode={t.componentCode}
+                          resultComponentName={t.componentName}
+                          siblingManualCount={row.pending.length}
+                        />
+                      ) : (
+                        <Badge
+                          variant={row.access === "released" ? "muted" : "warn"}
+                        >
+                          {row.access === "released"
+                            ? "Not resulted before release"
+                            : "Locked while awaiting authorization"}
+                        </Badge>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

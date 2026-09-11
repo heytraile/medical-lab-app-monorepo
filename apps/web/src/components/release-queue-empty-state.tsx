@@ -37,7 +37,8 @@ export function ReleaseQueueEmptyState({
     },
   });
 
-  const waitingToSend = syncQ.data?.pending ?? 0;
+  const waitingToSend =
+    (syncQ.data?.pending ?? 0) + (syncQ.data?.syncing ?? 0);
   const sendFailed = syncQ.data?.failed ?? 0;
   // Submit-for-release is accession-scoped (same as Bench). Counting every
   // analyte row (WBC, HB, …) inflated this to “7 results” when techs see a

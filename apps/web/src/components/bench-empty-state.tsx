@@ -10,7 +10,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 
 type Props = {
-  tab: "all" | "pending" | "flagged" | "released";
+  tab: "all" | "awaiting_run" | "pending" | "flagged" | "released";
   q?: string;
   analyzer?: string;
   /** Specimen matching `q` (accession / barcode), if any. */
@@ -59,6 +59,13 @@ export function BenchEmptyState({
       orderedCodes(matchedSpecimen),
       [],
     );
+    const manualCountByTest = new Map<string, number>();
+    for (const item of missingManual) {
+      manualCountByTest.set(
+        item.orderedTestCode,
+        (manualCountByTest.get(item.orderedTestCode) ?? 0) + 1,
+      );
+    }
 
     return (
       <div className="space-y-4 rounded-xl border border-border bg-card px-4 py-8 text-center sm:px-6">
@@ -112,7 +119,7 @@ export function BenchEmptyState({
               {missingManual.map((item) => (
                 <li
                   key={`${item.orderedTestCode}-${item.componentCode}`}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-500/25 bg-amber-500/5 px-3 py-2"
+                  className="flex flex-col gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0 text-sm">
                     <span className="font-mono text-xs">
@@ -129,13 +136,18 @@ export function BenchEmptyState({
                       Manual
                     </Badge>
                   </div>
-                  <ManualResultEntryButton
-                    accessionNumber={matchedSpecimen.accessionNumber}
-                    testCode={item.orderedTestCode}
-                    testName={item.orderedTestName}
-                    resultComponentCode={item.componentCode}
-                    resultComponentName={item.componentName}
-                  />
+                  <div className="shrink-0 sm:ml-auto">
+                    <ManualResultEntryButton
+                      accessionNumber={matchedSpecimen.accessionNumber}
+                      testCode={item.orderedTestCode}
+                      testName={item.orderedTestName}
+                      resultComponentCode={item.componentCode}
+                      resultComponentName={item.componentName}
+                      siblingManualCount={
+                        manualCountByTest.get(item.orderedTestCode) ?? 1
+                      }
+                    />
+                  </div>
                 </li>
               ))}
             </ul>

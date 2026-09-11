@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Pencil, Trash2 } from "lucide-react";
+import { Loader2, PenLine, Pencil, Trash2 } from "lucide-react";
 import {
   composeManualResultValue,
   computeAutoFlag,
@@ -24,6 +24,8 @@ import {
   DialogTitle,
 } from "./ui/dialog";
 import { ConfirmAccessionActionDialog } from "./confirm-accession-action-dialog";
+import { manualEntryButtonLabel } from "../lib/manual-entry-label";
+import { cn } from "../lib/utils";
 
 const FLAG_OPTIONS = [
   { value: "unknown", label: "Unknown" },
@@ -527,6 +529,7 @@ export function ManualResultEntryButton({
   resultComponentName,
   resultId,
   existingResult,
+  siblingManualCount,
 }: {
   accessionNumber: string;
   testCode: string;
@@ -534,6 +537,8 @@ export function ManualResultEntryButton({
   resultComponentCode?: string;
   resultComponentName?: string;
   resultId?: string;
+  /** When >1 manual entry button is shown for this ordered test, labels name the component. */
+  siblingManualCount?: number;
   existingResult?: {
     value: string;
     units?: string | null;
@@ -545,17 +550,50 @@ export function ManualResultEntryButton({
 }) {
   const [open, setOpen] = useState(false);
   const isEdit = Boolean(existingResult);
+  const actionLabel = manualEntryButtonLabel({
+    isEdit,
+    resultComponentName,
+    resultComponentCode,
+    siblingManualCount,
+  });
+  const useLongLabel = actionLabel !== "Enter result" && actionLabel !== "Edit result";
 
   return (
     <>
       <Button
         type="button"
-        variant="outline"
-        size="sm"
-        className="h-7 text-xs"
+        variant={isEdit ? "outline" : "default"}
+        size={isEdit ? "sm" : "default"}
+        title={actionLabel}
+        aria-label={`${actionLabel} for ${testName}`}
+        className={cn(
+          isEdit
+            ? cn(
+                "shrink-0 text-xs",
+                useLongLabel
+                  ? "h-auto min-h-8 max-w-[18rem] whitespace-normal py-1.5 text-left leading-snug"
+                  : "h-8",
+              )
+            : cn(
+                "shrink-0 border border-amber-600/40 bg-amber-400 px-4 text-sm font-semibold text-amber-950 shadow-sm hover:bg-amber-300 dark:border-amber-500/50 dark:bg-amber-500 dark:text-amber-950 dark:hover:bg-amber-400",
+                useLongLabel
+                  ? "h-auto min-h-9 max-w-[18rem] whitespace-normal py-2 text-left leading-snug"
+                  : "h-9 min-w-[9.5rem]",
+              ),
+        )}
         onClick={() => setOpen(true)}
       >
-        {isEdit ? "Edit result" : "Enter result"}
+        {isEdit ? (
+          <>
+            <Pencil className="size-3.5 shrink-0" aria-hidden />
+            {actionLabel}
+          </>
+        ) : (
+          <>
+            <PenLine className="size-4 shrink-0" aria-hidden />
+            {actionLabel}
+          </>
+        )}
       </Button>
       {open ? (
         <ManualResultEntryDialog
