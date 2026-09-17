@@ -61,7 +61,9 @@ export function parseProlyteNetworkLis(body: unknown): ParsedInstrumentMessage {
     if (!testCode || seen.has(testCode)) continue;
 
     const conc = stringField(reading.conc);
-    if (!conc || conc.includes("*") || !/^-?[\d.]+$/.test(conc)) continue;
+    if (conc == null || conc === "" || conc.includes("*") || !/^-?[\d.]+$/.test(conc)) {
+      continue;
+    }
 
     const def = PROLYTE_ANALYTES.find((a) => a.testCode === testCode);
     if (!def) continue;
@@ -97,6 +99,33 @@ export function parseProlyteNetworkLis(body: unknown): ParsedInstrumentMessage {
   };
 }
 
+/** ProLyte Network LIS often POSTs urlencoded flat keys like ionData[Na][conc]. */
+function unflattenProlyteFormBody(
+  flat: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const ionData: Record<string, Record<string, unknown>> = {};
+
+  for (const [key, value] of Object.entries(flat)) {
+    const ionMatch = /^ionData\[([^\]]+)\]\[([^\]]+)\]$/.exec(key);
+    if (ionMatch) {
+      const ion = ionMatch[1];
+      const field = ionMatch[2];
+      if (ion && field) {
+        ionData[ion] ??= {};
+        ionData[ion][field] = value;
+      }
+      continue;
+    }
+    out[key] = value;
+  }
+
+  if (Object.keys(ionData).length > 0) {
+    out.ionData = ionData;
+  }
+  return out;
+}
+
 function normalizeBody(body: unknown): Record<string, unknown> {
   if (body == null) return {};
   if (typeof body === "string") {
@@ -109,7 +138,13 @@ function normalizeBody(body: unknown): Record<string, unknown> {
     }
   }
   if (typeof body !== "object" || Array.isArray(body)) return {};
-  const obj = body as Record<string, unknown>;
+  let obj = body as Record<string, unknown>;
+  if (
+    obj.ionData == null &&
+    Object.keys(obj).some((k) => k.startsWith("ionData["))
+  ) {
+    obj = unflattenProlyteFormBody(obj);
+  }
   if (typeof obj.ionData === "string") {
     try {
       return { ...obj, ionData: JSON.parse(obj.ionData) };

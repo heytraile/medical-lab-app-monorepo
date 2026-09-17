@@ -13,6 +13,7 @@ const API_PREFIXES = [
   "/analyzers",
   "/ingest",
   "/results",
+  "/raw-messages",
   "/socket.io",
 ];
 

@@ -1,3 +1,4 @@
+import { computeClinicalFlag } from "./reference-limits";
 import { normalizeCode } from "./test-fulfillment";
 
 export type ManualFieldType = "text" | "number" | "textarea" | "select";
@@ -303,12 +304,19 @@ export function computeAutoFlag(
   numericValue: string,
   referenceLow?: number,
   referenceHigh?: number,
-): "normal" | "high" | "low" | "unknown" {
-  const num = Number(numericValue);
-  if (!Number.isFinite(num)) return "unknown";
-  if (referenceLow != null && num < referenceLow) return "low";
-  if (referenceHigh != null && num > referenceHigh) return "high";
-  return "normal";
+  criticalLow?: number,
+  criticalHigh?: number,
+): "normal" | "high" | "low" | "critical_low" | "critical_high" | "abnormal" | "unknown" {
+  if (referenceLow == null || referenceHigh == null) {
+    return "unknown";
+  }
+  return computeClinicalFlag(numericValue, {
+    referenceLow,
+    referenceHigh,
+    criticalLow,
+    criticalHigh,
+    confirmationStatus: "provisional",
+  });
 }
 
 export function schemaDefaultUnits(schema: ManualEntrySchema): string | undefined {

@@ -124,4 +124,21 @@ describe("bench work queue helpers", () => {
     const tests = buildWorkQueueTestItems(["GROUP_RH"], []);
     assert.equal(tests[0]?.status, "awaiting_manual");
   });
+
+  it("marks ELECTROLYTES received when any ProLyte ion arrives", () => {
+    const partial = [
+      {
+        testCode: "ELECTROLYTES:NA",
+        orderedTestCode: "ELECTROLYTES",
+        resultComponentCode: "NA",
+        analyzerId: "diamond_prolyte",
+      },
+    ];
+    const partialTests = buildWorkQueueTestItems(["ELECTROLYTES"], partial);
+    assert.equal(partialTests[0]?.status, "received");
+    assert.equal(
+      accessionHasIncompleteWork(["ELECTROLYTES"], partial),
+      false,
+    );
+  });
 });

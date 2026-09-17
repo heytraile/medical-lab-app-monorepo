@@ -399,6 +399,7 @@ export class SyncService implements OnModuleInit {
       collectedAt?: string | null;
       collectedByStaffId?: string | null;
       collectedBySnapshot?: unknown;
+      containers?: unknown;
     },
   ) {
     const accession = opts.accessionNumber;
@@ -474,11 +475,84 @@ export class SyncService implements OnModuleInit {
         collected_at: opts.collectedAt ?? null,
         collected_by_staff_id: opts.collectedByStaffId ?? null,
         collected_by_snapshot: opts.collectedBySnapshot ?? null,
+        containers: opts.containers ?? null,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "accession_number" },
     );
     if (error) throw error;
+  }
+
+  /** Create or link a cloud requisition so offline accessions catch up. */
+  private async reconcileRequisitionFromRegistration(
+    client: NonNullable<SupabaseService["client"]>,
+    payload: Record<string, unknown>,
+  ) {
+    const accession = String(payload.accessionNumber ?? "").trim();
+    if (!accession) return;
+
+    const { data: existing, error: lookupError } = await client
+      .from("requisitions")
+      .select("id")
+      .eq("accession_number", accession)
+      .maybeSingle();
+    if (lookupError && !/relation|does not exist|PGRST/i.test(lookupError.message)) {
+      this.logger.warn(`Requisition lookup failed: ${lookupError.message}`);
+      return;
+    }
+    if (existing?.id) return;
+
+    const requisitionId =
+      typeof payload.requisitionId === "string" && payload.requisitionId.trim()
+        ? payload.requisitionId.trim()
+        : null;
+    if (requisitionId) {
+      const { error: linkError } = await client
+        .from("requisitions")
+        .update({
+          accession_number: accession,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", requisitionId)
+        .is("accession_number", null);
+      if (linkError && !/relation|does not exist|PGRST/i.test(linkError.message)) {
+        this.logger.warn(`Requisition link failed: ${linkError.message}`);
+      }
+      const { data: linked } = await client
+        .from("requisitions")
+        .select("id")
+        .eq("id", requisitionId)
+        .maybeSingle();
+      if (linked?.id) return;
+    }
+
+    const selections = Array.isArray(payload.orderedSelections)
+      ? payload.orderedSelections
+      : [];
+    const orderedTests = Array.isArray(payload.orderedTests)
+      ? payload.orderedTests
+      : [];
+    if (!selections.length && !orderedTests.length) return;
+
+    const { error: insertError } = await client.from("requisitions").insert({
+      lab_id: String(
+        payload.labId ?? "00000000-0000-4000-8000-000000000001",
+      ),
+      patient_snapshot: payload.patient ?? { patientName: payload.patientName },
+      ordered_selections: selections,
+      ordered_tests: orderedTests,
+      status: "registered",
+      accession_number: accession,
+      edge_specimen_id: (() => {
+        const containers = payload.containers;
+        if (!Array.isArray(containers) || !containers[0]) return null;
+        const first = containers[0] as { specimenId?: string };
+        return first.specimenId ?? null;
+      })(),
+    });
+    if (insertError && !/relation|does not exist|duplicate|unique/i.test(insertError.message)) {
+      this.logger.warn(`Requisition backfill failed: ${insertError.message}`);
+    }
   }
 
   private async ensureSpecimensFromSubmitPayload(
@@ -693,7 +767,9 @@ export class SyncService implements OnModuleInit {
           ? String(payload.collectedByStaffId)
           : null,
         collectedBySnapshot: payload.collectedBySnapshot ?? null,
+        containers: payload.containers ?? null,
       });
+      await this.reconcileRequisitionFromRegistration(client, payload);
       return;
     }
 

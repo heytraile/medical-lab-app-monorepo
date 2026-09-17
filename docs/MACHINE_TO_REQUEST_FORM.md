@@ -124,6 +124,7 @@ These are the codes our **development simulators** send. Real machines on site m
 | CREA | `CREATININE` | Kidney function |
 | ALT | `ALT_SGPT` | Liver enzyme |
 | AST | `AST_SGOT` | Liver enzyme |
+| CO2 | Part of `ELECTROLYTES` | Bicarbonate (when ISE/CO₂ assay installed) |
 
 Many other **blood chemistry** lines on the form (lipids, HbA1c, etc.) can run on this class of machine **if** that assay is installed — the exact menu must be confirmed at Drax Hall.
 
@@ -131,7 +132,7 @@ Many other **blood chemistry** lines on the form (lipids, HbA1c, etc.) can run o
 
 ### Diamond ProLyte (electrolytes)
 
-**What it is for:** Salts in blood — sodium, potassium, chloride; lithium on some setups.
+**What it is for:** Salts in blood — sodium, potassium, chloride; lithium on some setups. **Bicarbonate (CO₂)** is usually run on the Mindray when that assay is installed (see Mindray BS-240 table above).
 
 **How it connects:** Network LIS (HTTP POST to port **5002**, field `pId` = accession) or RS-232 serial (`SAMPLE:` line). See [ANALYZERS.md](./ANALYZERS.md).
 
@@ -143,6 +144,18 @@ Many other **blood chemistry** lines on the form (lipids, HbA1c, etc.) can run o
 | K | Part of `ELECTROLYTES` | Potassium |
 | CL | Part of `ELECTROLYTES` | Chloride |
 | LI | `LITHIUM` (therapeutic drug monitoring) | Lithium |
+
+---
+
+### Mindray BS-240 (electrolyte add-on)
+
+When **ELECTROLYTES** is on the order, bicarbonate may arrive from the Mindray (not the ProLyte):
+
+| Machine code | Remaps to form code | Plain English |
+| --- | --- | --- |
+| CO2 | Part of `ELECTROLYTES` | Bicarbonate (aliases `TCO2`, `HCO3`) |
+
+The app stores each component as its own row (`ELECTROLYTES:NA`, …, `ELECTROLYTES:CO2`) regardless of which analyzer sent it. **Zero values are stored.** Values beyond panic limits flag as **Critical low/high** on Bench.
 
 ---
 

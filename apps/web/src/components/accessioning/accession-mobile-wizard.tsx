@@ -72,6 +72,7 @@ type Props = {
     | {
         identityConfirmation?: IdentityConfirmation;
         patientId?: string;
+        acknowledgeSimilarAccession?: boolean;
       }
     | undefined,
     unknown

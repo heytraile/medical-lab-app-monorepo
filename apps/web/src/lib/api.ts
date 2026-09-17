@@ -29,6 +29,8 @@ import type {
   CreateDmRequest,
   CreateChannelRequest,
   CreateMessageRequest,
+  UnidentifiedRawMessage,
+  UnidentifiedAcknowledgeReason,
 } from "@drax-lis/contracts";
 import { getStoredDevice } from "./device";
 
@@ -48,6 +50,8 @@ export type {
   CreateDmRequest,
   CreateChannelRequest,
   CreateMessageRequest,
+  UnidentifiedRawMessage,
+  UnidentifiedAcknowledgeReason,
 };
 
 const EDGE_API_URL =
@@ -408,6 +412,13 @@ export type IdentityConfirmation = {
   confirmedBy?: string;
 };
 
+export type SimilarAccessionExists = {
+  statusCode: 409;
+  error: "SIMILAR_ACCESSION_EXISTS";
+  message: string;
+  accessions: Array<{ accessionNumber: string; registeredAt: string }>;
+};
+
 export type IdentityConfirmationRequired = {
   statusCode: 409;
   error: "IDENTITY_CONFIRMATION_REQUIRED";
@@ -482,6 +493,22 @@ export const api = {
   syncStatus: () => request<SyncStatus>("/sync/status", { auth: false }),
   analyzerStatus: () =>
     request<AnalyzerStatus[]>("/analyzers/status", { auth: false }),
+  unidentifiedResults: () =>
+    request<UnidentifiedRawMessage[]>("/raw-messages/unidentified", {
+      auth: false,
+    }),
+  acknowledgeUnidentifiedResult: (
+    id: string,
+    reason: UnidentifiedAcknowledgeReason,
+  ) =>
+    request<{ id: string; acknowledged?: boolean; alreadyAcknowledged?: boolean; reason?: string }>(
+      `/raw-messages/${encodeURIComponent(id)}/acknowledge`,
+      {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+        auth: true,
+      },
+    ),
   patients: (opts?: { q?: string; includeInactive?: boolean }) => {
     const params = new URLSearchParams();
     const q = opts?.q?.trim();
@@ -1022,4 +1049,12 @@ export function isIdentityConfirmationRequired(
   if (!(err instanceof ApiError) || err.status !== 409) return false;
   const body = err.body as IdentityConfirmationRequired | null;
   return body?.error === "IDENTITY_CONFIRMATION_REQUIRED";
+}
+
+export function isSimilarAccessionExists(
+  err: unknown,
+): err is ApiError & { body: SimilarAccessionExists } {
+  if (!(err instanceof ApiError) || err.status !== 409) return false;
+  const body = err.body as SimilarAccessionExists | null;
+  return body?.error === "SIMILAR_ACCESSION_EXISTS";
 }

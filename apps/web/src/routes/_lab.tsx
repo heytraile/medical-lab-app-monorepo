@@ -25,8 +25,9 @@ import { isCloudMode } from "../lib/api";
 
 export const Route = createFileRoute("/_lab")({
   beforeLoad: ({ location }) => {
-    // Edge mode: token is in localStorage immediately. Cloud mode waits for
-    // Supabase hydration in LabAuthGate so we do not false-redirect.
+    // SSR has no localStorage — defer auth to LabAuthGate on the client.
+    if (typeof window === "undefined") return;
+    // Cloud + edge both restore session client-side after hydration.
     if (isCloudMode) return;
     if (!readStoredAccessToken()) {
       throw redirect({
@@ -69,7 +70,7 @@ function LabAuthGate({ queryClient }: { queryClient: QueryClient }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
-    if (!auth.ready) return;
+    if (!auth.ready || !auth.hydrated) return;
     if (auth.accessToken) return;
     queryClient.clear();
     void navigate({
@@ -77,9 +78,20 @@ function LabAuthGate({ queryClient }: { queryClient: QueryClient }) {
       search: { redirect: pathname },
       replace: true,
     });
-  }, [auth.ready, auth.accessToken, pathname, navigate, queryClient]);
+  }, [auth.ready, auth.hydrated, auth.accessToken, pathname, navigate, queryClient]);
 
-  if (!auth.ready || !auth.accessToken) {
+  if (!auth.ready || !auth.hydrated) {
+    return (
+      <div className="grid h-svh place-items-center bg-background text-muted-foreground">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="size-8 animate-spin text-accent" aria-hidden />
+          <p className="text-sm">Restoring session…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!auth.accessToken) {
     return (
       <div className="grid h-svh place-items-center bg-background text-muted-foreground">
         <div className="flex flex-col items-center gap-3">

@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -148,6 +149,31 @@ export class LabRequisitionsService {
     const now = new Date().toISOString();
 
     if (this.supabase.enabled && this.supabase.client) {
+      const { data: current } = await this.supabase.client
+        .from("requisitions")
+        .select("id, accession_number")
+        .eq("id", id)
+        .maybeSingle();
+      if (!current) throw new NotFoundException("Requisition not found");
+      if (
+        current.accession_number &&
+        current.accession_number !== body.accessionNumber
+      ) {
+        throw new ConflictException(
+          `This order is already linked to accession ${current.accession_number}`,
+        );
+      }
+      const { data: taken } = await this.supabase.client
+        .from("requisitions")
+        .select("id")
+        .eq("accession_number", body.accessionNumber)
+        .neq("id", id)
+        .maybeSingle();
+      if (taken?.id) {
+        throw new ConflictException(
+          `Accession ${body.accessionNumber} is already linked to another order`,
+        );
+      }
       const { data, error } = await this.supabase.client
         .from("requisitions")
         .update({
@@ -165,6 +191,22 @@ export class LabRequisitionsService {
 
     const row = this.memory.get(id);
     if (!row) throw new NotFoundException("Requisition not found");
+    if (
+      row.accession_number &&
+      row.accession_number !== body.accessionNumber
+    ) {
+      throw new ConflictException(
+        `This order is already linked to accession ${row.accession_number}`,
+      );
+    }
+    const taken = [...this.memory.values()].find(
+      (r) => r.accession_number === body.accessionNumber && r.id !== id,
+    );
+    if (taken) {
+      throw new ConflictException(
+        `Accession ${body.accessionNumber} is already linked to another order`,
+      );
+    }
     const updated: Row = {
       ...row,
       accession_number: body.accessionNumber,

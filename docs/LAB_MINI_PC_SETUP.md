@@ -15,7 +15,7 @@
 - [LOCAL_DEV.md](./LOCAL_DEV.md) — laptop local run (also used for MacBook field tests)
 - [GLOSSARY.md](./GLOSSARY.md) — longer acronym list
 
-**Quick jump:** [Field visit — test one analyzer with only a MacBook](#field-visit--test-one-analyzer-with-only-a-macbook)
+**Quick jump:** [MacBook cheat sheet (ports + commands only)](./MACBOOK_FIELD_TEST.md) · [ProLyte + Network LIS walkthrough](#recommended-prolyte--network-lis-on-a-macbook) · [Other analyzers (TCP)](#alternative-tcp-machines-sysmex-mindray-iflash)
 
 ---
 
@@ -122,38 +122,245 @@ Do these in order on the mini PC. Do **not** skip a phase because a later one �
 | 12 | End-to-end test **per machine** | 1 hour |
 | 13 | Security + backup checklist | See [EDGE_SECURITY_AND_BACKUP.md](./EDGE_SECURITY_AND_BACKUP.md) |
 
-**Need a one-machine smoke test before the mini PC is ready?** Jump to [Field visit — test one analyzer with only a MacBook](#field-visit--test-one-analyzer-with-only-a-macbook). That path does **not** replace Phases 1–13 for go-live.
+**Need a one-machine smoke test before the mini PC is ready?** Jump to [ProLyte + Network LIS on a MacBook](#recommended-prolyte--network-lis-on-a-macbook) (simplest live test). That path does **not** replace Phases 1–13 for go-live.
 
 ---
 
 ## Field visit — test one analyzer with only a MacBook
 
-Use this when you walk into the lab with **only your MacBook** and want to prove **one** instrument sends a real result into **this** app. You are temporarily using the laptop as the “edge” computer. The mini PC install (phases above) is still required for production.
+Use this when you walk into the lab with **only your MacBook** and want to prove **one** real instrument sends results into **this** app. You temporarily use the laptop as the “edge” computer. The mini PC install (Phases 1–13 above) is still required for production.
 
-### What you can and cannot do without Ethernet / RS-232 ports
+**Start here for the simplest live test:** [ProLyte + Network LIS](#recommended-prolyte--network-lis-on-a-macbook). The ProLyte POSTs JSON over the lab LAN — **no USB‑serial adapter, no ASTM/TCP client setup**. Sysmex, Mindray, and iFlash are covered later under [TCP machines](#alternative-tcp-machines-sysmex-mindray-iflash).
 
-| Machine | Can you test with MacBook only? | What you need |
-| --- | --- | --- |
-| **Sysmex XS-1000i** | Yes — preferred for a first visit | Same LAN as the instrument (Wi‑Fi or USB‑C Ethernet dongle) |
-| **Mindray BS-240** | Yes | Same as Sysmex |
-| **YHLO iFlash 1200** | Yes | Same as Sysmex |
-| **Diamond ProLyte** | **Yes — preferred** | Same LAN/Wi‑Fi as the instrument; **Network LIS** to MacBook IP port **5002** (no serial adapter). Serial path still available with USB‑C → RS‑232 if needed |
+---
 
-**You do not need a Cat6 jack on the MacBook** if:
+### Recommended: ProLyte + Network LIS on a MacBook
 
-1. The clinic Wi‑Fi and the analyzer switch are on the **same subnet** (common), **or**
-2. You bring a **USB‑C Gigabit Ethernet adapter**, plug into the **same switch** as the analyzer (most reliable).
+The **Diamond ProLyte** (electrolytes — sodium, potassium, chloride, optional lithium) is the **easiest machine to prove end-to-end** on a MacBook because:
 
-Do **not** try to “USB cable the analyzer into the MacBook” for Sysmex/Mindray/iFlash — those three talk **TCP over the network**, not USB.
+- It uses **Network LIS** — HTTP **POST** to your Mac’s LAN IP on port **5002** (not Sysmex-style TCP ASTM).
+- You do **not** need a RS‑232 cable or USB serial adapter for this path.
+- One real serum sample (or control) is enough to see Na/K/Cl on **Bench**.
 
-### Packing list (MacBook field test)
+See also: [ANALYZERS.md — ProLyte](./ANALYZERS.md), [SPECIMEN_COLLECTION_GUIDE — Step D](./SPECIMEN_COLLECTION_GUIDE.md).
+
+#### Full rules — ProLyte Network LIS (read before the visit)
+
+| Rule | What it means |
+| --- | --- |
+| **Same network** | MacBook and ProLyte must reach each other on the **same LAN subnet** (same switch, or Wi‑Fi that can reach the instrument VLAN). A phone hotspot usually **will not** work — the ProLyte is wired to the lab switch. |
+| **Host IP on the ProLyte** | Set to your Mac’s **LAN IP** (e.g. `192.168.1.87`) — **never** `127.0.0.1` or `localhost` (the instrument cannot reach those). |
+| **Host port** | **5002** on both the ProLyte menu and the app (`PROLYTE_NETWORK_LIS_PORT`, default **5002**). |
+| **Mac listens on all interfaces** | Edge binds `0.0.0.0:5002` by default (`PROLYTE_NETWORK_LIS_HOST`) so the ProLyte can POST from the network. |
+| **Network LIS enabled in app** | `PROLYTE_NETWORK_LIS_ENABLED=true` (default). Do **not** set this to `false` unless you are testing serial instead. |
+| **Sample ID (`pId`)** | Must match an accession you created in the app — e.g. `DH202609160001` or a tube ID like `DH202609160001-02`. Accession **or** specimen barcode both work. |
+| **Order on Accession** | Tick **ELECTROLYTES** (or a panel that includes it, e.g. Executive I). Otherwise results may show **“Not ordered”** on Bench (still stored — see [ARCHITECTURE.md](./ARCHITECTURE.md)). |
+| **Sample type** | Patient / control runs use normal sample types. Calibration-only POSTs (`sampleType` `00`–`07`) are **ignored** by design — use **Test Network LIS** or a real/control sample, not cal mode, to prove ingest. |
+| **What the ProLyte sends** | JSON with `pId`, `sampleType`, and `ionData` (`Na`, `K`, `Cl`, optional `Li`). Edge maps ions → catalog **ELECTROLYTES** on Bench. |
+| **What the ProLyte expects back** | HTTP **200** with `{ "ok": true }`. If the Mac firewall blocks port **5002**, **Test Network LIS** on the instrument will fail. |
+| **Do not use simulators for this visit** | `pnpm … simulators send:prolyte` or curl from the Mac proves **your laptop**, not the **real ProLyte**. Use curl only as a pre-flight check that edge is listening. |
+| **When you leave** | Set the ProLyte host IP back to the **production mini PC** (or previous value). Stop the local edge process. |
+
+**You do not need a built-in Ethernet port on the MacBook** if:
+
+1. Clinic Wi‑Fi and the ProLyte’s switch share the **same routable subnet**, **or**
+2. You use a **USB‑C Gigabit Ethernet dongle** into the **same switch** as the ProLyte (most reliable).
+
+Do **not** plug the ProLyte’s RS‑232 cable into the Mac for this test — that is the optional [serial fallback](#prolyte-on-a-macbook--rs-232-serial-optional-fallback) path.
+
+#### Packing list — ProLyte + Network LIS
 
 - [ ] MacBook with charger  
-- [ ] This repo cloned and dependencies installable (`pnpm` / Node already set up from local dev)  
-- [ ] **USB‑C Ethernet dongle** (strongly recommended) + short Cat6 patch cable  
-- [ ] ProLyte: confirm **Network LIS** on instrument menu (no serial adapter required)  
-- [ ] Optional: USB‑C → RS‑232 only if using serial path instead of Network LIS  
-- [ ] Phone hotspot is **not** a substitute unless the analyzer can also reach that hotspot (usually it cannot — analyzers are wired to the lab switch)
+- [ ] Repo cloned; `pnpm install` already done from [LOCAL_DEV.md](./LOCAL_DEV.md)  
+- [ ] **USB‑C Ethernet dongle** + short Cat6 patch cable (**strongly recommended**)  
+- [ ] Lab staff contact — which switch the ProLyte Ethernet cable uses  
+- [ ] ProLyte vendor LIS PDF (menu paths vary slightly by firmware)  
+- [ ] Serum sample or control the bench will allow you to run (optional for wire-only Option 1 below)  
+- [ ] **Not required:** USB‑C → RS‑232 adapter (Network LIS only)
+
+#### Step-by-step — ProLyte Network LIS on a MacBook
+
+Work through **A → J in order**. Check off each step before running a sample.
+
+##### A. Get the Mac on the same network as the ProLyte
+
+1. Ask which **switch/router port** the ProLyte’s Ethernet cable uses.  
+2. **Preferred:** plug your **USB‑C Ethernet adapter** into that same switch. Turn **Wi‑Fi off** on the Mac while testing so traffic has one clear path.  
+3. **Alternative:** join clinic Wi‑Fi only if IT confirms Wi‑Fi clients can reach the **wired instrument subnet** (many sites isolate instruments — if **Test Network LIS** fails on Wi‑Fi, use the dongle).
+
+##### B. Find your MacBook’s LAN IP
+
+```bash
+# Wi‑Fi is often en0; USB Ethernet is often en7 or en5 — use the one with the lab subnet
+ipconfig getifaddr en0
+ipconfig getifaddr en7
+```
+
+Or: **System Settings → Network → (Ethernet or Wi‑Fi) → Details → TCP/IP → IP Address**.
+
+Write it down, e.g. `192.168.1.87`. You will type this into **ProLyte → Network LIS → Host IP**.
+
+##### C. Allow inbound ports on the Mac firewall
+
+**System Settings → Network → Firewall** — either turn the firewall **Off** for the test hour, or allow incoming for **Node** on:
+
+| Port | Why |
+| --- | --- |
+| **5002** | ProLyte Network LIS POSTs here |
+| **3101** | Staff web UI (Bench) in the browser |
+
+If **5002** is blocked, the ProLyte’s **Test Network LIS** button fails even when the menu looks correct.
+
+##### D. Start the edge stack on the MacBook
+
+From the repo (same as local dev — [LOCAL_DEV.md](./LOCAL_DEV.md)):
+
+```bash
+cd /path/to/medical-lab-app-monorepo
+pnpm install   # if not already done
+pnpm dev:local
+```
+
+Or, if you only need edge + web without the full stack:
+
+```bash
+pnpm --filter @drax-lis/edge-engine dev
+# plus web in another terminal if you use that workflow
+```
+
+**Confirm Network LIS is listening** — in the edge terminal you should see:
+
+```text
+diamond_prolyte Network LIS HTTP listener on 0.0.0.0:5002
+```
+
+Also verify the port:
+
+```bash
+lsof -nP -iTCP:5002 -sTCP:LISTEN
+```
+
+You should see `node` owning **5002**.
+
+**Optional pre-flight (from the Mac only — not a substitute for the real instrument):**
+
+```bash
+curl -X POST http://127.0.0.1:5002/ \
+  -H 'Content-Type: application/json' \
+  -d '{"pId":"PREFLIGHT1","sampleType":"10","ionData":{"Na":{"conc":"140.2","strUnits":"mmol/L"},"K":{"conc":"4.15","strUnits":"mmol/L"},"Cl":{"conc":"102.0","strUnits":"mmol/L"}}}'
+```
+
+Expect HTTP 200. Then open the UI:
+
+```text
+http://127.0.0.1:3101
+```
+
+Sign in with your usual local/dev staff account.
+
+##### E. Configure the ProLyte — Network LIS menu
+
+On the instrument (wording may vary — use the vendor PDF):
+
+**Menu path (typical):** **Instrument Settings → LIS Setup → Network LIS**
+
+| Setting | Value for MacBook field test |
+| --- | --- |
+| **Network LIS** | **Enabled** / On |
+| **Host IP** / Server IP / LIS IP | Your Mac LAN IP from step **B** (e.g. `192.168.1.87`) |
+| **Port** | **5002** |
+| **Serial LIS** (if shown) | Can stay off for this test — we are not using the RS‑232 cable |
+| **Protocol** | HTTP POST (JSON) — no URL path required; instrument POSTs to `/` on the host:port |
+
+Save settings. Power-cycle the LIS interface if the manual says to.
+
+##### F. Run **Test Network LIS** on the ProLyte
+
+Before any sample:
+
+1. On the ProLyte, tap **Test Network LIS** (or equivalent).  
+2. **Pass:** instrument shows success / connected (exact message varies).  
+3. **Fail:** fix **host IP**, **port 5002**, Mac firewall, or network path (steps **A–C**) before continuing.
+
+If this test fails, a real sample will also fail — do not skip this step.
+
+##### G. Accession in the app (order + sample ID)
+
+**Option 2 (recommended — proves patient join on Bench):**
+
+1. **Accession** a throwaway test patient.  
+2. Tick **ELECTROLYTES** alone, or a panel that includes it (e.g. Executive I).  
+3. Complete accession and note the number (e.g. `DH202609160001`). Copy **accession** or a **specimen ID** (`DH202609160001-02`) — you will enter the **same** string on the ProLyte as **Sample ID** / **`pId`**.  
+4. You do **not** need cloud sync or a printed label for this test if you type the ID on the ProLyte keyboard.
+
+**Option 1 (wire-only — no accession):** skip to step **H** with any sample ID (e.g. `FIELDTEST1`). Bench may show patient **`—`** — that still proves the wire works.
+
+##### H. Run a sample on the ProLyte
+
+Pick one path:
+
+| Path | What you do | What it proves |
+| --- | --- | --- |
+| **Option 1 — Wire only** | Any sample ID on ProLyte; run control or patient sample | POST arrives; Na/K/Cl on Bench; patient may be `—` |
+| **Option 2 — Matched accession (recommended)** | Enter the **same** accession/specimen ID from step **G**; run serum or control | Patient name on Bench + electrolyte values |
+| **Option 3 — Full wet path** | Printed label, scan/type tube ID, real draw | Full clinical path — optional if Option 2 already passed |
+
+On the ProLyte after the run completes, the instrument POSTs JSON to `http://<Mac-IP>:5002/`.
+
+Watch the edge terminal for ingest lines. Open **Bench** — within seconds you should see rows for **ELECTROLYTES** (Na/K/Cl as separate components or grouped per UI).
+
+##### I. Prove the app got good data
+
+| Check | Option 1 (no accession) | Option 2 (matched accession) |
+| --- | --- | --- |
+| Something arrived | Bench shows new rows **or** edge logs show ProLyte ingest | Same |
+| Patient on Bench | May be **`—`** — OK | Test patient name |
+| Values | Match ProLyte screen (Na, K, Cl) | Same |
+| Order alignment | May show **“Not ordered”** if you skipped electrolytes on Accession | No **“Not ordered”** badge if **ELECTROLYTES** was ticked |
+| Status | `pending_review` | `pending_review` |
+
+Optional API check:
+
+```bash
+curl -s http://127.0.0.1:3101/analyzers/status | python3 -m json.tool
+```
+
+Look for `diamond_prolyte` with recent `lastAccession` matching your sample ID.
+
+##### J. When you leave the lab
+
+1. On the ProLyte: set **Host IP** back to the **mini PC** LAN address (or the lab’s previous setting) — **not** your Mac.  
+2. Run **Test Network LIS** once against the mini PC when it exists, or note “still pointing at Mac” for staff.  
+3. Stop `pnpm dev:local` (or your edge process) on the Mac.  
+4. Re-enable the Mac firewall if you turned it off.  
+5. Photo or note the exact LIS menu path — helps [Phase 8](#phase-8--configure-tcp-analyzers-sysmex-mindray-iflash) and production cutover later.
+
+#### ProLyte Network LIS — troubleshooting (MacBook)
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| **Test Network LIS** fails | Wrong Mac IP; firewall; VLAN isolation | Step **B** IP; allow **5002**; use USB‑C Ethernet to ProLyte switch |
+| Test passes, no Bench rows | `pId` mismatch; empty/calibration POST | Sample ID must match accession; use patient/control sample type, not cal-only |
+| Listener never starts | `PROLYTE_NETWORK_LIS_ENABLED=false` | Set `true` or unset; restart edge; grep logs for `Network LIS HTTP listener` |
+| `EADDRINUSE` on 5002 | Another process on **5002** | `lsof -nP -iTCP:5002`; stop conflicting app |
+| Values on Bench, patient `—` | ID never accessioned | Expected for Option 1; for Option 2, re-type exact `DH…` on ProLyte |
+| **“Not ordered”** badge | Electrolytes not ticked on Accession | Re-accession with **ELECTROLYTES** or ignore badge for wire-only test |
+| Edge log `ingest failed` | Rare parse/DB error | Read error line; ensure accession format is plain `DH…` without spaces |
+
+---
+
+### Alternative: TCP machines (Sysmex, Mindray, iFlash)
+
+Use this section if you are testing **Sysmex**, **Mindray**, or **iFlash** instead of the ProLyte. Those three use **TCP** (ASTM or HL7), not ProLyte’s HTTP POST.
+
+| Machine | MacBook test? | Port on Mac |
+| --- | --- | --- |
+| **Sysmex XS-1000i** | Yes | **5001** (ASTM) |
+| **Mindray BS-240** | Yes | **5003** (ASTM) |
+| **YHLO iFlash 1200** | Yes | **5004** (HL7/MLLP) |
+| **Diamond ProLyte** | Yes — use [Network LIS above](#recommended-prolyte--network-lis-on-a-macbook) | **5002** (HTTP) — not TCP |
+
+Do **not** USB-cable Sysmex/Mindray/iFlash into the Mac — they speak **TCP over the network**.
 
 ### Step-by-step — TCP machine (Sysmex, Mindray, or iFlash)
 
@@ -300,50 +507,14 @@ curl -s http://127.0.0.1:3101/analyzers/status
 2. Stop the local edge process.  
 3. Note any menu path that worked (photo of the LIS screen helps Phase 8 later).
 
-### ProLyte on a MacBook — Network LIS (recommended)
-
-The ProLyte can run a **real sample** and POST results over the lab network. **No USB‑serial adapter** required.
-
-#### Prerequisites
-
-- MacBook and ProLyte on the **same LAN or Wi‑Fi subnet**.
-- App stack running (`pnpm dev:local`).
-- ProLyte menu: **Instrument Settings → LIS Setup → Network LIS**.
-
-#### Steps
-
-1. **Start edge** — confirm log line: `diamond_prolyte Network LIS HTTP listener on 0.0.0.0:5002` (enabled by default).
-2. **Mac IP** — `ipconfig getifaddr en0` (e.g. `192.168.1.87`).
-3. **Firewall** — allow Node/incoming on port **5002**, or disable firewall briefly for the test.
-4. **ProLyte LIS menu** — Network LIS **Enabled**; Host IP = Mac IP; Port = **5002**; run **Test Network LIS**.
-5. **Accession** in the app with electrolytes on the order; note accession (e.g. `DH202603151234`).
-6. **On ProLyte** — enter the **same sample ID** as the accession; run sample (patient or control).
-7. **Verify** — Bench shows Na/K/Cl; `curl -s http://127.0.0.1:3101/analyzers/status` shows `lastAccession`.
-
-Quick curl (no instrument):
-
-```bash
-curl -X POST http://localhost:5002/ \
-  -H 'Content-Type: application/json' \
-  -d '{"pId":"DHDEMO0001","sampleType":"10","ionData":{"Na":{"conc":"140.2","strUnits":"mmol/L"},"K":{"conc":"4.15","strUnits":"mmol/L"},"Cl":{"conc":"102.0","strUnits":"mmol/L"}}}'
-```
-
-| Problem | Fix |
-| --- | --- |
-| Test Network LIS fails | Wrong Mac IP, firewall, different VLAN/subnet |
-| No Bench results | `pId` must match accession; order must include electrolytes |
-| Listener skipped | `PROLYTE_NETWORK_LIS_ENABLED=true`, restart edge |
-
-When you leave, set the ProLyte host IP back to the production mini PC.
-
----
-
 ### ProLyte on a MacBook — RS-232 serial (optional fallback)
+
+Use this **only** if Network LIS is unavailable (no Ethernet path, or firmware without Network LIS). The [Network LIS walkthrough above](#recommended-prolyte--network-lis-on-a-macbook) is simpler for a MacBook field test.
 
 1. Set `PROLYTE_NETWORK_LIS_ENABLED=false`.  
 2. Plug **USB‑C → RS‑232**; set `PROLYTE_SERIAL_PATH` (e.g. `/dev/cu.usbserial-*`), `PROLYTE_BAUD=9600`.  
 3. Restart edge; confirm `ProLyte serial open on …`.  
-4. Enter matching accession on ProLyte; run sample; verify Na/K/Cl on Bench.
+4. On ProLyte: enable **Serial LIS** (not Network LIS); enter matching accession in `SAMPLE:` field; run sample; verify Na/K/Cl on Bench.
 
 ### What “accurate data” means for this smoke test
 
@@ -1309,7 +1480,7 @@ Use this path when the instrument is on Ethernet/Wi‑Fi (MacBook field test or 
 | Sysmex no results | Not pointing at PC IP:5001; barcode scanned elsewhere | Vendor LIS menu; `ss -tlnp \| grep 5001`; scan at IPU/loader; Phase 8.1 |
 | Mindray no results | Not pointing at PC IP:5003 | Vendor LIS; `ss -tlnp \| grep 5003`; Phase 8.2 |
 | iFlash no results | Not pointing at PC IP:5004; HL7/MLLP off | Vendor LIS; `ss -tlnp \| grep 5004`; Phase 8.3 |
-| MacBook field test: no results | Firewall, wrong host IP (`127.0.0.1`), VLAN isolation | Use USB‑C Ethernet to same switch; allow ports; host = Mac LAN IP — [Field visit](#field-visit--test-one-analyzer-with-only-a-macbook) |
+| MacBook field test: no results | Firewall, wrong host IP (`127.0.0.1`), VLAN isolation | ProLyte: [Network LIS steps](#recommended-prolyte--network-lis-on-a-macbook) — USB‑C Ethernet to same switch; allow **5002**; host = Mac LAN IP. TCP analyzers: allow **5001/5003/5004** |
 | Label does not print | Printer IP / port 9100 | `nc -zv printer-ip 9100`, `ZEBRA_PRINTER_HOST`; Phase 9 |
 | Results local but not in cloud | `CLOUD_API_URL` / token / internet | Logs; verify `EDGE_SYNC_TOKEN` matches cloud |
 | `ttyUSB` swapped after reboot | Missing udev rules | Phase 7.3 |

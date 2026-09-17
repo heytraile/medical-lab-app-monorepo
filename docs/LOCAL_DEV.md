@@ -400,7 +400,7 @@ curl -X POST http://localhost:5002/ \
 
 Accession a specimen with electrolytes first so Bench has context. To use serial instead, set `PROLYTE_NETWORK_LIS_ENABLED=false`.
 
-Field test on a MacBook at the lab: full steps in [LAB_MINI_PC_SETUP.md — ProLyte on a MacBook](./LAB_MINI_PC_SETUP.md#prolyte-on-a-macbook--network-lis-recommended).
+Field test on a MacBook at the lab: [MACBOOK_FIELD_TEST.md](./MACBOOK_FIELD_TEST.md) (cheat sheet) · [LAB_MINI_PC_SETUP.md — full walkthrough](./LAB_MINI_PC_SETUP.md#recommended-prolyte--network-lis-on-a-macbook).
 
 ## Serial PTYs with socat (ProLyte / RS-232 stand-in)
 
@@ -454,6 +454,8 @@ Per-app `.env.example` files list keys for reference. Optional local `.env` file
 | Simulator “timeout” | Edge TCP listeners started? Ports free? |
 | Sync stuck pending | Cloud API on :3102? `CLOUD_API_URL` |
 | Prisma errors | `pnpm db:generate && pnpm db:push` |
+| `pnpm dev:local` stuck after Prisma “data loss” warning | Stop with `Ctrl+C`, then `pnpm db:push:bare` (non-interactive). If duplicate specimen barcodes block the unique index, delete `apps/edge-engine/dev.db` and run `pnpm db:push:bare` again. |
+| `git` / `failed to run git diff for dirty hash` | macOS Xcode license not accepted — run `sudo xcodebuild -license` in Terminal, scroll, type `agree`. Until then git, turbo warnings, and `git push` fail. |
 | Workspace import fails | Build `contracts` / `protocols` first |
 | `EADDRINUSE` on 3000–3002 | Those ports are often other apps; LIS defaults are 3100–3102 |
 | API logs "using in-memory sync store" | Stack down (`pnpm supabase:start`), or the env key is missing from `globalPassThroughEnv` in [`turbo.json`](../turbo.json) |

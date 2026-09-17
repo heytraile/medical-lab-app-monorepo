@@ -72,7 +72,7 @@ Codes below are **common clinical abbreviations**. Exact strings from Sysmex / M
 | **mDNS** | Multicast DNS | `.local` names on LAN without a DNS server (Avahi) |
 | **Docker** | Container runtime | Runs lab app as one `lab` container on mini PC |
 | **udev** | Linux device rules | Stable serial port names (`/dev/prolyte`) |
-| **CI** | Continuous Integration | Automated test/build on push (later) |
+| **CI** | Continuous Integration | GitHub Actions on push/PR — lint, typecheck, tests, audit — [SECURITY.md](./SECURITY.md) |
 | **Monorepo** | One git repo with many apps/packages | This repository |
 | **PTY** | Pseudo-Terminal | Fake serial ports via `socat` for home testing |
 
@@ -100,14 +100,14 @@ Codes below are **common clinical abbreviations**. Exact strings from Sysmex / M
 | **Job title** | What someone does at the bench (phlebotomist, lab technologist, …) | Stored on `profiles.job_title`; separate from permission **role** |
 | **Permission role** | What the app lets you do (`tech`, `authorizer`, `admin`) | Set on the edge `Staff` table (source of truth), synced to Supabase `profiles`; see Staff page for job title assignment and [EDGE_AUTH_AND_STAFF.md](./EDGE_AUTH_AND_STAFF.md) |
 
-| **Requisition** | Doctor/reception test order before or at draw | Cloud `requisitions` row with `ordered_selections` + expanded `ordered_tests` |
+| **Requisition** | Internal cloud order record for this visit (UUID) | Not a staff-facing ID; linked to accession after register — [DATA_INTEGRITY.md](./DATA_INTEGRITY.md) |
 | **Test panel** | Bundle of tests ordered as one profile (e.g. Anaemia I) | Expands to member analyte codes at register |
 | **Test catalog** | Lab’s orderable test + panel list | `test_catalog_items` / `test_panels` in Supabase; bundled in `@drax-lis/catalog` |
 | **Ordered vs received** | Work requested vs results on the bench | v1 shows ordered list; reconciliation (pending/received) is follow-up |
 | **Serum** | Yellow liquid from blood after clotting + spin; no cells | Chemistry/immuno tests; separate tube from whole blood (CBC) |
 | **Specimen type** | What physical sample a test needs (`blood`, `serum`, `urine`, …) | Drives multi-tube accession — see [SPECIMEN_COLLECTION_GUIDE.md](./SPECIMEN_COLLECTION_GUIDE.md) |
 
-Full workflow rules: [WORKFLOW.md](./WORKFLOW.md). Requisition & catalog: [REQUISITION.md](./REQUISITION.md). **Plain-English draw guide:** [SPECIMEN_COLLECTION_GUIDE.md](./SPECIMEN_COLLECTION_GUIDE.md).
+Full workflow rules: [WORKFLOW.md](./WORKFLOW.md). Requisition & catalog: [REQUISITION.md](./REQUISITION.md). Uniqueness & offline: [DATA_INTEGRITY.md](./DATA_INTEGRITY.md). **Plain-English draw guide:** [SPECIMEN_COLLECTION_GUIDE.md](./SPECIMEN_COLLECTION_GUIDE.md).
 
 ---
 

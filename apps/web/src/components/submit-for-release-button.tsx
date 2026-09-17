@@ -27,6 +27,7 @@ export function SubmitForReleaseButton({
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(null);
   const [warningOpen, setWarningOpen] = useState(false);
+  const [syncPending, setSyncPending] = useState(false);
 
   const submit = useMutation<unknown, Error, boolean>({
     mutationFn: (acknowledgeMissingManual) =>
@@ -46,11 +47,12 @@ export function SubmitForReleaseButton({
       });
       try {
         await api.drainSync();
+        setSyncPending(false);
         void queryClient.invalidateQueries({ queryKey: ["cloud-results"] });
       void queryClient.invalidateQueries({ queryKey: ["release-queue"] });
         void queryClient.invalidateQueries({ queryKey: ["syncStatus"] });
       } catch {
-        // Cron will retry; Sync page has manual drain
+        setSyncPending(true);
       }
     },
     onError: (err) => {
@@ -198,6 +200,11 @@ export function SubmitForReleaseButton({
         {error ? (
           <p className="text-xs text-lab-danger">{error}</p>
         ) : null}
+        {syncPending ? (
+          <p className="text-xs text-amber-800 dark:text-amber-100">
+            Pending sync — authorizer will see this after connection.
+          </p>
+        ) : null}
         {warningDialog}
       </div>
     );
@@ -226,6 +233,11 @@ export function SubmitForReleaseButton({
       </Button>
       {error ? (
         <p className="text-xs text-lab-danger">{error}</p>
+      ) : null}
+      {syncPending ? (
+        <p className="text-xs text-amber-800 dark:text-amber-100">
+          Pending sync — authorizer will see this after connection.
+        </p>
       ) : null}
       {warningDialog}
     </div>

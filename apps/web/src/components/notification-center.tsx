@@ -191,6 +191,10 @@ export function NotificationCenter() {
     // off, so only the explicit Acknowledge button clears one.
     if (item.source !== "review") markRead(item.id);
     setOpen(false);
+    if (item.type === "unidentified") {
+      void navigate({ to: "/bench" });
+      return;
+    }
     if (item.accessionNumber) {
       void navigate({
         to: "/bench",
@@ -371,6 +375,10 @@ export function NotificationToastStack() {
               onClick={() => {
                 markRead(toast.id);
                 dismissToast(toast.id);
+                if (toast.type === "unidentified") {
+                  void navigate({ to: "/bench" });
+                  return;
+                }
                 void navigate({
                   to: "/bench",
                   search: {

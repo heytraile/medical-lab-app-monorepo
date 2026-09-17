@@ -83,8 +83,25 @@ The ProLyte uses **Ion Selective Electrodes (ISE)** — sensors that respond to 
 
 Network LIS is **not** the same as Sysmex TCP ASTM — the ProLyte **POSTs JSON** to your host IP and port. Serial sends a **multi-line ASCII block** (one-way; no ASTM handshake) with a `SAMPLE:` line.
 
+**MacBook field test:** one-page ports + terminal commands → [MACBOOK_FIELD_TEST.md](./MACBOOK_FIELD_TEST.md).
+
 **Barcode scanning**  
 Depends on site setup — often manual sample ID entry on the ProLyte (`pId` in Network LIS, `SAMPLE:` on serial). The ID must match our tube accession.
+
+**Missing specimen ID**  
+If a run completes with **no ID** (forgot to type or scan `pId`), the LIS still **accepts** the POST so we have an audit trail, but it **does not** attach values to a patient. Bench shows a **critical alert**. Staff must **re-run on the ProLyte with the tube label scanned or entered**. There is **no** “assign specimen ID on Bench” action — that would be too easy to mis-associate. If the sample cannot be re-run, discard as not reportable and accession a **new draw** if the test is still needed. Same rule for Sysmex, Mindray, and iFlash.
+
+**Result storage (ELECTROLYTES panel)**  
+The **ELECTROLYTES** order line is a **cross-analyzer panel**. The app does not care which machine each component comes from:
+
+| Component | Typical analyzer | Stored as |
+| --- | --- | --- |
+| Sodium (Na) | ProLyte | `ELECTROLYTES:NA` |
+| Potassium (K) | ProLyte | `ELECTROLYTES:K` |
+| Chloride (Cl) | ProLyte | `ELECTROLYTES:CL` |
+| Bicarbonate (CO₂) | Mindray BS-240 (`CO2` ASTM code) | `ELECTROLYTES:CO2` |
+
+ProLyte sends Na/K/Cl in one POST; Mindray sends CO₂ separately when that assay is installed. **Zero values are ingested** (e.g. distilled-water runs). Values outside **panic limits** (provisional until Drax Hall sign-off) flag as **Critical low/high** on Bench — not plain “Low”. Lithium (`Li+`) maps to the separate **LITHIUM** catalog code when ordered.
 
 **In our dev simulator**  
 By default, POSTs Network LIS JSON to `http://127.0.0.1:5002/`. For serial dev, set `PROLYTE_NETWORK_LIS_ENABLED=false` and use `PROLYTE_SERIAL_PATH` with the socat recipe in [LOCAL_DEV.md](./LOCAL_DEV.md).
@@ -105,6 +122,7 @@ Runs **chemistry panels** on blood serum — common “metabolic” tests: sugar
 | **CREA** | Creatinine — kidney function marker |
 | **ALT** | Liver enzyme |
 | **AST** | Liver enzyme (simulator may flag high) |
+| **CO2** | Bicarbonate / total CO₂ (part of **ELECTROLYTES** when ordered) |
 
 **Sample type**  
 Usually **serum** from a **red or gold top** tube after centrifuging (spinning) to separate liquid from cells.
@@ -163,6 +181,8 @@ Sends a fake TSH result over TCP port **5004**.
 | **Diamond ProLyte** | Site-dependent | Sample ID in `SAMPLE:` line of result block |
 
 **Golden rule:** The **accession number on the printed tube label** must be the same ID the analyzer sends back in its result message. Our edge engine matches on that ID.
+
+If the analyzer sends **no ID**, the run is **quarantined** (critical alert on Bench). Re-run on the instrument with the label ID; never assign a specimen ID after the fact in the LIS. See [SPECIMEN_COLLECTION_GUIDE.md](./SPECIMEN_COLLECTION_GUIDE.md#missing-specimen-id-on-instrument).
 
 | Protocol | Where the barcode appears in the message |
 | --- | --- |

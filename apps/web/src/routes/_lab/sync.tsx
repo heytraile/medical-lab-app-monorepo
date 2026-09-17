@@ -140,6 +140,9 @@ function SyncPage() {
                 <p className="mt-2 text-xs text-muted-foreground">
                   Queued or in flight — sync messages not yet accepted by the
                   central system.
+                  {waitingToSend > 0
+                    ? " Pending sync — authorizer will see submitted work after connection."
+                    : null}
                   {syncing > 0 ? (
                     <>
                       {" "}

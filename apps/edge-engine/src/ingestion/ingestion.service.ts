@@ -1,13 +1,28 @@
-import { Injectable, Logger } from "@nestjs/common";
+import {
+  BadRequestException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
 import { RealtimeGateway } from "../realtime/realtime.gateway";
 import { SyncService } from "../sync/sync.service";
 import { displayName } from "../patients/patient-normalize";
-import type { BenchIngestItem } from "@drax-lis/contracts";
+import { AuditService } from "../audit/audit.service";
+import type {
+  ActorSnapshot,
+  BenchIngestItem,
+  UnidentifiedAcknowledgeReason,
+  UnidentifiedAnalytePreview,
+} from "@drax-lis/contracts";
 import {
-  getCatalogDisplayName,
+  buildInstrumentResultIdentity,
+  catalogUsesInstrumentComponents,
+  computeClinicalFlag,
+  getClinicalLimits,
   parseOrderedTestCodes,
   pickCatalogCodeForResult,
+  shouldQuarantineMissingSpecimenId,
   type AnalyzerId,
 } from "@drax-lis/catalog";
 import {
@@ -42,6 +57,7 @@ export class IngestionService {
     private readonly prisma: PrismaService,
     private readonly sync: SyncService,
     private readonly realtime: RealtimeGateway,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -69,6 +85,11 @@ export class IngestionService {
       message = { analytes: [], rawRecords: [] };
     }
 
+    const quarantine = shouldQuarantineMissingSpecimenId(
+      message.barcode,
+      message.analytes.length,
+    );
+
     const raw = await this.prisma.rawMessage.create({
       data: {
         analyzerId: input.analyzerId,
@@ -77,10 +98,54 @@ export class IngestionService {
         payload: payloadStr,
         parsedOk,
         parseError,
+        identificationStatus: quarantine ? "missing_specimen_id" : "matched",
       },
     });
 
-    const scannedBarcode = message.barcode ?? `UNK-${raw.id.slice(0, 8)}`;
+    if (!message.barcode?.trim()) {
+      if (quarantine) {
+        const items = unidentifiedPreviewItems(message);
+        await this.audit.log({
+          eventType: "instrument.missing_specimen_id",
+          entityType: "raw_message",
+          entityId: raw.id,
+          payload: {
+            analyzerId: input.analyzerId,
+            protocol: input.protocol,
+            items,
+          },
+        });
+        this.realtime.emitBenchEvent({
+          type: "results.unidentified",
+          at: new Date().toISOString(),
+          analyzerId: input.analyzerId,
+          rawMessageId: raw.id,
+          reason: "missing_specimen_id",
+          items,
+        });
+        this.logger.warn(
+          `Quarantined ${input.analyzerId} results with no specimen ID (${items.length} analytes, raw ${raw.id})`,
+        );
+      } else {
+        this.logger.debug(
+          `Ignored ${input.analyzerId} frame with no specimen ID and no analytes`,
+        );
+      }
+      return {
+        rawMessageId: raw.id,
+        accessionNumber: "",
+        barcode: "",
+        results: [],
+        identificationStatus: quarantine
+          ? "missing_specimen_id"
+          : "matched",
+        ignoredReason: quarantine
+          ? "missing_specimen_id"
+          : "empty_no_barcode",
+      };
+    }
+
+    const scannedBarcode = message.barcode.trim();
     const resolved = await this.resolveScannedBarcode(scannedBarcode);
     const accessionNumber = resolved.accessionNumber;
     const barcode = resolved.barcode;
@@ -159,18 +224,62 @@ export class IngestionService {
       );
       const catalogCode = mapped.catalogCode;
       const instrumentTestCode = mapped.instrumentCode;
-      const testName = getCatalogDisplayName(catalogCode);
+      const identity = buildInstrumentResultIdentity(
+        analyzerId,
+        catalogCode,
+        instrumentTestCode,
+      );
+      const usesComponents = catalogUsesInstrumentComponents(catalogCode);
+      const clinicalLimits = getClinicalLimits(
+        identity.orderedTestCode,
+        identity.resultComponentCode,
+      );
+      if (!mapped.expected && orderedCatalogCodes.length > 0) {
+        await this.audit.log({
+          eventType: "result.unexpected_on_order",
+          entityType: "accession",
+          entityId: accessionNumber,
+          payload: {
+            barcode,
+            analyzerId: input.analyzerId,
+            instrumentCode: instrumentTestCode,
+            catalogCode,
+            tubeScoped: Boolean(resolved.specimen),
+          },
+        });
+      }
 
       const existing = await this.prisma.result.findFirst({
-        where: {
-          accessionNumber,
-          testCode: catalogCode,
-          analyzerId: input.analyzerId,
-        },
+        where: usesComponents
+          ? {
+              accessionNumber,
+              orderedTestCode: identity.orderedTestCode,
+              resultComponentCode: identity.resultComponentCode,
+              analyzerId: input.analyzerId,
+            }
+          : {
+              accessionNumber,
+              testCode: identity.testCode,
+              analyzerId: input.analyzerId,
+            },
         orderBy: { observedAt: "desc" },
       });
 
-      const nextFlag = r.flag || "unknown";
+      const referenceLow = clinicalLimits?.referenceLow ?? r.referenceLow;
+      const referenceHigh = clinicalLimits?.referenceHigh ?? r.referenceHigh;
+      const nextFlag = clinicalLimits
+        ? computeClinicalFlag(r.value, clinicalLimits, r.flag)
+        : referenceLow != null && referenceHigh != null
+          ? computeClinicalFlag(
+              r.value,
+              {
+                referenceLow,
+                referenceHigh,
+                confirmationStatus: "provisional",
+              },
+              r.flag,
+            )
+          : r.flag || "unknown";
 
       if (existing) {
         // Retransmit / update: refresh values. Do not clobber a released result.
@@ -185,14 +294,15 @@ export class IngestionService {
           where: { id: existing.id },
           data: {
             barcode,
-            orderedTestCode: catalogCode,
-            resultComponentCode: null,
-            testName,
+            testCode: identity.testCode,
+            orderedTestCode: identity.orderedTestCode,
+            resultComponentCode: identity.resultComponentCode,
+            testName: identity.testName,
             instrumentTestCode,
             value: r.value,
             units: r.units,
-            referenceLow: r.referenceLow,
-            referenceHigh: r.referenceHigh,
+            referenceLow,
+            referenceHigh,
             flag: nextFlag,
             status: existing.status || "pending_review",
             // Keep first observation time so Bench sort (newest-first) does not thrash on retransmits.
@@ -220,14 +330,15 @@ export class IngestionService {
             accessionNumber,
             barcode,
             analyzerId: input.analyzerId,
-            testCode: catalogCode,
-            orderedTestCode: catalogCode,
+            testCode: identity.testCode,
+            orderedTestCode: identity.orderedTestCode,
+            resultComponentCode: identity.resultComponentCode,
             instrumentTestCode,
-            testName,
+            testName: identity.testName,
             value: r.value,
             units: r.units,
-            referenceLow: r.referenceLow,
-            referenceHigh: r.referenceHigh,
+            referenceLow,
+            referenceHigh,
             flag: nextFlag,
             status: "pending_review",
             observedAt: new Date(),
@@ -320,6 +431,84 @@ export class IngestionService {
       barcode,
       results: createdResults,
     };
+  }
+
+  async listUnidentified() {
+    const rows = await this.prisma.rawMessage.findMany({
+      where: {
+        identificationStatus: "missing_specimen_id",
+        acknowledgedAt: null,
+      },
+      orderBy: { receivedAt: "desc" },
+      take: 50,
+    });
+
+    return rows.map((row) => {
+      let items: UnidentifiedAnalytePreview[] = [];
+      try {
+        const parsed = this.parsePayload(
+          {
+            analyzerId: row.analyzerId,
+            transport: row.transport as IngestInput["transport"],
+            protocol: row.protocol as IngestInput["protocol"],
+            payload: row.payload,
+          },
+          row.payload,
+        );
+        items = unidentifiedPreviewItems(parsed);
+      } catch {
+        /* preview best-effort */
+      }
+      return {
+        id: row.id,
+        analyzerId: row.analyzerId,
+        receivedAt: row.receivedAt.toISOString(),
+        identificationStatus: "missing_specimen_id" as const,
+        items,
+      };
+    });
+  }
+
+  async acknowledgeUnidentified(
+    id: string,
+    actor: ActorSnapshot,
+    reason: UnidentifiedAcknowledgeReason,
+  ) {
+    const row = await this.prisma.rawMessage.findUnique({ where: { id } });
+    if (!row) {
+      throw new NotFoundException(`Unidentified result ${id} not found`);
+    }
+    if (row.identificationStatus !== "missing_specimen_id") {
+      throw new BadRequestException(
+        "This message is not an unidentified result",
+      );
+    }
+    if (row.acknowledgedAt) {
+      return {
+        id,
+        alreadyAcknowledged: true,
+        reason: row.acknowledgedReason,
+      };
+    }
+
+    await this.prisma.rawMessage.update({
+      where: { id },
+      data: {
+        acknowledgedAt: new Date(),
+        acknowledgedBy: JSON.stringify(actor),
+        acknowledgedReason: reason,
+      },
+    });
+
+    await this.audit.log({
+      eventType: "instrument.unidentified_acknowledged",
+      entityType: "raw_message",
+      entityId: id,
+      actor,
+      payload: { reason, analyzerId: row.analyzerId },
+    });
+
+    return { id, acknowledged: true, reason };
   }
 
   /** Map tube barcode (specimen ID) or legacy accession scan to order context. */
@@ -474,4 +663,15 @@ export class IngestionService {
       .replace(/\\r/g, "\r")
       .replace(/\\n/g, "\n");
   }
+}
+
+function unidentifiedPreviewItems(
+  message: ParsedInstrumentMessage,
+): UnidentifiedAnalytePreview[] {
+  return message.analytes.map((a) => ({
+    testCode: a.testCode,
+    value: a.value,
+    units: a.units ?? null,
+    flag: a.flag,
+  }));
 }

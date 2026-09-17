@@ -3,6 +3,8 @@ import {
   getAnalyzerForCatalogCode,
   getCatalogDisplayName,
   getTestResultRequirement,
+  hasInstrumentResultForTest,
+  missingInstrumentTests,
   missingManualResultRequirements,
   normalizeCode,
   type AnalyzerId,
@@ -61,42 +63,7 @@ function toCompletenessResults(
     }));
 }
 
-export function hasInstrumentResultForTest(
-  orderedCode: string,
-  results: Iterable<ReceivedResultForCompleteness>,
-): boolean {
-  const code = normalizeCode(orderedCode);
-  for (const r of results) {
-    if (r.analyzerId === "manual") continue;
-    const testCode = normalizeCode(r.testCode);
-    const orderedTestCode = normalizeCode(r.orderedTestCode || r.testCode);
-    if (testCode === code || orderedTestCode === code) return true;
-  }
-  return false;
-}
-
-export function missingInstrumentTests(
-  orderedCodes: string[],
-  results: Iterable<ReceivedResultForCompleteness>,
-): Array<{ code: string; name: string; analyzerId: AnalyzerId | null }> {
-  const missing: Array<{
-    code: string;
-    name: string;
-    analyzerId: AnalyzerId | null;
-  }> = [];
-  for (const rawCode of orderedCodes) {
-    const requirement = getTestResultRequirement(rawCode);
-    if (!requirement.instrumentRequired) continue;
-    if (hasInstrumentResultForTest(rawCode, results)) continue;
-    const code = normalizeCode(rawCode);
-    missing.push({
-      code,
-      name: getCatalogDisplayName(code),
-      analyzerId: getAnalyzerForCatalogCode(code),
-    });
-  }
-  return missing;
-}
+export { hasInstrumentResultForTest, missingInstrumentTests } from "@drax-lis/catalog";
 
 function manualMissingForTest(
   orderedCode: string,

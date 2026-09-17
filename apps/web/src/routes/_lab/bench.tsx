@@ -68,6 +68,7 @@ import { Tabs, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { findSpecimenByAccession } from "../../lib/label-preview-from-specimen";
 import { cn } from "../../lib/utils";
 import { toggleSelection } from "../../lib/toggle-selection";
+import { UnidentifiedResultsBanner } from "../../components/unidentified-results-banner";
 
 /** Stable group key — unlinked specimens group by accession, not into one bucket. */
 function groupKeyFor(row: BenchResult): string {
@@ -656,6 +657,9 @@ function BenchPage() {
                 value: row.value,
                 referenceLow: row.referenceLow,
                 referenceHigh: row.referenceHigh,
+                orderedTestCode: row.orderedTestCode,
+                resultComponentCode: row.resultComponentCode,
+                testCode: row.testCode,
               }}
             />
             <FlagChip
@@ -663,6 +667,9 @@ function BenchPage() {
               value={row.value}
               referenceLow={row.referenceLow}
               referenceHigh={row.referenceHigh}
+              orderedTestCode={row.orderedTestCode}
+              resultComponentCode={row.resultComponentCode}
+              testCode={row.testCode}
             />
           </span>
           );
@@ -930,6 +937,7 @@ function BenchPage() {
           "max-w-[min(100%,90rem)]",
       )}
     >
+      <UnidentifiedResultsBanner className="shrink-0" />
       {isWorkstation ? (
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
@@ -1005,8 +1013,10 @@ function BenchPage() {
 
       <div
         className={cn(
-          "flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2",
-          isCompactWorkstation && "gap-x-2",
+          "flex shrink-0 items-center gap-x-3 gap-y-2",
+          isCompactWorkstation
+            ? "flex-wrap gap-x-2"
+            : "flex-nowrap justify-between",
         )}
       >
         <Tabs
@@ -1035,22 +1045,27 @@ function BenchPage() {
         </Tabs>
         <div
           className={cn(
-            "flex min-w-[min(100%,22rem)] flex-wrap items-center gap-2",
+            "flex min-w-0 items-center gap-2",
             isCompactWorkstation
-              ? "w-full basis-full"
-              : "min-w-0 flex-1 basis-full justify-end sm:basis-auto",
+              ? "w-full basis-full flex-wrap"
+              : "min-w-[min(100%,22rem)] flex-1 flex-nowrap justify-end",
           )}
         >
           <Input
             value={searchDraft}
             onChange={(e) => setSearchDraft(e.target.value)}
             placeholder="Search accession, specimen ID, patient, test…"
-            className="h-8 w-full min-w-0 text-sm"
+            className={cn(
+              "h-8 min-w-0 text-sm",
+              isCompactWorkstation
+                ? "w-full basis-full"
+                : "max-w-md min-w-[10rem] flex-1",
+            )}
             aria-label="Filter bench results"
           />
           {!showWorkQueue && groupSummaries.size > 0 ? (
             <>
-              <PatientNameOrderSelect className="w-[9.5rem]" />
+              <PatientNameOrderSelect className="w-[9.5rem] shrink-0" />
               {/* A phone has no thead to click, so the sort needs its own
                   control. Hidden from md up, where the header takes over. */}
               <Tabs
@@ -1073,6 +1088,7 @@ function BenchPage() {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 onClick={() => table.toggleAllRowsExpanded(!allExpanded)}
               >
                 {allExpanded ? "Collapse all" : "Expand all"}

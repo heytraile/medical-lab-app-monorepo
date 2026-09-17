@@ -35,6 +35,11 @@ export const ClinicalAuditEventTypeSchema = z.enum([
   "patient.reactivated",
   "identity_review.flagged",
   "identity_review.resolved_distinct",
+  "identity.confirmed",
+  "accession.similar_acknowledged",
+  "result.unexpected_on_order",
+  "instrument.missing_specimen_id",
+  "instrument.unidentified_acknowledged",
   // Edge-first staff auth + device management (see docs/EDGE_AUTH_AND_STAFF.md)
   "staff.created",
   "staff.updated",

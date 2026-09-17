@@ -40,16 +40,16 @@ function localCatalog(): CatalogResponse {
 }
 
 export function useCatalog() {
-  return useQuery({
+  const query = useQuery({
     queryKey: ["catalog"],
-    queryFn: async () => {
-      try {
-        return await api.getCatalog();
-      } catch {
-        return localCatalog();
-      }
-    },
+    queryFn: () => api.getCatalog(),
     staleTime: 60_000,
-    initialData: localCatalog(),
+    placeholderData: localCatalog(),
+    retry: 1,
   });
+  return {
+    ...query,
+    data: query.data ?? localCatalog(),
+    usingOfflineFallback: query.isError,
+  };
 }

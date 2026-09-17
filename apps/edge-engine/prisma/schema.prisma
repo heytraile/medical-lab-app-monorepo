@@ -104,7 +104,7 @@ model Specimen {
   specimenNumber         String?   @unique
   /// Allows multiple physical tubes in the same department later (default 1).
   tubeSequence           Int       @default(1)
-  barcode                String
+  barcode                String    @unique
   /// Requisition category key, e.g. haematology, blood_chemistry.
   departmentKey          String    @default("general")
   departmentLabel        String    @default("General")
@@ -136,7 +136,6 @@ model Specimen {
   @@unique([accessionId, departmentKey, tubeSequence])
   @@index([accessionNumber])
   @@index([specimenNumber])
-  @@index([barcode])
   @@index([patientId])
   @@index([requisitionId])
   @@index([registrationBatchId])
@@ -199,9 +198,16 @@ model RawMessage {
   receivedAt  DateTime @default(now())
   parsedOk    Boolean  @default(false)
   parseError  String?
+  /// matched | missing_specimen_id
+  identificationStatus String @default("matched")
+  acknowledgedAt       DateTime?
+  acknowledgedBy       String?
+  /// rerun_completed | discarded_not_reportable
+  acknowledgedReason   String?
   results     Result[]
 
   @@index([analyzerId, receivedAt])
+  @@index([identificationStatus, acknowledgedAt])
 }
 
 model OutboxEvent {

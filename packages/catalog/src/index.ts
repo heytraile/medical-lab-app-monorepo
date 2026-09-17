@@ -47,6 +47,12 @@ export {
 } from "./label-print-groups";
 
 export {
+  isSimilarOrder,
+  jaccardSimilarity,
+  orderedCodesFromTests,
+} from "./similar-order";
+
+export {
   abbreviateTestCodeForLabel,
   abbreviateTestsForLabel,
 } from "./label-test-abbrev";
@@ -93,7 +99,18 @@ export {
 } from "./manual-entry-schemas";
 
 export {
+  CLINICAL_LIMITS,
+  computeClinicalFlag,
+  getClinicalLimits,
+  limitsKey,
+  resolveClinicalDisplayFlag,
+  type ClinicalFlag,
+  type ClinicalLimits,
+} from "./reference-limits";
+
+export {
   ANALYZER_SIM_ANALYTES,
+  INSTRUMENT_PANELS,
   MANUAL_CATALOG_CODES,
   MANUAL_CATEGORIES,
   PROVISIONAL_HYBRID_REQUIREMENTS,
@@ -101,22 +118,32 @@ export {
   allSimulatorInstrumentCodes,
   analytesForOrder,
   analyzerHasWork,
+  buildInstrumentResultIdentity,
+  catalogUsesInstrumentComponents,
+  getAnalyzersForCatalogCode,
   getAnalyzerForCatalogCode,
   getCatalogDisplayName,
   getCatalogItem,
   getFulfillment,
+  getInstrumentComponentDisplayName,
+  getInstrumentComponentsForCatalog,
+  getInstrumentPanelComponents,
   getTestResultRequirement,
+  hasInstrumentResultForTest,
   instrumentToCatalogCodes,
   isResultExpectedOnOrder,
   manualTestsInOrder,
+  missingInstrumentTests,
   missingManualResultRequirements,
   nonInstrumentTestsInOrder,
+  normalizeInstrumentCode,
   pendingNonInstrumentTests,
   normalizeCode,
   parseOrderedTestCodes,
   pickCatalogCodeForResult,
   type AnalyzerId,
   type Fulfillment,
+  type InstrumentResultComponent,
   type ManualResultComponent,
   type MissingExpectedResult,
   type ReceivedResultForCompleteness,
@@ -125,3 +152,8 @@ export {
   type SimAnalyte,
   type TestResultRequirement,
 } from "./test-fulfillment";
+
+export {
+  isPresentSpecimenId,
+  shouldQuarantineMissingSpecimenId,
+} from "./specimen-id";

@@ -5,8 +5,14 @@ import {
   allSimulatorInstrumentCodes,
   analytesForOrder,
   analyzerHasWork,
+  buildInstrumentResultIdentity,
+  catalogUsesInstrumentComponents,
+  getAnalyzersForCatalogCode,
   getFulfillment,
+  getInstrumentComponentsForCatalog,
+  getInstrumentPanelComponents,
   getTestResultRequirement,
+  hasInstrumentResultForTest,
   instrumentToCatalogCodes,
   missingManualResultRequirements,
   pendingNonInstrumentTests,
@@ -32,6 +38,90 @@ describe("test fulfillment remap", () => {
     ]);
     assert.equal(pick.catalogCode, "ELECTROLYTES");
     assert.equal(pick.expected, true);
+  });
+
+  it("defines ELECTROLYTES as a cross-analyzer panel with bicarbonate", () => {
+    const components = getInstrumentPanelComponents("ELECTROLYTES");
+    assert.deepEqual(
+      components.map((c) => c.code),
+      ["NA", "K", "CL", "CO2"],
+    );
+    assert.equal(catalogUsesInstrumentComponents("ELECTROLYTES"), true);
+
+    const sodium = buildInstrumentResultIdentity(
+      "diamond_prolyte",
+      "ELECTROLYTES",
+      "NA",
+    );
+    assert.equal(sodium.orderedTestCode, "ELECTROLYTES");
+    assert.equal(sodium.resultComponentCode, "NA");
+    assert.equal(sodium.testCode, "ELECTROLYTES:NA");
+    assert.equal(sodium.testName, "ELECTROLYTES — Sodium");
+
+    const bicarb = buildInstrumentResultIdentity(
+      "mindray_bs240",
+      "ELECTROLYTES",
+      "CO2",
+    );
+    assert.equal(bicarb.testCode, "ELECTROLYTES:CO2");
+    assert.equal(bicarb.testName, "ELECTROLYTES — Bicarbonate");
+  });
+
+  it("maps Mindray CO2 and aliases to ELECTROLYTES", () => {
+    const pick = pickCatalogCodeForResult("mindray_bs240", "CO2", [
+      "ELECTROLYTES",
+    ]);
+    assert.equal(pick.catalogCode, "ELECTROLYTES");
+    assert.equal(
+      pickCatalogCodeForResult("mindray_bs240", "HCO3", ["ELECTROLYTES"])
+        .catalogCode,
+      "ELECTROLYTES",
+    );
+    const analyzers = getAnalyzersForCatalogCode("ELECTROLYTES");
+    assert.ok(analyzers.includes("diamond_prolyte"));
+    assert.ok(analyzers.includes("mindray_bs240"));
+  });
+
+  it("does not treat CBC as a multi-component instrument panel", () => {
+    assert.deepEqual(
+      getInstrumentComponentsForCatalog("sysmex_xs1000i", "CBC"),
+      [],
+    );
+    assert.equal(
+      hasInstrumentResultForTest("CBC", [
+        { testCode: "CBC", analyzerId: "sysmex_xs1000i" },
+      ]),
+      true,
+    );
+  });
+
+  it("marks ELECTROLYTES complete when any ion arrives (missing ions do not block)", () => {
+    const partial = [
+      {
+        testCode: "ELECTROLYTES:NA",
+        orderedTestCode: "ELECTROLYTES",
+        resultComponentCode: "NA",
+        analyzerId: "diamond_prolyte",
+      },
+    ];
+    assert.equal(hasInstrumentResultForTest("ELECTROLYTES", partial), true);
+
+    const complete = [
+      ...partial,
+      {
+        testCode: "ELECTROLYTES:K",
+        orderedTestCode: "ELECTROLYTES",
+        resultComponentCode: "K",
+        analyzerId: "diamond_prolyte",
+      },
+      {
+        testCode: "ELECTROLYTES:CL",
+        orderedTestCode: "ELECTROLYTES",
+        resultComponentCode: "CL",
+        analyzerId: "diamond_prolyte",
+      },
+    ];
+    assert.equal(hasInstrumentResultForTest("ELECTROLYTES", complete), true);
   });
 
   it("filters Sysmex analytes for CBC-only order", () => {

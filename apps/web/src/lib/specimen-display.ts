@@ -110,3 +110,28 @@ export function specimenMatchesQuery(
   if (patient?.middleName?.toLowerCase().includes(needle)) return true;
   return false;
 }
+
+export function accessionIntegrityNotes(row: {
+  requisitionId?: string | null;
+  identityConfirmationJson?: string | null;
+}): string[] {
+  const notes: string[] = [];
+  const requisitionId = row.requisitionId?.trim();
+  if (requisitionId) {
+    notes.push(`Registered from cloud order ${requisitionId}`);
+  }
+  if (!row.identityConfirmationJson) return notes;
+  try {
+    const parsed = JSON.parse(row.identityConfirmationJson) as {
+      decision?: string;
+    };
+    if (parsed.decision === "possible_duplicate_acknowledged") {
+      notes.push("Identity confirmation: possible duplicate flagged");
+    } else if (parsed.decision) {
+      notes.push("Identity confirmation recorded");
+    }
+  } catch {
+    notes.push("Identity confirmation recorded");
+  }
+  return notes;
+}

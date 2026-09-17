@@ -1,31 +1,31 @@
 # Medical Lab App Monorepo
 
-Hybrid **Edge–Cloud** Laboratory Information System (LIS).
+A laboratory information system for **Drax Hall Clinical Laboratory** first, built so the same design can serve other labs later.
 
-First deployment: **Drax Hall Clinical Laboratory**. Product direction: the same stack for many labs.
+The barcode on the tube is the spine: every label, machine result, pending copy to the cloud, and signed-off report hangs off that ID. Staff use three names — **MRN** (who), **accession number** (this visit), **specimen ID** (this physical tube).
 
-Barcode / accession number is the spine of the system: every tube, analyzer result, pending sync row, and cloud report hangs off that ID.
+The **lab PC** next to the instruments works with no internet (accession, labels, machines, Bench). The **cloud** is the official copy for authorizer sign-off and reports. Labels print even if the internet is down.
+
+Full plain-English map, including how security works: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Architecture at a glance
 
-| Layer | App / package | Role |
+| Layer | Where | Role |
 | --- | --- | --- |
-| Edge mini PC | `apps/edge-engine` | NestJS **bridge**: serial/TCP ingest, SQLite WAL, outbox push, ZPL, Socket.IO |
-| Cloud API | `apps/api` | NestJS in front of **Supabase** (sync, release, notifications) |
-| Workbench | `apps/web` | TanStack Start UI — Bench Review, Register, Sync, Release queue |
-| Simulators | `apps/simulators` | Fake analyzers + fake Zebra for local testing |
-| Contracts | `packages/contracts` | Zod schemas for specimen, results, sync events |
-| Protocols | `packages/protocols` | ASTM E1381/E1394, MLLP HL7 framing helpers |
+| Lab PC | `apps/edge-engine` | Talks to machines and the printer; local database; staff screens in production |
+| Cloud API | `apps/api` | Receives the lab PC’s copy; release, reports, notifications |
+| Staff screens | `apps/web` | Accession, Bench, Connection, Release — pointed at the lab PC or the cloud |
+| Fake machines | `apps/simulators` | Local testing without real analyzers |
+| Shared rules | `packages/catalog`, `contracts`, `protocols` | Test list, message shapes, machine dialects |
 
 ```
-Analyzers (RS-232 / TCP)
-        │
-        ▼
-  edge-engine (SQLite + outbox)  ──push──►  api → Supabase
-        ▲                                      ▲
-        │                                      │
-   web (edge mode)                      web (cloud mode)
-   Bench Review                         Release queue
+Lab machines
+     │
+     ▼
+Lab PC (save first, print labels, Bench)
+     │  copy when the line is up
+     ▼
+Cloud (authorizer release, doctor reports)
 ```
 
 ## Quick start
@@ -54,12 +54,15 @@ See [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md) for the Supabase workflow, migrations
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system map, Nest↔Nest sync, offline rules
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — whole system in plain English (visit flow, two computers, security)
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — Bench Review, authorizer release, critical STAT alerts
 - [docs/IDENTITY.md](docs/IDENTITY.md) — local patient registry, duplicates, Register confirmation gate
+- [docs/DATA_INTEGRITY.md](docs/DATA_INTEGRITY.md) — accession vs specimen uniqueness, duplicates vs repeats, offline-first
+- [docs/SECURITY.md](docs/SECURITY.md) — vulnerability reporting, dependency audit, CI gates
+- [docs/EDGE_AUTH_AND_STAFF.md](docs/EDGE_AUTH_AND_STAFF.md) — who can log in on the lab PC vs the cloud
 - [docs/GLOSSARY.md](docs/GLOSSARY.md) — acronyms, protocols, and lab test codes (living)
 - [docs/ROADMAP.md](docs/ROADMAP.md) — phased build order
-- [docs/ANALYZERS.md](docs/ANALYZERS.md) — four instruments, ports, protocols
+- [docs/ANALYZERS.md](docs/ANALYZERS.md) — four instruments in English, then protocols
 - [docs/LOCAL_DEV.md](docs/LOCAL_DEV.md) — run the simulated lab on this machine
 
 ## Analyzers

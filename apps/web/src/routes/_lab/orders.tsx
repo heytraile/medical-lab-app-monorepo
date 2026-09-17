@@ -37,6 +37,7 @@ import {
   parseOrderedTests,
   parsePatientJson,
   patientDisplayNameFromJson,
+  accessionIntegrityNotes,
 } from "../../lib/specimen-display";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
 import { useScanInput } from "../../lib/use-barcode-scanner";
@@ -51,6 +52,8 @@ import {
   useShowWorkstationChrome,
 } from "../../lib/use-media-query";
 import { cn } from "../../lib/utils";
+import { useCatalog } from "../../lib/use-catalog";
+import { CatalogOfflineBanner } from "../../components/catalog-offline-banner";
 
 type OrdersSearch = { accession?: string };
 
@@ -68,6 +71,7 @@ function OrdersLookupPage() {
   const navigate = useNavigate();
   const isWorkstation = useIsWorkstation();
   const showWorkstationChrome = useShowWorkstationChrome();
+  const catalogQ = useCatalog();
   const { accession: routeAccession } = Route.useSearch();
   /** Filters the left list only — never tied to the selected row. */
   const [filterQuery, setFilterQuery] = useState("");
@@ -293,6 +297,7 @@ function OrdersLookupPage() {
       >
         <div className="shrink-0 space-y-3">
           {searchForm}
+          {catalogQ.usingOfflineFallback ? <CatalogOfflineBanner /> : null}
           <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {debouncedFilter.trim() ? "Matching accessions" : "Recent accessions"}
           </p>
@@ -368,11 +373,7 @@ function OrdersLookupDetail({
   const trimmed = accessionNumber.trim();
   const isWideDetail = useIsWorkstation();
 
-  const catalogQ = useQuery({
-    queryKey: ["catalog"],
-    queryFn: () => api.getCatalog(),
-    staleTime: 60_000,
-  });
+  const catalogQ = useCatalog();
 
   const cloudSpecimenQ = useQuery({
     queryKey: ["cloud-specimen", trimmed],
@@ -422,9 +423,9 @@ function OrdersLookupDetail({
 
   const isLoading =
     Boolean(trimmed) &&
-    (cloudSpecimenQ.isLoading ||
-      cloudRequisitionQ.isLoading ||
-      edgeSpecimenQ.isLoading);
+    tests.length === 0 &&
+    edgeSpecimenQ.isLoading &&
+    !session;
 
   const row = session?.primary;
   const patient = parsePatientJson(row?.patientJson ?? null);
@@ -609,6 +610,19 @@ function OrdersLookupDetail({
             specimens={containerRows}
             results={[]}
           />
+
+          {row && accessionIntegrityNotes(row).length > 0 ? (
+            <section className="space-y-1 text-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Integrity
+              </p>
+              <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+                {accessionIntegrityNotes(row).map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           {panels.length > 0 ? (
             <section>

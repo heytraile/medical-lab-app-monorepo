@@ -98,9 +98,18 @@ export class ProlyteNetworkIngestionDriver
         const parsed = parseProlyteNetworkLis(body);
 
         if (!parsed.analytes.length && !parsed.barcode) {
-          this.logger.debug(
-            `ProLyte network POST ignored (calibration/empty): ${raw.slice(0, 200)}`,
-          );
+          const skippedType = parsed.rawRecords
+            .find((r) => r.startsWith("sampleType:"))
+            ?.slice("sampleType:".length);
+          if (skippedType) {
+            this.logger.warn(
+              `ProLyte network POST ignored — sampleType ${skippedType} is QC/calibration (not patient). Run as Serum (02) or Whole Blood (10) to see results on Bench. Raw pId may still be in payload.`,
+            );
+          } else {
+            this.logger.debug(
+              `ProLyte network POST ignored (empty/calibration): ${raw.slice(0, 200)}`,
+            );
+          }
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ ok: true, ignored: true }));
           this.status.markDisconnect(ANALYZER_ID);

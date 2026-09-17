@@ -300,6 +300,8 @@ export const RegisterSpecimensBatchRequestSchema = z.object({
   specimens: z.array(RegisterSpecimensBatchItemSchema).min(1),
   /** Effective label routing for consolidated routing text on edge print. */
   labelRouting: LabRoutingSettingsSchema.optional(),
+  /** Staff confirmed a similar recent accession for this patient. */
+  acknowledgeSimilarAccession: z.boolean().optional(),
 });
 export type RegisterSpecimensBatchRequest = z.infer<
   typeof RegisterSpecimensBatchRequestSchema

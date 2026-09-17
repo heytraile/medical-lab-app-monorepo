@@ -25,9 +25,10 @@ import {
   scheduleSocketConnect,
   teardownSocket,
 } from "./socket-lifecycle";
+import { formatUnidentifiedResultBody } from "./unidentified-results";
 
 export type NotificationSeverity = "critical" | "alarm" | "info";
-export type NotificationType = "result" | "specimen" | "review";
+export type NotificationType = "result" | "specimen" | "review" | "unidentified";
 
 /**
  * `local` items come from the analyzer socket and live in localStorage.
@@ -51,6 +52,7 @@ export type AppNotification = {
   flag?: string;
   reviewRequestId?: string;
   canAcknowledge?: boolean;
+  rawMessageId?: string;
 };
 
 const STORAGE_KEY = "lis-notifications";
@@ -162,6 +164,26 @@ function notificationFromSpecimen(
   };
 }
 
+function notificationFromUnidentified(
+  event: Extract<BenchEvent, { type: "results.unidentified" }>,
+): AppNotification {
+  return {
+    id: `${event.at}-unidentified-${event.rawMessageId}`,
+    type: "unidentified",
+    source: "local",
+    severity: "critical",
+    title: "Result missing specimen ID",
+    body: formatUnidentifiedResultBody({
+      analyzerLabel: analyzerLabel(String(event.analyzerId)),
+      items: event.items,
+    }),
+    at: event.at,
+    read: false,
+    analyzerId: String(event.analyzerId),
+    rawMessageId: event.rawMessageId,
+  };
+}
+
 function pushFromBenchEvent(
   prev: AppNotification[],
   event: BenchEvent,
@@ -171,6 +193,8 @@ function pushFromBenchEvent(
     incoming = notificationsFromIngest(event);
   } else if (event.type === "specimen.registered") {
     incoming = [notificationFromSpecimen(event)];
+  } else if (event.type === "results.unidentified") {
+    incoming = [notificationFromUnidentified(event)];
   }
 
   if (!incoming.length) return { items: prev, toasts: [] };
@@ -247,6 +271,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       void queryClient.invalidateQueries({ queryKey: ["specimens"] });
       void queryClient.invalidateQueries({ queryKey: ["syncStatus"] });
       void queryClient.invalidateQueries({ queryKey: ["analyzers-status"] });
+      void queryClient.invalidateQueries({ queryKey: ["unidentified-results"] });
     },
     [queryClient],
   );

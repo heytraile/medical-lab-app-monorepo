@@ -26,6 +26,36 @@ export type ManualResultComponent = {
   name: string;
 };
 
+export type InstrumentResultComponent = {
+  code: string;
+  name: string;
+};
+
+/** Display names for instrument panel sub-results (e.g. ProLyte ions). */
+const INSTRUMENT_COMPONENT_DISPLAY: Record<string, string> = {
+  NA: "Sodium",
+  K: "Potassium",
+  CL: "Chloride",
+  LI: "Lithium",
+  CO2: "Bicarbonate",
+};
+
+/** Cross-analyzer instrument panels (ordered catalog code → components). */
+export const INSTRUMENT_PANELS: Record<string, InstrumentResultComponent[]> = {
+  ELECTROLYTES: [
+    { code: "NA", name: "Sodium" },
+    { code: "K", name: "Potassium" },
+    { code: "CL", name: "Chloride" },
+    { code: "CO2", name: "Bicarbonate" },
+  ],
+};
+
+/** Normalize instrument codes from different analyzers to panel component codes. */
+const INSTRUMENT_CODE_ALIASES: Record<string, string> = {
+  TCO2: "CO2",
+  HCO3: "CO2",
+};
+
 export type TestResultRequirement = {
   orderedTestCode: string;
   workflow: ResultWorkflow;
@@ -307,6 +337,15 @@ export const ANALYZER_SIM_ANALYTES: Record<AnalyzerId, SimAnalyte[]> = {
       referenceHigh: 200,
       flag: "normal",
     },
+    {
+      instrumentCode: "CO2",
+      catalogCodes: ["ELECTROLYTES"],
+      value: "24",
+      units: "mmol/L",
+      referenceLow: 22,
+      referenceHigh: 29,
+      flag: "normal",
+    },
   ],
   diamond_prolyte: [
     {
@@ -424,6 +463,7 @@ const catalogByCode = buildCatalogMaps(DHMS_CATALOG_ITEMS);
 
 const instrumentCatalogCodes = new Set<string>();
 const catalogToAnalyzer = new Map<string, AnalyzerId>();
+const catalogToAnalyzers = new Map<string, AnalyzerId[]>();
 
 for (const [analyzerId, analytes] of Object.entries(ANALYZER_SIM_ANALYTES) as [
   AnalyzerId,
@@ -436,6 +476,11 @@ for (const [analyzerId, analytes] of Object.entries(ANALYZER_SIM_ANALYTES) as [
       if (!catalogToAnalyzer.has(key)) {
         catalogToAnalyzer.set(key, analyzerId);
       }
+      const list = catalogToAnalyzers.get(key) ?? [];
+      if (!list.includes(analyzerId)) {
+        list.push(analyzerId);
+        catalogToAnalyzers.set(key, list);
+      }
     }
   }
 }
@@ -447,7 +492,16 @@ for (const [analyzerId, analytes] of Object.entries(ANALYZER_SIM_ANALYTES) as [
 ][]) {
   for (const analyte of analytes) {
     instrumentLookup.set(`${analyzerId}:${analyte.instrumentCode}`, analyte);
+    if (analyte.instrumentCode === "CO2") {
+      instrumentLookup.set(`${analyzerId}:TCO2`, analyte);
+      instrumentLookup.set(`${analyzerId}:HCO3`, analyte);
+    }
   }
+}
+
+export function normalizeInstrumentCode(code: string): string {
+  const key = normalizeCode(code);
+  return INSTRUMENT_CODE_ALIASES[key] ?? key;
 }
 
 export function getCatalogItem(code: string): CatalogItemSeed | undefined {
@@ -563,14 +617,23 @@ export function getAnalyzerForCatalogCode(
   return catalogToAnalyzer.get(normalizeCode(catalogCode)) ?? null;
 }
 
+export function getAnalyzersForCatalogCode(
+  catalogCode: string,
+): AnalyzerId[] {
+  return catalogToAnalyzers.get(normalizeCode(catalogCode)) ?? [];
+}
+
 export function instrumentToCatalogCodes(
   analyzerId: AnalyzerId,
   instrumentCode: string,
 ): string[] {
-  const analyte = instrumentLookup.get(
-    `${analyzerId}:${instrumentCode.toUpperCase()}`,
-  );
+  const canonical = normalizeInstrumentCode(instrumentCode);
+  const analyte = instrumentLookup.get(`${analyzerId}:${canonical}`);
   return analyte?.catalogCodes.map(normalizeCode) ?? [];
+}
+
+export function catalogUsesInstrumentComponents(catalogCode: string): boolean {
+  return getInstrumentPanelComponents(catalogCode).length > 0;
 }
 
 export function pickCatalogCodeForResult(
@@ -681,4 +744,153 @@ export function allSimulatorInstrumentCodes(): string[] {
     }
   }
   return [...codes];
+}
+
+export function getInstrumentComponentDisplayName(code: string): string {
+  return INSTRUMENT_COMPONENT_DISPLAY[normalizeCode(code)] ?? code;
+}
+
+/** Explicit cross-analyzer panels (e.g. ELECTROLYTES = Na/K/Cl + CO2). */
+export function getInstrumentPanelComponents(
+  catalogCode: string,
+): InstrumentResultComponent[] {
+  const panel = INSTRUMENT_PANELS[normalizeCode(catalogCode)];
+  return panel ? [...panel] : [];
+}
+
+/**
+ * When multiple instrument analytes map exclusively to one catalog on a single
+ * analyzer (legacy inference). Prefer {@link getInstrumentPanelComponents}.
+ */
+export function getInstrumentComponentsForCatalog(
+  analyzerId: AnalyzerId | null,
+  catalogCode: string,
+): InstrumentResultComponent[] {
+  const panel = getInstrumentPanelComponents(catalogCode);
+  if (panel.length > 0) return panel;
+  if (!analyzerId) return [];
+  const code = normalizeCode(catalogCode);
+  const exclusive = ANALYZER_SIM_ANALYTES[analyzerId].filter((analyte) => {
+    const codes = analyte.catalogCodes.map(normalizeCode);
+    return codes.length === 1 && codes[0] === code;
+  });
+  if (exclusive.length <= 1) return [];
+  return exclusive.map((analyte) => ({
+    code: analyte.instrumentCode,
+    name: getInstrumentComponentDisplayName(analyte.instrumentCode),
+  }));
+}
+
+export function buildInstrumentResultIdentity(
+  analyzerId: AnalyzerId,
+  catalogCode: string,
+  instrumentTestCode: string,
+): {
+  orderedTestCode: string;
+  resultComponentCode: string | null;
+  testCode: string;
+  testName: string;
+} {
+  const code = normalizeCode(catalogCode);
+  const panel = getInstrumentPanelComponents(code);
+  const displayName = getCatalogDisplayName(code);
+  const instCode = normalizeInstrumentCode(instrumentTestCode);
+
+  if (panel.length > 0) {
+    const component =
+      panel.find((item) => normalizeCode(item.code) === instCode) ??
+      ({
+        code: instCode,
+        name: getInstrumentComponentDisplayName(instCode),
+      } satisfies InstrumentResultComponent);
+    return {
+      orderedTestCode: code,
+      resultComponentCode: component.code,
+      testCode: `${code}:${component.code}`,
+      testName: `${displayName} — ${component.name}`,
+    };
+  }
+
+  const components = getInstrumentComponentsForCatalog(analyzerId, code);
+  if (components.length === 0) {
+    return {
+      orderedTestCode: code,
+      resultComponentCode: null,
+      testCode: code,
+      testName: displayName,
+    };
+  }
+
+  const componentName = getInstrumentComponentDisplayName(instCode);
+  return {
+    orderedTestCode: code,
+    resultComponentCode: instCode,
+    testCode: `${code}:${instCode}`,
+    testName: `${displayName} — ${componentName}`,
+  };
+}
+
+export function hasInstrumentResultForTest(
+  orderedCode: string,
+  results: Iterable<ReceivedResultForCompleteness>,
+): boolean {
+  const code = normalizeCode(orderedCode);
+  const components = getInstrumentPanelComponents(code);
+  const legacyComponents =
+    components.length > 0
+      ? components
+      : getInstrumentComponentsForCatalog(getAnalyzerForCatalogCode(code), code);
+  const panelComponents = legacyComponents;
+  const instrumentResults = [...results].filter(
+    (r) => r.analyzerId !== "manual",
+  );
+
+  if (panelComponents.length === 0) {
+    for (const r of instrumentResults) {
+      const testCode = normalizeCode(r.testCode);
+      const orderedTestCode = normalizeCode(r.orderedTestCode || r.testCode);
+      if (testCode === code || orderedTestCode === code) return true;
+    }
+    return false;
+  }
+
+  // Multi-component panels: any received component satisfies completeness.
+  return instrumentResults.some((r) => {
+    const orderedTestCode = normalizeCode(r.orderedTestCode || r.testCode);
+    const testCode = normalizeCode(r.testCode);
+    if (orderedTestCode !== code && testCode !== code && !testCode.startsWith(`${code}:`)) {
+      return false;
+    }
+    if (testCode === code) return true;
+    if (testCode.startsWith(`${code}:`)) return true;
+    if (r.resultComponentCode) {
+      return panelComponents.some(
+        (c) => normalizeCode(c.code) === normalizeCode(r.resultComponentCode!),
+      );
+    }
+    return false;
+  });
+}
+
+export function missingInstrumentTests(
+  orderedCodes: string[],
+  results: Iterable<ReceivedResultForCompleteness>,
+): Array<{ code: string; name: string; analyzerId: AnalyzerId | null }> {
+  const missing: Array<{
+    code: string;
+    name: string;
+    analyzerId: AnalyzerId | null;
+  }> = [];
+  for (const rawCode of orderedCodes) {
+    const requirement = getTestResultRequirement(rawCode);
+    if (!requirement.instrumentRequired) continue;
+    if (hasInstrumentResultForTest(rawCode, results)) continue;
+    const code = normalizeCode(rawCode);
+    missing.push({
+      code,
+      name: getCatalogDisplayName(code),
+      analyzerId: getAnalyzerForCatalogCode(code),
+    });
+  }
+  return missing;
 }

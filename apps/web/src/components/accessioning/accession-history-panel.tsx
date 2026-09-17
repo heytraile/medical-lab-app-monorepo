@@ -2,6 +2,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useMutation, useQueries, useQuery } from "@tanstack/react-query";
 import { api, type SpecimenRow } from "../../lib/api";
+import { useCatalog } from "../../lib/use-catalog";
 import {
   findSessionByAccession,
   groupSpecimensIntoSessions,
@@ -15,6 +16,7 @@ import {
   parseOrderedTests,
   parsePatientJson,
   patientDisplayNameFromJson,
+  accessionIntegrityNotes,
 } from "../../lib/specimen-display";
 import {
   useIsCompactWorkstation,
@@ -104,11 +106,7 @@ export function AccessionHistoryPanel({
     queryKey: ["specimens", deferredQuery.trim()],
     queryFn: () => api.specimens(deferredQuery.trim() || undefined),
   });
-  const catalogQ = useQuery({
-    queryKey: ["catalog"],
-    queryFn: () => api.getCatalog(),
-    staleTime: 60_000,
-  });
+  const catalogQ = useCatalog();
 
   const rows = specimensQ.data ?? [];
   const baseSessions = useMemo(() => groupSpecimensIntoSessions(rows), [rows]);
@@ -477,6 +475,19 @@ function AccessionHistoryDetail({
             specimens={session.tubes}
             results={[]}
           />
+
+          {accessionIntegrityNotes(row).length > 0 ? (
+            <section className="space-y-1 text-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Integrity
+              </p>
+              <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+                {accessionIntegrityNotes(row).map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           {panels.length > 0 ? (
             <section>

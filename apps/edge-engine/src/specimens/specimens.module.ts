@@ -7,6 +7,7 @@ import { SyncModule } from "../sync/sync.module";
 import { RealtimeModule } from "../realtime/realtime.module";
 import { AuthModule } from "../auth/auth.module";
 import { PatientsModule } from "../patients/patients.module";
+import { AuditModule } from "../audit/audit.module";
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { PatientsModule } from "../patients/patients.module";
     RealtimeModule,
     AuthModule,
     PatientsModule,
+    AuditModule,
   ],
   controllers: [SpecimensController],
   providers: [SpecimensService, SpecimenBackfillService],

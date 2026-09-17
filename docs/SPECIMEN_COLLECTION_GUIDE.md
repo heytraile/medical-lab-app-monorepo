@@ -277,6 +277,19 @@ End-to-end path (same in dev and production):
 
 **Golden rule:** The ID in the machine message must match **either** the **specimen ID** or **accession number** we registered. Otherwise the result is orphaned.
 
+### Missing specimen ID on instrument
+
+If a tech runs a sample **without scanning or entering the specimen ID** (common on ProLyte when there is no scanner), the machine still sends values. The LIS **keeps the raw message** and raises a **critical Bench alert**. It does **not** create a patient result.
+
+**Do this:**
+
+1. **Re-run on the instrument** with the department-label ID scanned or typed (default).
+2. If the sample **cannot** be re-run (volume gone, cup discarded): **do not** assign the values in the LIS. Acknowledge as **Discarded — not reportable**. If the test is still needed, **new draw / new accession**.
+
+**Do not:** pick an accession on Bench to attach the run, type an ID from a label into the LIS, or copy values into manual entry.
+
+Full analyzer notes: [ANALYZERS.md](./ANALYZERS.md).
+
 Full remap table and examples: [MACHINE_TO_REQUEST_FORM.md](./MACHINE_TO_REQUEST_FORM.md).  
 Instrument ports and protocols: [ANALYZERS.md](./ANALYZERS.md).
 

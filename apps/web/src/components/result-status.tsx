@@ -13,6 +13,10 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { resolveDisplayFlag } from "@drax-lis/contracts";
+import {
+  getClinicalLimits,
+  resolveClinicalDisplayFlag,
+} from "@drax-lis/catalog";
 import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
 
@@ -22,7 +26,26 @@ export type ResultFlagContext = {
   value?: string | null;
   referenceLow?: number | null;
   referenceHigh?: number | null;
+  orderedTestCode?: string | null;
+  resultComponentCode?: string | null;
+  testCode?: string | null;
 };
+
+function limitsContextFromRow(ctx?: ResultFlagContext): {
+  orderedTestCode?: string;
+  resultComponentCode?: string;
+} {
+  const ordered =
+    ctx?.orderedTestCode?.trim() ||
+    ctx?.testCode?.split(":")[0]?.trim() ||
+    undefined;
+  const component =
+    ctx?.resultComponentCode?.trim() ||
+    (ctx?.testCode?.includes(":")
+      ? ctx.testCode.split(":")[1]?.trim()
+      : undefined);
+  return { orderedTestCode: ordered, resultComponentCode: component };
+}
 
 type FlagVisual = {
   variant: BadgeVariant;
@@ -34,6 +57,18 @@ function effectiveFlag(
   flag: string | null | undefined,
   ctx?: ResultFlagContext,
 ): string {
+  const { orderedTestCode, resultComponentCode } = limitsContextFromRow(ctx);
+  if (
+    orderedTestCode &&
+    getClinicalLimits(orderedTestCode, resultComponentCode)
+  ) {
+    return resolveClinicalDisplayFlag(
+      flag,
+      ctx?.value ?? undefined,
+      orderedTestCode,
+      resultComponentCode,
+    );
+  }
   return resolveDisplayFlag(
     flag,
     ctx?.value ?? undefined,
@@ -365,15 +400,28 @@ export function FlagChip({
   value,
   referenceLow,
   referenceHigh,
+  orderedTestCode,
+  resultComponentCode,
+  testCode,
   className,
 }: {
   flag: string | null | undefined;
   value?: string | null;
   referenceLow?: number | null;
   referenceHigh?: number | null;
+  orderedTestCode?: string | null;
+  resultComponentCode?: string | null;
+  testCode?: string | null;
   className?: string;
 }) {
-  const ctx = { value, referenceLow, referenceHigh };
+  const ctx = {
+    value,
+    referenceLow,
+    referenceHigh,
+    orderedTestCode,
+    resultComponentCode,
+    testCode,
+  };
   const resolved = effectiveFlag(flag, ctx);
   const { variant, icon: Icon, label } = flagVisual(resolved);
   const alarm = isAlarmFlag(resolved);

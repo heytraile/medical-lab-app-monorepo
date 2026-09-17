@@ -15,6 +15,7 @@ import {
   labelPrintGroupsFromSpecimenRows,
 } from "../../lib/label-print-preview";
 import { useCatalog } from "../../lib/use-catalog";
+import { CatalogOfflineBanner } from "../../components/catalog-offline-banner";
 import { useScanInput } from "../../lib/use-barcode-scanner";
 import { AccessioningShell } from "../../components/accessioning/accessioning-shell";
 import {
@@ -574,7 +575,10 @@ function LabelsPage() {
             !isWorkstation && "space-y-4",
           )}
         >
-          <div className="shrink-0 space-y-4">{leftPanelControls}</div>
+          <div className="shrink-0 space-y-4">
+            {catalogQ.usingOfflineFallback ? <CatalogOfflineBanner /> : null}
+            {leftPanelControls}
+          </div>
           <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             <p className="mb-2 shrink-0 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {debouncedFilter.trim()

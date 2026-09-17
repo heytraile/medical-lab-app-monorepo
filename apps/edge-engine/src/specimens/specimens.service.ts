@@ -16,10 +16,13 @@ import { PatientsService } from "../patients/patients.service";
 import {
   DRAX_HALL_ROUTING_POLICY,
   groupSpecimensForLabelPrint,
+  isSimilarOrder,
+  orderedCodesFromTests,
   resolveRoutingForScope,
   type LabRoutingSettings,
 } from "@drax-lis/catalog";
 import { formatSpecimenNumber } from "./specimen-number";
+import { AuditService } from "../audit/audit.service";
 
 type IdentityConfirmation = {
   decision: "distinct_people" | "possible_duplicate_acknowledged";
@@ -51,6 +54,7 @@ type RegisterInput = {
   copies?: number;
   specimenType?: string;
   collectedAt?: string;
+  acknowledgeSimilarAccession?: boolean;
 } & CollectorInput;
 
 type BatchRegisterInput = {
@@ -61,6 +65,7 @@ type BatchRegisterInput = {
   copies?: number;
   collectedAt?: string;
   selections?: OrderSelectionInput[];
+  acknowledgeSimilarAccession?: boolean;
   specimens: Array<{
     departmentKey?: string;
     departmentLabel?: string;
@@ -109,6 +114,7 @@ export class SpecimensService {
     private readonly sync: SyncService,
     private readonly realtime: RealtimeGateway,
     private readonly patients: PatientsService,
+    private readonly audit: AuditService,
   ) {}
 
   list(opts?: { q?: string }) {
@@ -448,17 +454,25 @@ export class SpecimensService {
     const resolved = await this.resolveRegistration(input);
     const orderedTests = input.orderedTests ?? [];
     const collectionType = input.specimenType?.trim() || "blood";
+    await this.assertRequisitionUnused(input.requisitionId);
+    await this.assertNoSimilarAccession({
+      patientId: resolved.patient.id,
+      orderedTests,
+      acknowledge: input.acknowledgeSimilarAccession,
+      actor,
+    });
 
-    const accessionNumber =
-      input.accessionNumber ?? (await this.nextAccessionNumber());
-    const specimenNumber = formatSpecimenNumber(accessionNumber, 1);
-    const barcode = input.barcode ?? specimenNumber;
+    this.assertAccessionNumberAllowed(input.accessionNumber);
     const registrationBatchId = randomUUID();
     const collectedBySnapshot = this.collectorSnapshot(input);
     const orderedSelections = this.normalizeSelections(input.selections);
 
-    const { accession, specimen } = await this.prisma.$transaction(
-      async (tx) => {
+    const { accession, specimen, accessionNumber, barcode } =
+      await this.prisma.$transaction(async (tx) => {
+        const accessionNumber =
+          input.accessionNumber ?? (await this.nextAccessionNumber(tx));
+        const specimenNumber = formatSpecimenNumber(accessionNumber, 1);
+        const barcode = input.barcode ?? specimenNumber;
         const accession = await tx.accession.create({
           data: this.accessionCreateData({
             accessionNumber,
@@ -497,9 +511,8 @@ export class SpecimensService {
             actor,
           }),
         });
-        return { accession, specimen };
-      },
-    );
+        return { accession, specimen, accessionNumber, barcode };
+      });
 
     const { labelPreview, printResult } = await this.finalizeContainer({
       accession,
@@ -530,6 +543,11 @@ export class SpecimensService {
       ],
     });
 
+    await this.logIdentityDecision(
+      resolved,
+      accessionNumber,
+      actor,
+    );
     await this.maybeQueueIdentityReview(resolved, accessionNumber, actor);
 
     return { specimen, printResult, labelPreview };
@@ -552,6 +570,13 @@ export class SpecimensService {
     const allOrderedTests = this.mergeOrderedTests(
       input.specimens.map((g) => g.orderedTests ?? []),
     );
+    await this.assertRequisitionUnused(input.requisitionId);
+    await this.assertNoSimilarAccession({
+      patientId: resolved.patient.id,
+      orderedTests: allOrderedTests,
+      acknowledge: input.acknowledgeSimilarAccession,
+      actor,
+    });
 
     const created = await this.prisma.$transaction(async (tx) => {
       const accessionNumber = await this.nextAccessionNumber(tx);
@@ -706,6 +731,11 @@ export class SpecimensService {
       }
     }
 
+    await this.logIdentityDecision(
+      resolved,
+      created.accessionNumber,
+      actor,
+    );
     await this.maybeQueueIdentityReview(
       resolved,
       created.accessionNumber,
@@ -940,6 +970,31 @@ export class SpecimensService {
     };
   }
 
+  private async logIdentityDecision(
+    resolved: ResolvedRegistration,
+    accessionNumber: string,
+    actor: ActorSnapshot | null,
+  ) {
+    if (!resolved.identityConfirmationJson) return;
+    const decision = JSON.parse(resolved.identityConfirmationJson) as unknown;
+    await this.audit.log({
+      eventType: "identity.confirmed",
+      entityType: "accession",
+      entityId: accessionNumber,
+      actor,
+      payload: { decision },
+    });
+    if (resolved.queuePossibleDuplicate) {
+      await this.audit.log({
+        eventType: "identity_review.flagged",
+        entityType: "accession",
+        entityId: accessionNumber,
+        actor,
+        payload: { decision },
+      });
+    }
+  }
+
   private async maybeQueueIdentityReview(
     resolved: ResolvedRegistration,
     accessionNumber: string,
@@ -1113,5 +1168,94 @@ export class SpecimensService {
     }
 
     return `DH${day}${String(seq).padStart(4, "0")}`;
+  }
+
+  private assertAccessionNumberAllowed(requested?: string) {
+    if (!requested?.trim()) return;
+    const hardened =
+      process.env.EDGE_HARDENING === "true" ||
+      process.env.NODE_ENV === "production";
+    const allowOverride = process.env.EDGE_ALLOW_ACCESSION_OVERRIDE === "true";
+    if (hardened && !allowOverride) {
+      throw new BadRequestException(
+        "Caller-supplied accession numbers are not allowed in production",
+      );
+    }
+  }
+
+  private async assertRequisitionUnused(requisitionId?: string) {
+    const id = requisitionId?.trim();
+    if (!id) return;
+    const existing = await this.prisma.accession.findFirst({
+      where: { requisitionId: id },
+      select: { accessionNumber: true },
+    });
+    if (existing) {
+      throw new ConflictException({
+        statusCode: 409,
+        error: "REQUISITION_ALREADY_LINKED",
+        message: `This order is already accessioned as ${existing.accessionNumber}`,
+        accessionNumber: existing.accessionNumber,
+      });
+    }
+  }
+
+  private async assertNoSimilarAccession(opts: {
+    patientId: string;
+    orderedTests: Array<{ code: string; name?: string }>;
+    acknowledge?: boolean;
+    actor: ActorSnapshot | null;
+  }) {
+    const incoming = orderedCodesFromTests(opts.orderedTests);
+    if (incoming.length === 0) return;
+
+    const hours = Number(process.env.SIMILAR_ACCESSION_WINDOW_HOURS ?? "48");
+    const since = new Date(Date.now() - Math.max(1, hours) * 60 * 60 * 1000);
+    const recent = await this.prisma.accession.findMany({
+      where: {
+        patientId: opts.patientId,
+        registeredAt: { gte: since },
+      },
+      select: { accessionNumber: true, orderedTestsJson: true, registeredAt: true },
+      orderBy: { registeredAt: "desc" },
+      take: 20,
+    });
+
+    const matches = recent.filter((row) => {
+      let codes: string[] = [];
+      try {
+        const parsed = JSON.parse(row.orderedTestsJson || "[]") as Array<{
+          code?: string;
+        }>;
+        codes = orderedCodesFromTests(parsed);
+      } catch {
+        codes = [];
+      }
+      return isSimilarOrder(incoming, codes);
+    });
+    if (!matches.length) return;
+
+    if (opts.acknowledge) {
+      await this.audit.log({
+        eventType: "accession.similar_acknowledged",
+        entityType: "patient",
+        entityId: opts.patientId,
+        actor: opts.actor,
+        payload: {
+          similarAccessions: matches.map((m) => m.accessionNumber),
+        },
+      });
+      return;
+    }
+
+    throw new ConflictException({
+      statusCode: 409,
+      error: "SIMILAR_ACCESSION_EXISTS",
+      message: `A similar accession was registered recently (${matches[0]!.accessionNumber}). Continue only if this is a new visit.`,
+      accessions: matches.map((m) => ({
+        accessionNumber: m.accessionNumber,
+        registeredAt: m.registeredAt.toISOString(),
+      })),
+    });
   }
 }

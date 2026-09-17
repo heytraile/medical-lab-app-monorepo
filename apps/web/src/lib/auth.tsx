@@ -21,9 +21,7 @@ import {
 import {
   setAuthInvalidatedHandler,
   setCloudAuthRefreshProvider,
-  setCloudAuthTokenProvider,
   setEdgeAuthRefreshProvider,
-  setEdgeAuthTokenProvider,
   type AuthInvalidationScope,
   api,
 } from "./api";
@@ -33,9 +31,19 @@ import {
   storeDevice,
   type StoredDevice,
 } from "./device";
+import {
+  DEV_TOKEN_KEY,
+  EDGE_TOKEN_KEY,
+  readDevRoleFromStorage,
+  readEdgeSessionFromStorage,
+  readStoredAccessTokenFromStorage,
+  type EdgeSession,
+} from "./auth-storage";
 
 type AuthState = {
   ready: boolean;
+  /** True after client localStorage hydration (SSR-safe). */
+  hydrated: boolean;
   session: Session | null;
   profile: Profile | null;
   role: ProfileRole | null;
@@ -64,37 +72,11 @@ type AuthState = {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-const DEV_TOKEN_KEY = "lis-dev-role";
-const EDGE_TOKEN_KEY = "lis-edge-token";
-
 /** Sync read for route guards — React context may not be hydrated yet. */
 export function readStoredAccessToken(): string | null {
   if (typeof window === "undefined") return null;
-  if (isCloudMode) {
-    const dev = localStorage.getItem(DEV_TOKEN_KEY);
-    if (dev === "tech" || dev === "authorizer" || dev === "admin") {
-      return `dev:${dev}`;
-    }
-    return null;
-  }
-  const raw = localStorage.getItem(EDGE_TOKEN_KEY);
-  if (!raw) return null;
-  try {
-    return (JSON.parse(raw) as EdgeSession).accessToken;
-  } catch {
-    return null;
-  }
+  return readStoredAccessTokenFromStorage(isCloudMode);
 }
-
-type EdgeSession = {
-  accessToken: string;
-  user: {
-    id: string;
-    email: string;
-    fullName: string;
-    role: ProfileRole;
-  };
-};
 
 function profileFromEdgeUser(user: EdgeSession["user"]): Profile {
   return {
@@ -105,10 +87,35 @@ function profileFromEdgeUser(user: EdgeSession["user"]): Profile {
   };
 }
 
-async function validateSupabaseSession(session: Session): Promise<boolean> {
-  if (!supabase) return false;
+function devProfile(role: ProfileRole): Profile {
+  return {
+    id: `dev-${role}`,
+    email: `${role}@local.dev`,
+    role,
+    full_name: `Dev ${role}`,
+  };
+}
+
+type SessionValidation = "valid" | "invalid" | "unknown";
+
+async function validateSupabaseSession(
+  session: Session,
+): Promise<SessionValidation> {
+  if (!supabase) return "invalid";
   const { data, error } = await supabase.auth.getUser(session.access_token);
-  return !error && Boolean(data.user);
+  if (error) {
+    const msg = error.message.toLowerCase();
+    if (
+      msg.includes("fetch") ||
+      msg.includes("network") ||
+      msg.includes("timeout") ||
+      msg.includes("failed")
+    ) {
+      return "unknown";
+    }
+    return "invalid";
+  }
+  return data.user ? "valid" : "invalid";
 }
 
 export function authDisplayName(input: {
@@ -128,57 +135,46 @@ export function authDisplayName(input: {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  // --- Edge mode: offline-capable login against this lab's own edge API ---
-  const [edgeSession, setEdgeSession] = useState<EdgeSession | null>(() => {
-    if (typeof window === "undefined" || isCloudMode) return null;
-    const raw = localStorage.getItem(EDGE_TOKEN_KEY);
-    if (!raw) return null;
-    try {
-      return JSON.parse(raw) as EdgeSession;
-    } catch {
-      return null;
-    }
-  });
-
-  // --- Cloud mode: Supabase Auth (admin/authorizer only) ---
-  const [ready, setReady] = useState(!isCloudMode || !supabaseConfigured);
+  const [hydrated, setHydrated] = useState(false);
+  const [supabaseReady, setSupabaseReady] = useState(
+    () => !supabaseConfigured || !supabase,
+  );
+  const [edgeSession, setEdgeSession] = useState<EdgeSession | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [devRole, setDevRole] = useState<ProfileRole | null>(() => {
-    if (typeof window === "undefined") return null;
-    const saved = localStorage.getItem(DEV_TOKEN_KEY);
-    if (saved === "tech" || saved === "authorizer" || saved === "admin") {
-      return saved;
-    }
-    return null;
-  });
-  const [profile, setProfile] = useState<Profile | null>(() => {
-    if (typeof window === "undefined" || !isCloudMode) return null;
-    if (supabaseConfigured) return null;
-    const saved = localStorage.getItem(DEV_TOKEN_KEY);
-    if (saved === "tech" || saved === "authorizer" || saved === "admin") {
-      return {
-        id: `dev-${saved}`,
-        email: `${saved}@local.dev`,
-        role: saved,
-        full_name: `Dev ${saved}`,
-      };
-    }
-    return null;
-  });
+  const [devRole, setDevRole] = useState<ProfileRole | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [deviceVersion, setDeviceVersion] = useState(0);
+
+  const ready = hydrated && supabaseReady;
+
+  // Client-only: restore sessions from localStorage after SSR hydration.
+  useEffect(() => {
+    if (!isCloudMode) {
+      setEdgeSession(readEdgeSessionFromStorage());
+    }
+    const savedDevRole = readDevRoleFromStorage();
+    if (savedDevRole) {
+      setDevRole(savedDevRole);
+      if (isCloudMode && !supabaseConfigured) {
+        setProfile(devProfile(savedDevRole));
+      }
+    }
+    setHydrated(true);
+  }, []);
 
   useEffect(() => {
     if (!isCloudMode) {
-      setReady(true);
-      if (!supabaseConfigured || !supabase) return;
+      if (!supabaseConfigured || !supabase) {
+        setSupabaseReady(true);
+        return;
+      }
 
-      // Edge mode still needs Supabase session for admin/authorizer cloud API
-      // calls (release queue, review requests) after dual login at sign-in.
       const client = supabase;
       let cancelled = false;
       void client.auth.getSession().then(({ data }) => {
         if (cancelled) return;
         setSession(data.session);
+        setSupabaseReady(true);
       });
       const { data: sub } = client.auth.onAuthStateChange((_event, next) => {
         setSession(next);
@@ -190,15 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (!supabaseConfigured || !supabase) {
-      if (devRole) {
-        setProfile({
-          id: `dev-${devRole}`,
-          email: `${devRole}@local.dev`,
-          role: devRole,
-          full_name: `Dev ${devRole}`,
-        });
-      }
-      setReady(true);
+      setSupabaseReady(true);
       return;
     }
 
@@ -209,11 +197,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const nextSession = data.session;
       if (nextSession) {
         const valid = await validateSupabaseSession(nextSession);
-        if (!valid) {
+        if (valid === "invalid") {
           await client.auth.signOut();
           setSession(null);
           setProfile(null);
-          setReady(true);
+          setSupabaseReady(true);
           return;
         }
       }
@@ -226,13 +214,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           profileFromAuthUser(nextSession.user);
         setProfile(loaded);
       }
-      setReady(true);
+      setSupabaseReady(true);
     });
 
-    const { data: sub } = client.auth.onAuthStateChange(async (_event, next) => {
-      if (next?.access_token) {
+    const { data: sub } = client.auth.onAuthStateChange(async (event, next) => {
+      if (next?.access_token && event !== "INITIAL_SESSION") {
         const valid = await validateSupabaseSession(next);
-        if (!valid) {
+        if (valid === "invalid") {
           await client.auth.signOut();
           setSession(null);
           setProfile(null);
@@ -250,15 +238,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })();
         return;
       }
-      const saved = localStorage.getItem(DEV_TOKEN_KEY);
-      if (saved === "tech" || saved === "authorizer" || saved === "admin") {
+      const saved = readDevRoleFromStorage();
+      if (saved) {
         setDevRole(saved);
-        setProfile({
-          id: `dev-${saved}`,
-          email: `${saved}@local.dev`,
-          role: saved,
-          full_name: `Dev ${saved}`,
-        });
+        setProfile(devProfile(saved));
       } else {
         setProfile(null);
       }
@@ -314,8 +297,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(EDGE_TOKEN_KEY, JSON.stringify(next));
       setEdgeSession(next);
 
-      // Admin/authorizer also need a Supabase session for cloud API routes
-      // (release queue, review requests) while using the edge SPA locally.
       if (
         supabase &&
         (result.user.role === "admin" || result.user.role === "authorizer")
@@ -343,9 +324,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (error) throw error;
 
-    // Cloud login always requires a lab-issued device. If this browser is
-    // already enrolled, log the login now; otherwise the enrollment screen
-    // (needsDeviceEnrollment) will call completeDeviceEnrollment instead.
     if (getStoredDevice()) {
       await api.deviceSession().catch(() => undefined);
     }
@@ -365,12 +343,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(DEV_TOKEN_KEY, role);
     setDevRole(role);
     setSession(null);
-    setProfile({
-      id: `dev-${role}`,
-      email: `${role}@local.dev`,
-      role,
-      full_name: `Dev ${role}`,
-    });
+    setProfile(devProfile(role));
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -438,9 +411,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const cloudAccessToken = useMemo(() => {
     if (session?.access_token) return session.access_token;
     if (isCloudMode && devRole) return `dev:${devRole}`;
-    // Edge SPA: release queue and reports call the cloud API. When Supabase
-    // sign-in did not attach after edge login (common in local dev), fall back
-    // to the same dev bearer the cloud API accepts outside production.
     if (
       !isCloudMode &&
       import.meta.env.DEV &&
@@ -475,12 +445,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const needsDeviceEnrollment = useMemo(() => {
     if (!isCloudMode) return false;
     if (!session) return false;
-    void deviceVersion; // recompute when a device is stored
+    void deviceVersion;
     return !getStoredDevice();
   }, [session, deviceVersion]);
 
   const value: AuthState = {
     ready,
+    hydrated,
     session,
     profile: effectiveProfile,
     role,

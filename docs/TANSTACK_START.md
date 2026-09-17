@@ -17,7 +17,7 @@
 6. [How the router boots (`router.tsx` + `routeTree.gen.ts`)](#6--how-the-router-boots-routertsx--routetreegents)
 7. [Other route patterns (redirect, login search)](#7--other-route-patterns-redirect-login-search)
 8. [TanStack Query on a page (how Bench loads data)](#8--tanstack-query-on-a-page-how-bench-loads-data)
-9. [Next.js comparison (same ideas, different files)](#9--nextjs-comparison-same-ideas-different-files)
+9. [TanStack Start vs Next.js — differences, momentum, why here](#9--tanstack-start-vs-nextjs--differences-momentum-why-here)
 10. [Public files / logos / CSS](#10--public-files--logos--css)
 11. [Vite + Start — what those packages are](#11--vite--start--what-those-packages-are)
 12. [Appendix — machine data file map (not the web UI)](#12--appendix--machine-data-file-map-not-the-web-ui)
@@ -827,7 +827,125 @@ Who provides the Query client?
 
 ---
 
-## 9 — Next.js comparison (same ideas, different files)
+## 9 — TanStack Start vs Next.js — differences, momentum, why here
+
+This section is for anyone who knows React and maybe Next.js, but wants the **big picture**: what is different, **why** those differences exist, why TanStack Start is getting more attention, and why **this lab app** uses it instead of Next.
+
+For “where is the same idea in our files?” see [§4](#4--export-const-route-vs-nexts-exported-page-component) and the file table at the end of this section.
+
+### One sentence each
+
+| | Next.js (App Router) | TanStack Start |
+| --- | --- | --- |
+| **Pitch** | The default full-stack React framework: server-first, lots of built-in conventions, deep Vercel integration. | A full-stack React framework on **Vite + TanStack Router**: explicit routes, strong TypeScript, TanStack Query as the natural data layer, deploy almost anywhere. |
+| **Best when** | Content sites, SEO-heavy pages, teams that want RSC streaming and platform features out of the box. | Dashboards, SaaS, internal tools, real-time UIs — apps that are **mostly client-interactive** and talk to APIs you already own. |
+
+Neither is “wrong.” They optimize for different shapes of product.
+
+### Significant differences (and why they matter)
+
+#### 1. Server-first vs client-first mental model
+
+**Next.js (especially App Router)** is built around **React Server Components (RSC)**. By default, components can run on the server, stream HTML, and ship less JavaScript to the browser. Data can be fetched inside the component tree on the server. Mutations often use **Server Actions**. Caching is woven into `fetch` and route segments.
+
+**Why Next did that:** marketing pages, docs, e-commerce, and anything where SEO and first paint on a cold visit matter a lot.
+
+**TanStack Start** does **not** center on RSC. You write normal React components. Data loading is **explicit**: route **loaders** (optional), **TanStack Query** (`useQuery`) in components, and **server functions** when you need server-only code. SSR and streaming exist, but the model feels closer to “SPA with a server” than “the server is the main app.”
+
+**Why TanStack did that:** many production apps (admin panels, lab bench, CRM, analytics) are interactive shells that hydrate once and then live on API calls and WebSockets. For those apps, RSC adds concepts (`"use client"`, `"use server"`, cache rules) without always buying you much.
+
+**In this monorepo:** clinical data does **not** flow Browser → Next → Supabase. It flows Browser → **Nest** (`edge-engine` / `api`) → database. The web app is a **thick client** over HTTP. That matches TanStack’s model better than adding a second server layer inside the UI framework.
+
+#### 2. Routing: conventions vs typed registration
+
+**Next.js** maps folders to URLs: `app/(lab)/bench/page.tsx` → `/bench`. Layouts use `{children}`. Search params are typed only if you add extra tooling.
+
+**TanStack Router** requires each route file to **`export const Route = createFileRoute(...)({ component, validateSearch, … })`**. A codegen step builds [`routeTree.gen.ts`](../apps/web/src/routeTree.gen.ts) so parent/child links are wired and **TypeScript knows** valid paths, search params, and loader data for that route.
+
+**Why that trade-off exists:** Next optimizes for “drop a file in a folder and go.” TanStack optimizes for **compile-time correctness** on URLs — fewer broken links and wrong `?q=` shapes in large apps.
+
+**Biggest mental shift in our repo:** see [§4](#4--export-const-route-vs-nexts-exported-page-component). Next: `export default function Page()`. Here: `export const Route` + `component: BenchPage`.
+
+#### 3. Data and caching
+
+| Topic | Next.js | TanStack Start |
+| --- | --- | --- |
+| **Default data story** | Server Components, `fetch` with cache tags/revalidate, Server Actions | TanStack Query + optional route loaders + server functions |
+| **Caching** | Framework-managed (powerful, sometimes surprising) | **Opt-in** — Query `staleTime`, loader stale times; nothing cached unless you configure it |
+| **Mutations** | Server Actions, Route Handlers | Server functions (RPC-style) or call your API (what we do) |
+
+**Why developers care:** Next’s automatic caching is excellent when you understand it and painful when you do not (“why did my data not update?”). TanStack’s explicit Query cache matches how teams already think about REST APIs and refetch intervals — which is exactly how Bench, Accession, and Release work here via [`lib/api.ts`](../apps/web/src/lib/api.ts).
+
+#### 4. Dev experience: Vite vs Turbopack
+
+**TanStack Start** runs on **Vite**. Dev server startup and hot module replacement (HMR) are typically very fast; the plugin ecosystem is huge.
+
+**Next.js** uses **Turbopack** (default in recent majors) with its own bundling story, tuned for Next’s RSC pipeline.
+
+**Why momentum shows up here:** teams that already use Vite for libraries or SPAs feel at home. Reports from teams that migrated (e.g. large route counts, CI build times) often cite **faster dev loops and shorter production builds** — your mileage varies with app size and hosting.
+
+This repo’s dev script is plain Vite on port **3100** — see [`apps/web/package.json`](../apps/web/package.json).
+
+#### 5. Deployment and platform coupling
+
+**Next.js** is deployable outside Vercel, but the **best** integration (edge middleware, image optimizer, partial prerendering, analytics) is Vercel-shaped. That is a feature if you choose that platform; it is a concern if you need arbitrary hosts.
+
+**TanStack Start** (often via **Nitro** under the hood) targets **portable output**: Node, static SPA, serverless adapters, etc. No single vendor owns the happy path.
+
+**Why it matters for Drax Hall:** production ships the UI as a **static SPA embedded in the lab PC container** (`build:spa`, served by `edge-engine` on one port). That is “one binary on the bench network,” not “deploy the frontend to Vercel and the API elsewhere.” TanStack + Vite fits that packaging story cleanly.
+
+#### 6. Bundle size and hydration
+
+**Next.js** can ship **less client JavaScript** on content-heavy routes because RSC leaves non-interactive UI on the server.
+
+**TanStack Start** typically hydrates a more traditional client tree; public benchmarks often show **smaller total client bundles** for app-like UIs but not always better **First Contentful Paint** on marketing-style pages.
+
+**Plain English:** Next can win on “visitor reads a blog post on a phone.” TanStack often wins on “staff stares at a dashboard for eight hours.”
+
+#### 7. Maturity and ecosystem
+
+**Next.js** wins on hiring pool, tutorials, Stack Overflow answers, and third-party templates. It is the safe default for many companies.
+
+**TanStack Start** is **younger** (production **v1** landed in 2026). APIs still move faster than Next’s. You trade ecosystem depth for alignment with **TanStack Query / Router**, which many teams already use in non-Next SPAs.
+
+### Why TanStack Start is gaining momentum (2025–2026)
+
+This is not “Next.js is dead.” It is “the market noticed there are two legitimate shapes of React app.”
+
+**1. App Router fatigue.** Server Components, caching semantics, and `"use client"` boundaries have a learning cliff. Teams building **CRUD dashboards** found they were fighting the framework instead of shipping features.
+
+**2. Type-safe routing went mainstream.** TanStack Router proved that URLs, search params, and loader outputs can be **inferred in TypeScript**. Start bundles that into a full-stack package. Fewer `router.push("/benhc")` typos in production.
+
+**3. TanStack Query is already the data layer.** Many apps migrated from Redux + manual fetch to Query years ago. Start treats Query as a first-class citizen (prefetch in loaders, dehydrate/hydrate patterns). Next can use Query too, but it is not the framework’s center of gravity.
+
+**4. Vite won the tooling mindshare.** Developers expect instant HMR. Start rides that wave instead of inventing a parallel toolchain.
+
+**5. Deploy-anywhere and avoid vendor lock-in.** Startups and infra-heavy teams (reports from Railway, Inngest, and others in 2025–2026) publicly moved **client-heavy** apps off Next when RSC was not paying for itself but operational complexity was.
+
+**6. Credible v1 and production stories.** After v1, TanStack Start stopped being “Router plus experiments” and became a framework you can justify for new greenfield SaaS — with the caveat that it is still newer than Next.
+
+**7. Security and complexity conversations.** High-profile discussions around RSC attack surface and framework CVEs made some teams re-evaluate whether they **need** server components at all for apps that were always going to hydrate fully anyway.
+
+**Counterweight — when Next is still the better default:**
+
+- Marketing site, blog, docs, SEO landing pages
+- Heavy use of streaming RSC, Partial Prerendering, and edge middleware on Vercel
+- Large team that needs maximum hiring pool and conservative stability
+- Product where server-rendered HTML **is** the product, not a shell around API calls
+
+### Why this monorepo uses TanStack Start (not Next)
+
+| Requirement | Why Start fits |
+| --- | --- |
+| **Bench / Accession / Release are interactive workstations** | Query-driven UI, live refetch, filters in the URL — classic TanStack strengths |
+| **Backends are already NestJS** (`edge-engine`, `api`) | No need for Next Route Handlers or Server Actions as a second API layer |
+| **Lab production = SPA on the mini PC** | `TSS_SPA=1` build embedded in edge-engine — see [§11](#11--vite--start--what-those-packages-are) |
+| **Same codebase, two modes** (`VITE_LIS_MODE=edge` vs `cloud`) | Client talks to different API bases; no RSC split required |
+| **Offline-first lab floor** | UI must run as a durable client against local HTTP; not dependent on a Next server rendering each navigation |
+
+We are **not** claiming Next could not build this product. We are saying the **shape** of this product (API-backed lab client, embeddable SPA, Query everywhere) aligns with TanStack’s design center.
+
+### File mapping in this repo (same ideas, different files)
 
 | Idea | Next.js App Router | This repo (TanStack) | Open this file |
 | --- | --- | --- | --- |
@@ -841,9 +959,18 @@ Who provides the Query client?
 | Route Handlers / RSC data | `app/api`, Server Components | Nest `edge-engine` / `api` + `lib/api.ts` | [`lib/api.ts`](../apps/web/src/lib/api.ts) |
 | `public/logo.png` | `public/` | same Vite rule | create `apps/web/public/` when needed |
 
-**Biggest mental shift:** Next often infers a page from `page.tsx` sitting in a folder. TanStack requires an **`export const Route = createFileRoute(...)({ component: ... })`** in the file, then generates `routeTree.gen.ts` to connect parents and children.
+### Decision checklist (for your next project)
+
+Ask honestly:
+
+1. **Is most of the UI interactive after first load?** → TanStack lean.
+2. **Is SEO / server HTML the main deliverable?** → Next lean.
+3. **Do you already have a dedicated API (Nest, Go, Supabase via backend)?** → TanStack lean; avoid duplicating API in Server Actions.
+4. **Must the UI ship inside an edge device or arbitrary host without Node SSR?** → TanStack SPA path lean.
+5. **Do you need maximum library examples and hires tomorrow?** → Next lean.
 
 ---
+
 
 ## 10 — Public files / logos / CSS
 
@@ -933,7 +1060,7 @@ Instrument → TCP/serial → edge drivers → packages/protocols → IngestionS
 
 | Doc | Why |
 | --- | --- |
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | Edge vs cloud vs web |
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | Edge vs cloud vs web (plain English) |
 | [ANALYZERS.md](./ANALYZERS.md) | Instruments |
 | [TCP_INGESTION_DRIVER.md](./TCP_INGESTION_DRIVER.md) | Nest + `net` TCP driver lesson |
 | [LAB_MINI_PC_SETUP.md](./LAB_MINI_PC_SETUP.md) | Ports / field setup |

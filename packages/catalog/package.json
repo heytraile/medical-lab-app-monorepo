@@ -16,7 +16,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"lint ok\"",
-    "test": "pnpm run build && node --test dist/dhms-catalog.test.js dist/expand-selection.test.js dist/group-tests-by-department.test.js dist/group-tests-by-specimen-bucket.test.js dist/label-print-groups.test.js dist/label-test-abbrev.test.js dist/routing-departments.test.js dist/routing-policy.test.js dist/test-fulfillment.test.js"
+    "test": "pnpm run build && node --test dist/dhms-catalog.test.js dist/expand-selection.test.js dist/group-tests-by-department.test.js dist/group-tests-by-specimen-bucket.test.js dist/label-print-groups.test.js dist/label-test-abbrev.test.js dist/routing-departments.test.js dist/routing-policy.test.js dist/reference-limits.test.js dist/similar-order.test.js dist/specimen-id.test.js dist/test-fulfillment.test.js"
   },
   "devDependencies": {
     "@drax-lis/tsconfig": "workspace:*",

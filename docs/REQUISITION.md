@@ -27,15 +27,20 @@ One accession can produce multiple specimen IDs when tests route to different de
 ## Flow (unified register)
 
 1. Reception selects **patient** + **panels/tests** on Accession (`/accession`).
-2. When signed in, cloud API creates a **requisition** with expanded `ordered_tests`.
-3. Edge **accessions** the specimen (`POST /specimens/batch`) with the same list + `requisitionId` — one accession, one label per routing tube.
-4. Each tube label prints accession + specimen ID + patient name · MRN + department; barcode encodes the specimen ID.
-5. Outbox syncs specimen to cloud as today.
-6. Phlebotomy / bench read ordered work from specimen JSON or cloud requisition (`/orders?accession=`).
+2. Edge **accessions** first (`POST /specimens/batch`) — accession number, specimen IDs, and labels print even if the internet is down.
+3. Best-effort cloud step: when signed in, `POST /requisitions` + `PATCH …/link`. Failure does **not** block labels.
+4. Outbox `specimen.registered` syncs tubes to cloud and **creates or links** the requisition from `orderedSelections` if none exists for that accession.
+5. Phlebotomy / bench read ordered work from specimen JSON or cloud requisition (`/orders?accession=`).
 
 ```text
-Accession UI → POST /requisitions (cloud) → POST /specimens (edge) → PATCH /requisitions/:id/link
+Accession UI → POST /specimens/batch (edge) → print labels
+            → best-effort POST /requisitions + PATCH link (cloud)
+            → outbox specimen.registered reconciles requisition
 ```
+
+Staff-facing IDs are **MRN**, **accession number**, and **specimen ID**. The requisition UUID is internal — it is not printed on labels.
+
+---
 
 ## Catalog
 
@@ -102,7 +107,7 @@ Every catalog and requisition row has `lab_id`. v1 seeds one lab (Drax Hall). St
 
 1. `GET /catalog` returns panels + items.
 2. Anaemia I + ESR → no duplicate CBC.
-3. Accession with sign-in → requisition in Supabase + specimen on edge.
+3. Accession with sign-in → edge register + labels; requisition is created in cloud when reachable (or backfilled on sync).
 4. Bench patient panel shows ordered tests.
 5. `/orders?accession=DH…` shows the same list.
 

@@ -6,6 +6,7 @@ import { api } from "../../lib/api";
 import { isAdmin, useAuth } from "../../lib/auth";
 import { isCloudMode } from "../../lib/supabase";
 import { useCatalog } from "../../lib/use-catalog";
+import { CatalogOfflineBanner } from "../../components/catalog-offline-banner";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
@@ -103,6 +104,9 @@ function SettingsPage() {
           Showing defaults from the local catalog. Sign in to the cloud app to
           save changes.
         </p>
+      )}
+      {catalogQ.usingOfflineFallback && (
+        <CatalogOfflineBanner />
       )}
 
       <section className="space-y-4 rounded-xl border border-border bg-card p-4 shadow-sm">

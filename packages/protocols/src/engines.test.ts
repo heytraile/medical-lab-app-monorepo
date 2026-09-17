@@ -249,6 +249,20 @@ describe("ProLyte Network LIS", () => {
     });
   });
 
+  it("keeps analytes when pId is missing so the LIS can quarantine", () => {
+    const msg = parseProlyteNetworkLis({
+      pId: "",
+      sampleType: "10",
+      ionData: {
+        Na: { conc: "140.0", strUnits: "mmol/L" },
+        K: { conc: "4.1", strUnits: "mmol/L" },
+        Cl: { conc: "102.0", strUnits: "mmol/L" },
+      },
+    });
+    expect(msg.barcode).toBeUndefined();
+    expect(msg.analytes.map((a) => a.testCode)).toEqual(["NA", "K", "CL"]);
+  });
+
   it("skips calibration sampleType", () => {
     const msg = parseProlyteNetworkLis({
       pId: "",
@@ -270,5 +284,33 @@ describe("ProLyte Network LIS", () => {
       },
     });
     expect(msg.analytes.map((a) => a.testCode)).toEqual(["NA"]);
+  });
+
+  it("parses zero concentrations (e.g. distilled water QC)", () => {
+    const msg = parseProlyteNetworkLis({
+      pId: "ACC-ZERO",
+      sampleType: "10",
+      ionData: {
+        Na: { conc: "0", strUnits: "mmol/L" },
+        K: { conc: "0.0", strUnits: "mmol/L" },
+        Cl: { conc: "0.00", strUnits: "mmol/L" },
+      },
+    });
+    expect(msg.analytes.map((a) => a.testCode)).toEqual(["NA", "K", "CL"]);
+    expect(msg.analytes.every((a) => a.value === "0" || a.value === "0.0" || a.value === "0.00")).toBe(true);
+  });
+
+  it("parses urlencoded flat ionData keys from real ProLyte POSTs", () => {
+    const msg = parseProlyteNetworkLis({
+      test: "2",
+      pId: "DH202609160001-01",
+      sampleType: "2",
+      "ionData[Na][conc]": "140.2",
+      "ionData[Na][strUnits]": "mmol/L",
+      "ionData[K][conc]": "4.15",
+      "ionData[Cl][conc]": "102.0",
+    });
+    expect(msg.barcode).toBe("DH202609160001-01");
+    expect(msg.analytes.map((a) => a.testCode)).toEqual(["NA", "K", "CL"]);
   });
 });

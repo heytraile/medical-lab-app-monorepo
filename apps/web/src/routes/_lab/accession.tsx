@@ -15,10 +15,12 @@ import {
   ApiError,
   api,
   isIdentityConfirmationRequired,
+  isSimilarAccessionExists,
   type IdentityConfirmation,
   type IdentityConfirmationRequired,
   type LabelPreviewFields,
   type PatientListItem,
+  type SimilarAccessionExists,
 } from "../../lib/api";
 import { buildDraftLabelPreview } from "../../lib/label-preview-draft";
 import { buildSpecimenLabelInput } from "@drax-lis/catalog";
@@ -39,6 +41,7 @@ import {
 } from "../../components/requisition/specimen-information-section";
 import { selectionsToOrderedTests } from "../../components/requisition/test-order-form";
 import { ConfirmAccessionActionDialog } from "../../components/confirm-accession-action-dialog";
+import { CatalogOfflineBanner } from "../../components/catalog-offline-banner";
 import { useCatalog } from "../../lib/use-catalog";
 import { useAuth } from "../../lib/auth";
 import { useUnsavedWorkGuard } from "../../lib/use-unsaved-work-guard";
@@ -99,6 +102,10 @@ function AccessionPage() {
     useState<IdentityConfirmationRequired | null>(null);
   const [pendingConfirmation, setPendingConfirmation] =
     useState<IdentityConfirmation | null>(null);
+  const [similarPayload, setSimilarPayload] =
+    useState<SimilarAccessionExists | null>(null);
+  const [acknowledgeSimilar, setAcknowledgeSimilar] = useState(false);
+  const [cloudSyncWarning, setCloudSyncWarning] = useState<string | null>(null);
   const [copied, setCopied] = useState<"barcode" | null>(null);
   const [specimenInfo, setSpecimenInfo] =
     useState<SpecimenInfo>(EMPTY_SPECIMEN_INFO);
@@ -219,6 +226,7 @@ function AccessionPage() {
     mutationFn: async (args?: {
       identityConfirmation?: IdentityConfirmation;
       patientId?: string;
+      acknowledgeSimilarAccession?: boolean;
     }) => {
       if (!selected && !args?.patientId) throw new Error("Select a patient");
       if (!catalogQ.data) throw new Error("Catalog not loaded");
@@ -232,21 +240,6 @@ function AccessionPage() {
           : selected;
       if (!patientForOrder) throw new Error("Select a patient");
 
-      let requisitionId: string | undefined;
-      if (auth.accessToken) {
-        const req = await api.createRequisition({
-          patientId: patientForOrder.id,
-          patientSnapshot: {
-            displayName: patientForOrder.displayName,
-            mrn: patientForOrder.mrn,
-            dateOfBirth: patientForOrder.dateOfBirth,
-          },
-          selections: deferredSelections,
-          specimenInfo,
-        });
-        requisitionId = req.id;
-      }
-
       const batchSpecimens = departmentGroups.map((group) => ({
         departmentKey: group.departmentKey,
         departmentLabel: group.departmentLabel,
@@ -258,7 +251,6 @@ function AccessionPage() {
         patientId: patientForOrder.id,
         identityConfirmation:
           args?.identityConfirmation ?? pendingConfirmation ?? undefined,
-        requisitionId,
         printLabel,
         copies,
         collectedAt: specimenInfo.collectedAt,
@@ -268,18 +260,41 @@ function AccessionPage() {
         selections: deferredSelections,
         specimens: batchSpecimens,
         labelRouting,
+        acknowledgeSimilarAccession:
+          args?.acknowledgeSimilarAccession ||
+          acknowledgeSimilar ||
+          undefined,
       });
 
-      if (requisitionId && data.accessionNumber) {
-        await api.linkRequisition(requisitionId, {
-          accessionNumber: data.accessionNumber,
-          edgeSpecimenId: data.specimens[0]?.id ?? "",
-        });
+      let cloudSyncWarning: string | undefined;
+      if (auth.accessToken) {
+        try {
+          const req = await api.createRequisition({
+            patientId: patientForOrder.id,
+            patientSnapshot: {
+              displayName: patientForOrder.displayName,
+              mrn: patientForOrder.mrn,
+              dateOfBirth: patientForOrder.dateOfBirth,
+            },
+            selections: deferredSelections,
+            specimenInfo,
+          });
+          await api.linkRequisition(req.id, {
+            accessionNumber: data.accessionNumber,
+            edgeSpecimenId: data.specimens[0]?.id ?? "",
+          });
+        } catch {
+          cloudSyncWarning =
+            "Accession saved locally. Order will sync when online.";
+        }
       }
 
-      return { data, batchSpecimens };
+      return { data, batchSpecimens, cloudSyncWarning };
     },
-    onSuccess: ({ data, batchSpecimens }) => {
+    onSuccess: ({ data, batchSpecimens, cloudSyncWarning }) => {
+      setCloudSyncWarning(cloudSyncWarning ?? null);
+      setSimilarPayload(null);
+      setAcknowledgeSimilar(false);
       const acc = data.accessionNumber;
       const labelGroups = data.labelGroups ?? [];
       const previews = data.labelPreviews ?? [];
@@ -324,6 +339,10 @@ function AccessionPage() {
         setConfirmPayload(err.body);
         return;
       }
+      if (isSimilarAccessionExists(err)) {
+        setSimilarPayload(err.body);
+        return;
+      }
       setConfirmPayload(null);
     },
   });
@@ -331,6 +350,8 @@ function AccessionPage() {
   useEffect(() => {
     setPendingConfirmation(null);
     setConfirmPayload(null);
+    setSimilarPayload(null);
+    setAcknowledgeSimilar(false);
   }, [selected?.id]);
 
   function confirmIdentity(
@@ -353,6 +374,20 @@ function AccessionPage() {
     mutation.mutate({ identityConfirmation: conf, patientId });
   }
 
+  function cancelSimilarAccession() {
+    setSimilarPayload(null);
+    mutation.reset();
+  }
+
+  function continueSimilarAccession() {
+    setAcknowledgeSimilar(true);
+    setSimilarPayload(null);
+    mutation.mutate({
+      identityConfirmation: pendingConfirmation ?? undefined,
+      acknowledgeSimilarAccession: true,
+    });
+  }
+
   function resetAccessionDraft() {
     setSelected(null);
     setSelections(EMPTY_SELECTIONS);
@@ -364,6 +399,9 @@ function AccessionPage() {
 
   function startNewAccession() {
     setRegisteredSpecimens([]);
+    setSimilarPayload(null);
+    setAcknowledgeSimilar(false);
+    setCloudSyncWarning(null);
     resetAccessionDraft();
   }
 
@@ -443,8 +481,9 @@ function AccessionPage() {
     !isRegistered &&
     previewQueries.some((q) => q.isFetching);
 
-  const previewWarning =
-    previewQueries.some((q) => q.isError) && selected && !isRegistered
+  const previewWarning = isRegistered
+    ? cloudSyncWarning ?? undefined
+    : previewQueries.some((q) => q.isError) && selected
       ? "Could not load the label preview — showing a draft."
       : undefined;
 
@@ -534,13 +573,31 @@ function AccessionPage() {
           historyPanel
         ) : (
           <>
+            {catalogQ.usingOfflineFallback && (
+              <div className="px-3">
+                <CatalogOfflineBanner />
+              </div>
+            )}
+            {cloudSyncWarning && (
+              <p className="px-3 text-sm text-amber-800 dark:text-amber-100">
+                {cloudSyncWarning}
+              </p>
+            )}
             {mobileWizard}
-            {mutation.isError && !confirmPayload && (
+            {mutation.isError && !confirmPayload && !similarPayload && (
               <p className="px-3 text-sm text-lab-danger">
                 {mutation.error instanceof ApiError
                   ? mutation.error.message
                   : "Accession failed — please try again."}
               </p>
+            )}
+            {similarPayload && (
+              <SimilarAccessionDialog
+                payload={similarPayload}
+                busy={mutation.isPending}
+                onCancel={cancelSimilarAccession}
+                onContinue={continueSimilarAccession}
+              />
             )}
             {confirmPayload && (
               <IdentityConfirmDialog
@@ -587,6 +644,14 @@ function AccessionPage() {
         historyPanel
       ) : (
         <>
+        {catalogQ.usingOfflineFallback && (
+          <CatalogOfflineBanner className="mb-3" />
+        )}
+        {cloudSyncWarning && (
+          <p className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+            {cloudSyncWarning}
+          </p>
+        )}
 <form
         className={cn(
           "grid min-w-0 grid-cols-1 gap-5 overflow-x-hidden lg:grid-rows-1 lg:min-h-0 lg:flex-1 lg:overflow-hidden",
@@ -830,12 +895,21 @@ function AccessionPage() {
         </div>
       </form>
 
-      {mutation.isError && !confirmPayload && (
+      {mutation.isError && !confirmPayload && !similarPayload && (
         <p className="text-sm text-lab-danger">
           {mutation.error instanceof ApiError
             ? mutation.error.message
             : "Accession failed — please try again."}
         </p>
+      )}
+
+      {similarPayload && (
+        <SimilarAccessionDialog
+          payload={similarPayload}
+          busy={mutation.isPending}
+          onCancel={cancelSimilarAccession}
+          onContinue={continueSimilarAccession}
+        />
       )}
 
       {confirmPayload && (
@@ -864,6 +938,63 @@ function AccessionPage() {
         </>
       )}
     </AccessioningShell>
+  );
+}
+
+function SimilarAccessionDialog({
+  payload,
+  busy,
+  onCancel,
+  onContinue,
+}: {
+  payload: SimilarAccessionExists;
+  busy: boolean;
+  onCancel: () => void;
+  onContinue: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="similar-accession-title"
+    >
+      <div className="max-h-[calc(100svh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-card p-4 shadow-lg sm:p-5">
+        <h3
+          id="similar-accession-title"
+          className="font-display text-xl font-semibold tracking-tight"
+        >
+          Similar accession found
+        </h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          {payload.message} Continue only if this is a new visit, not a
+          double-entry.
+        </p>
+        <ul className="mt-4 space-y-1 rounded-md border border-border bg-muted/40 p-3 font-mono text-sm">
+          {payload.accessions.map((row) => (
+            <li key={row.accessionNumber}>
+              {row.accessionNumber}
+              <span className="ml-2 font-sans text-xs text-muted-foreground">
+                {new Date(row.registeredAt).toLocaleString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <Button type="button" disabled={busy} onClick={onContinue}>
+            Continue anyway
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
