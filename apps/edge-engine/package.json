@@ -17,7 +17,7 @@
     "@drax-lis/catalog": "workspace:*",
     "@drax-lis/contracts": "workspace:*",
     "@drax-lis/protocols": "workspace:*",
-    "@nestjs/common": "^11.1.2",
+    "@nestjs/common": "^12.0.1",
     "@nestjs/core": "^11.1.2",
     "@nestjs/platform-express": "^11.1.2",
     "@nestjs/platform-socket.io": "^11.1.2",
