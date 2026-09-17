@@ -40,8 +40,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.21",
-    "supabase": "^2.115.0",
-    "turbo": "^2.5.4",
+    "supabase": "^2.117.0",
+    "turbo": "^2.10.12",
     "typescript": "^5.8.3"
   }
 }
