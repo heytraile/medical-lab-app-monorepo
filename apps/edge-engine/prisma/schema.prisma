@@ -77,6 +77,8 @@ model Accession {
   orderedTestsJson         String     @default("[]")
   orderedSelectionsJson    String     @default("[]")
   requisitionId            String?
+  referringPhysician       String?
+  referringPhysicianEmail  String?
   status                   String     @default("registered")
   collectedAt              DateTime?
   collectedByStaffId       String?

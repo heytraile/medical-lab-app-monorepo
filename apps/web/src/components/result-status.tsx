@@ -12,70 +12,37 @@ import {
   TriangleAlert,
   type LucideIcon,
 } from "lucide-react";
-import { resolveDisplayFlag } from "@drax-lis/contracts";
-import {
-  getClinicalLimits,
-  resolveClinicalDisplayFlag,
-} from "@drax-lis/catalog";
 import { Badge } from "./ui/badge";
 import { cn } from "../lib/utils";
+import {
+  effectiveFlag,
+  isAlarmFlag,
+  isCriticalFlag,
+  type ResultFlagContext,
+} from "../lib/bench-result-flag";
+
+export {
+  benchResultFlagContext,
+  effectiveFlag,
+  flagSeverity,
+  isAlarmFlag,
+  isCriticalFlag,
+  resolvedResultFlag,
+  resultHasAlarmFlag,
+  resultHasCriticalFlag,
+  summarizeResultFlags,
+  worstFlag,
+  type BenchFlagSource,
+  type ResultFlagContext,
+} from "../lib/bench-result-flag";
 
 type BadgeVariant = "default" | "ok" | "warn" | "danger" | "muted";
-
-export type ResultFlagContext = {
-  value?: string | null;
-  referenceLow?: number | null;
-  referenceHigh?: number | null;
-  orderedTestCode?: string | null;
-  resultComponentCode?: string | null;
-  testCode?: string | null;
-};
-
-function limitsContextFromRow(ctx?: ResultFlagContext): {
-  orderedTestCode?: string;
-  resultComponentCode?: string;
-} {
-  const ordered =
-    ctx?.orderedTestCode?.trim() ||
-    ctx?.testCode?.split(":")[0]?.trim() ||
-    undefined;
-  const component =
-    ctx?.resultComponentCode?.trim() ||
-    (ctx?.testCode?.includes(":")
-      ? ctx.testCode.split(":")[1]?.trim()
-      : undefined);
-  return { orderedTestCode: ordered, resultComponentCode: component };
-}
 
 type FlagVisual = {
   variant: BadgeVariant;
   icon: LucideIcon;
   label: string;
 };
-
-function effectiveFlag(
-  flag: string | null | undefined,
-  ctx?: ResultFlagContext,
-): string {
-  const { orderedTestCode, resultComponentCode } = limitsContextFromRow(ctx);
-  if (
-    orderedTestCode &&
-    getClinicalLimits(orderedTestCode, resultComponentCode)
-  ) {
-    return resolveClinicalDisplayFlag(
-      flag,
-      ctx?.value ?? undefined,
-      orderedTestCode,
-      resultComponentCode,
-    );
-  }
-  return resolveDisplayFlag(
-    flag,
-    ctx?.value ?? undefined,
-    ctx?.referenceLow,
-    ctx?.referenceHigh,
-  );
-}
 
 function flagVisual(flag: string | null | undefined): FlagVisual {
   const raw = effectiveFlag(flag).trim() || "normal";
@@ -212,72 +179,6 @@ export function flagLabel(
   ctx?: ResultFlagContext,
 ): string {
   return flagVisual(effectiveFlag(flag, ctx)).label;
-}
-
-export function isAlarmFlag(
-  flag: string | null | undefined,
-  ctx?: ResultFlagContext,
-): boolean {
-  const resolved = effectiveFlag(flag, ctx);
-  return (
-    resolved === "critical_high" ||
-    resolved === "critical_low" ||
-    resolved === "high"
-  );
-}
-
-function isCriticalFlag(
-  flag: string | null | undefined,
-  ctx?: ResultFlagContext,
-): boolean {
-  const resolved = effectiveFlag(flag, ctx);
-  return resolved === "critical_high" || resolved === "critical_low";
-}
-
-/**
- * Orders flags worst-first so a collapsed group can advertise the most severe
- * result it is hiding. Higher wins. Keep flag knowledge in this module only.
- */
-export function flagSeverity(
-  flag: string | null | undefined,
-  ctx?: ResultFlagContext,
-): number {
-  switch (effectiveFlag(flag, ctx)) {
-    case "critical_high":
-    case "critical_low":
-      return 4;
-    case "high":
-      return 3;
-    case "low":
-    case "abnormal":
-      return 2;
-    case "normal":
-      return 1;
-    default:
-      return 0;
-  }
-}
-
-/** Worst flag across a set of results — what a collapsed group must surface. */
-export function worstFlag(
-  flags: Array<
-    | string
-    | null
-    | undefined
-    | ({ flag?: string | null | undefined } & ResultFlagContext)
-  >,
-): string | undefined {
-  let worst: string | undefined;
-  for (const entry of flags) {
-    const flag =
-      entry != null && typeof entry === "object"
-        ? effectiveFlag(entry.flag, entry)
-        : effectiveFlag(entry);
-    if (worst === undefined || flagSeverity(flag) > flagSeverity(worst)) {
-      worst = flag;
-    }
-  }
-  return worst;
 }
 
 /** Value color — the number itself carries the alarm, not the row. */

@@ -17,6 +17,8 @@ export const ReleaseQueueResultSchema = z.object({
   value: z.string(),
   units: z.string().nullable().optional(),
   flag: z.string(),
+  orderedTestCode: z.string().nullable().optional(),
+  resultComponentCode: z.string().nullable().optional(),
   observedAt: z.string(),
   analyzerId: z.string(),
   manualEnteredBy: ActorSnapshotSchema.nullable().optional(),
@@ -74,5 +76,7 @@ export const ReleaseQueueGroupSchema = z.object({
   submittedIncomplete: z.boolean().default(false),
   testCount: z.number().int().nonnegative(),
   worstFlag: z.string(),
+  hasAlarm: z.boolean().default(false),
+  hasCritical: z.boolean().default(false),
 });
 export type ReleaseQueueGroup = z.infer<typeof ReleaseQueueGroupSchema>;

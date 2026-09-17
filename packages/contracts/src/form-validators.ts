@@ -75,6 +75,21 @@ export const emailField = z
       .email("Enter a valid email address"),
   );
 
+/** Empty string allowed in optional doctor/contact fields. */
+export const optionalEmailField = z
+  .string()
+  .transform((value) => collapseSpaces(value).toLowerCase())
+  .pipe(
+    z.union([
+      z.literal(""),
+      z
+        .string()
+        .max(254, "Email is too long")
+        .email("Enter a valid email address"),
+    ]),
+  )
+  .transform((value) => (value === "" ? undefined : value));
+
 export const passwordField = z
   .string()
   .min(8, "Password must be at least 8 characters")

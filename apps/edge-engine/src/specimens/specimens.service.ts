@@ -66,6 +66,8 @@ type BatchRegisterInput = {
   collectedAt?: string;
   selections?: OrderSelectionInput[];
   acknowledgeSimilarAccession?: boolean;
+  referringPhysician?: string;
+  referringPhysicianEmail?: string;
   specimens: Array<{
     departmentKey?: string;
     departmentLabel?: string;
@@ -166,8 +168,22 @@ export class SpecimensService {
     const rows = await this.prisma.specimen.findMany({
       orderBy: { registeredAt: "desc" },
       take: q ? 400 : 200,
+      include: {
+        accession: {
+          select: {
+            referringPhysician: true,
+            referringPhysicianEmail: true,
+          },
+        },
+      },
     });
-    const mapped = rows.map((row) => this.toListItem(row));
+    const mapped = rows.map((row) =>
+      this.toListItem({
+        ...row,
+        referringPhysician: row.accession?.referringPhysician ?? null,
+        referringPhysicianEmail: row.accession?.referringPhysicianEmail ?? null,
+      }),
+    );
     if (!q) return mapped;
     return mapped.filter((row) => this.matchesQuery(row, q)).slice(0, 200);
   }
@@ -207,6 +223,8 @@ export class SpecimensService {
     orderedTestsJson: string;
     orderedSelectionsJson: string;
     requisitionId: string | null;
+    referringPhysician: string | null;
+    referringPhysicianEmail: string | null;
     status: string;
     collectedAt: Date | null;
     collectedByStaffId: string | null;
@@ -245,6 +263,8 @@ export class SpecimensService {
         requisitionId: accession.requisitionId,
         registrationBatchId: primary?.registrationBatchId ?? null,
         orderedSelectionsJson: accession.orderedSelectionsJson,
+        referringPhysician: accession.referringPhysician,
+        referringPhysicianEmail: accession.referringPhysicianEmail,
         status: accession.status,
         collectedAt: accession.collectedAt,
         collectedByStaffId: accession.collectedByStaffId,
@@ -286,6 +306,8 @@ export class SpecimensService {
     requisitionId: string | null;
     registrationBatchId: string | null;
     orderedSelectionsJson?: string | null;
+    referringPhysician?: string | null;
+    referringPhysicianEmail?: string | null;
     status: string;
     collectedAt: Date | null;
     collectedByStaffId: string | null;
@@ -402,6 +424,8 @@ export class SpecimensService {
       orderedTests,
       orderedSelections,
       requisitionId: row.requisitionId,
+      referringPhysician: row.referringPhysician ?? null,
+      referringPhysicianEmail: row.referringPhysicianEmail ?? null,
       registrationBatchId: row.registrationBatchId,
       status: row.status,
       collectedAt: row.collectedAt?.toISOString() ?? null,
@@ -589,6 +613,8 @@ export class SpecimensService {
           orderedTests: allOrderedTests,
           orderedSelections,
           requisitionId: input.requisitionId,
+          referringPhysician: input.referringPhysician,
+          referringPhysicianEmail: input.referringPhysicianEmail,
           collectedAt: input.collectedAt,
           collectedByStaffId,
           collectedBySnapshot,
@@ -764,6 +790,8 @@ export class SpecimensService {
     orderedTests: Array<{ code: string; name?: string }>;
     orderedSelections: OrderSelectionInput[];
     requisitionId?: string;
+    referringPhysician?: string;
+    referringPhysicianEmail?: string;
     collectedAt?: string;
     collectedByStaffId: string | null;
     collectedBySnapshot: string | null;
@@ -777,6 +805,8 @@ export class SpecimensService {
       orderedTestsJson: JSON.stringify(args.orderedTests),
       orderedSelectionsJson: JSON.stringify(args.orderedSelections),
       requisitionId: args.requisitionId?.trim() || null,
+      referringPhysician: args.referringPhysician?.trim() || null,
+      referringPhysicianEmail: args.referringPhysicianEmail?.trim() || null,
       collectedAt: args.collectedAt ? new Date(args.collectedAt) : null,
       collectedByStaffId: args.collectedByStaffId,
       collectedBySnapshot: args.collectedBySnapshot,
@@ -1085,6 +1115,8 @@ export class SpecimensService {
               return [];
             }
           })(),
+          referringPhysician: accession.referringPhysician,
+          referringPhysicianEmail: accession.referringPhysicianEmail,
           collectedAt: accession.collectedAt?.toISOString() ?? null,
           collectedByStaffId: accession.collectedByStaffId,
           collectedBySnapshot: accession.collectedBySnapshot

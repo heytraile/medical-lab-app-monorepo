@@ -32,6 +32,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog";
+import { modalCompactWidthClass } from "../lib/modal-layout";
 import { cn } from "../lib/utils";
 
 type Props = {
@@ -40,6 +41,8 @@ type Props = {
   accessionNumber?: string;
   /** When false, hide export (e.g. bench has no released results for this patient). */
   releaseEligible?: boolean;
+  /** When true, pulse the trigger — critical results ready to send. */
+  urgent?: boolean;
   variant?: "default" | "outline" | "ghost";
   size?: "default" | "sm" | "icon";
   className?: string;
@@ -50,6 +53,7 @@ export function PatientReportExportMenu({
   patientLabel,
   accessionNumber,
   releaseEligible = true,
+  urgent = false,
   variant = "outline",
   size = "sm",
   className,
@@ -70,11 +74,23 @@ export function PatientReportExportMenu({
     reValidateMode: "onChange",
   });
 
-  useEffect(() => {
-    emailForm.reset({ to: "" });
-  }, [emailRecipientType, emailForm]);
-
   const signedIn = Boolean(auth.accessToken);
+
+  const referringQ = useQuery({
+    queryKey: ["referring-physician", accessionNumber],
+    queryFn: () => api.referringPhysicianForAccession(accessionNumber!),
+    enabled: signedIn && Boolean(accessionNumber),
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (emailRecipientType !== "doctor") {
+      emailForm.reset({ to: "" });
+      return;
+    }
+    emailForm.reset({ to: referringQ.data?.email ?? "" });
+  }, [emailRecipientType, emailForm, referringQ.data?.email]);
 
   const reportSummaryQ = useQuery({
     queryKey: ["patient-report-summary", patientId, accessionNumber],
@@ -197,9 +213,14 @@ export function PatientReportExportMenu({
       <DialogTrigger asChild>
         <Button
           type="button"
-          variant={variant}
+          variant={urgent ? "default" : variant}
           size={size}
-          className={cn("gap-1", className)}
+          className={cn(
+            "relative gap-1",
+            urgent &&
+              "border-lab-alarm bg-lab-alarm text-white hover:bg-lab-alarm/90",
+            className,
+          )}
           aria-label={
             accessionNumber
               ? `Export released report for accession ${accessionNumber}`
@@ -208,20 +229,28 @@ export function PatientReportExportMenu({
               : "Export patient report"
           }
         >
+          {urgent ? (
+            <span
+              className="pointer-events-none absolute inset-0 animate-alarm-ring rounded-md bg-lab-danger/45"
+              aria-hidden
+            />
+          ) : null}
           {loading ? (
-            <Loader2 className="size-4 shrink-0 animate-spin" />
+            <Loader2 className="relative size-4 shrink-0 animate-spin" />
           ) : (
-            <Download className="size-4 shrink-0" />
+            <Download className="relative size-4 shrink-0" />
           )}
           {size !== "icon" ? (
             <>
-              <span>Export report</span>
-              <ChevronDown className="size-3.5 opacity-60" />
+              <span className="relative">
+                {urgent ? "Send to doctor" : "Export report"}
+              </span>
+              <ChevronDown className="relative size-3.5 opacity-60" />
             </>
           ) : null}
         </Button>
       </DialogTrigger>
-      <DialogContent className="w-64 max-w-[calc(100vw-2rem)] p-1">
+      <DialogContent className={cn(modalCompactWidthClass, "p-1")}>
         <DialogTitle className="sr-only">Export patient report</DialogTitle>
         <p className="px-2.5 py-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {accessionNumber
@@ -261,7 +290,6 @@ export function PatientReportExportMenu({
           disabled={loading !== null || !hasReleasedResults}
           onClick={() => {
             setEmailRecipientType("doctor");
-            emailForm.reset({ to: "" });
             setError(null);
           }}
         />
@@ -306,6 +334,22 @@ export function PatientReportExportMenu({
                 {...emailForm.register("to")}
               />
             </FormField>
+            {emailRecipientType === "doctor" &&
+            referringQ.data?.name ? (
+              <p className="text-[10px] text-muted-foreground">
+                Referring:{" "}
+                <span className="font-medium text-foreground">
+                  {referringQ.data.name}
+                </span>
+                {referringQ.data.email
+                  ? " — pre-filled from accession, editable"
+                  : ""}
+              </p>
+            ) : emailRecipientType === "doctor" && referringQ.data?.email ? (
+              <p className="text-[10px] text-muted-foreground">
+                Pre-filled from accession — you can still edit it.
+              </p>
+            ) : null}
             <p className="text-[10px] text-muted-foreground">
               This email will show you as{" "}
               <span className="font-medium text-foreground">

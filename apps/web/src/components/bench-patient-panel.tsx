@@ -17,6 +17,7 @@ import {
   AlarmSign,
   FlagChip,
   WorkflowStatusChip,
+  benchResultFlagContext,
   flagBarColor,
   flagValueClass,
 } from "./result-status";
@@ -240,11 +241,7 @@ export function BenchPatientPanel({
     ) : (
       <ul className="space-y-3">
         {sorted.map((r) => {
-          const ctx = {
-            value: r.value,
-            referenceLow: r.referenceLow,
-            referenceHigh: r.referenceHigh,
-          };
+          const ctx = benchResultFlagContext(r);
           return (
             <li
               key={r.id}
@@ -275,12 +272,7 @@ export function BenchPatientPanel({
               </div>
               <div className="mt-2.5 flex flex-wrap items-center gap-2">
                 <AlarmSign flag={r.flag} ctx={ctx} />
-                <FlagChip
-                  flag={r.flag}
-                  value={r.value}
-                  referenceLow={r.referenceLow}
-                  referenceHigh={r.referenceHigh}
-                />
+                <FlagChip flag={r.flag} {...ctx} />
                 <WorkflowStatusChip status={r.status ?? "pending_review"} />
               </div>
               <p className="mt-2.5 text-sm leading-snug text-muted-foreground">
@@ -383,6 +375,7 @@ export function BenchPatientPanel({
                       patientLabel={displayName}
                       accessionNumber={row.accessionNumber}
                       releaseEligible={accessionSummary.allReleased}
+                      urgent={accessionSummary.hasCritical}
                       variant="outline"
                       size="sm"
                     />

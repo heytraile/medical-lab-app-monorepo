@@ -12,8 +12,7 @@ import {
   FlagChip,
   WorkflowStatusChip,
   flagLabel,
-  isAlarmFlag,
-  worstFlag,
+  summarizeResultFlags,
 } from "./result-status";
 import { cn } from "../lib/utils";
 import { usePatientNameOrder } from "../lib/patient-name-order";
@@ -21,6 +20,7 @@ import { summarizeResultStatuses } from "../lib/result-workflow";
 import { NotifyAuthorizerButton } from "./notify-authorizer-button";
 import { RecallFromReleaseButton } from "./recall-from-release-button";
 import { SubmitForReleaseButton } from "./submit-for-release-button";
+import { CriticalPulse, CriticalUrgencyMark } from "./critical-urgency";
 
 export type BenchGroupSummary = {
   /** Stable group key: patient id, or `acc:<accession>` when unlinked. */
@@ -35,8 +35,11 @@ export type BenchGroupSummary = {
   releasedCount: number;
   allReleased: boolean;
   worstFlag: string | undefined;
+  /** Result id that owns `worstFlag` — used to jump into the group. */
+  worstResultId: string | undefined;
   latestObservedAt: string | undefined;
   hasAlarm: boolean;
+  hasCritical: boolean;
   /** Payload for a review request: the identifiers the cloud API can store. */
   accessionNumbers: string[];
   testCodes: string[];
@@ -51,14 +54,7 @@ export function summarizeGroup(
   specimens: SpecimenRow[] = [],
   completenessResults: BenchResult[] = results,
 ): BenchGroupSummary {
-  const worst = worstFlag(
-    results.map((r) => ({
-      flag: r.flag,
-      value: r.value,
-      referenceLow: r.referenceLow,
-      referenceHigh: r.referenceHigh,
-    })),
-  );
+  const flags = summarizeResultFlags(results);
   const accessions = new Set(results.map((r) => r.accessionNumber));
   let latest: string | undefined;
   for (const r of results) {
@@ -93,9 +89,11 @@ export function summarizeGroup(
     testCount: results.length,
     accessionCount: accessions.size,
     ...workflow,
-    worstFlag: worst,
+    worstFlag: flags.worstFlag,
+    worstResultId: flags.worstResultId,
     latestObservedAt: latest,
-    hasAlarm: isAlarmFlag(worst),
+    hasAlarm: flags.hasAlarm,
+    hasCritical: flags.hasCritical,
     accessionNumbers: [...accessions].sort(),
     testCodes: [...new Set(results.map((r) => r.testCode))].sort(),
     missingExpectedByAccession,
@@ -257,7 +255,9 @@ export function BenchGroupRow({
 
           <div className="min-w-0 space-y-1">
             <div className="flex items-start gap-1.5">
-              <AlarmSign flag={summary.worstFlag} />
+              <CriticalPulse active={summary.hasCritical}>
+                <AlarmSign flag={summary.worstFlag} />
+              </CriticalPulse>
               {patient ? (
                 <span
                   className={cn(
@@ -369,22 +369,27 @@ export function BenchGroupRow({
       {/* Flag */}
       <td className={cellClass}>
         {summary.worstFlag && summary.worstFlag !== "normal" ? (
-          <button
-            type="button"
-            onClick={(e) => {
-              stopRowSelect(e);
-              onJumpToFlag();
-            }}
-            aria-label={`Show first ${flagLabel(summary.worstFlag)} result for ${
-              patient?.displayName ?? summary.fallbackLabel
-            }`}
-            className="rounded-md transition hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-          >
-            <FlagChip flag={summary.worstFlag} />
-          </button>
+          <CriticalPulse active={summary.hasCritical}>
+            <button
+              type="button"
+              onClick={(e) => {
+                stopRowSelect(e);
+                onJumpToFlag();
+              }}
+              aria-label={`Show first ${flagLabel(summary.worstFlag)} result for ${
+                patient?.displayName ?? summary.fallbackLabel
+              }`}
+              className="relative rounded-md transition hover:brightness-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <FlagChip flag={summary.worstFlag} />
+            </button>
+          </CriticalPulse>
         ) : (
           <SummaryPlaceholder />
         )}
+        {summary.hasCritical && summary.allReleased ? (
+          <CriticalUrgencyMark phase="send" className="mt-1" />
+        ) : null}
       </td>
 
       {/* Status + actions */}

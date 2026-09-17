@@ -18,6 +18,10 @@ import { IndividualTestsSection } from "../requisition/individual-tests-section"
 import { SelectedTestsSummary } from "../requisition/selected-tests-summary";
 import { FastingCallout } from "../requisition/fasting-callout";
 import { SpecimenInformationSection } from "../requisition/specimen-information-section";
+import {
+  ReferringPhysicianSection,
+  type ReferringPhysicianInfo,
+} from "../requisition/referring-physician-section";
 import { MobileScreen } from "../mobile-screen";
 import {
   MobileWizardChrome,
@@ -52,6 +56,8 @@ type Props = {
   fasting: boolean;
   specimenInfo: SpecimenInfo;
   onSpecimenInfoChange: (next: SpecimenInfo) => void;
+  referringPhysician: ReferringPhysicianInfo;
+  onReferringPhysicianChange: (next: ReferringPhysicianInfo) => void;
   currentUserId?: string;
   printLabel: boolean;
   onPrintLabelChange: (next: boolean) => void;
@@ -98,6 +104,8 @@ export function AccessionMobileWizard({
   fasting,
   specimenInfo,
   onSpecimenInfoChange,
+  referringPhysician,
+  onReferringPhysicianChange,
   currentUserId,
   printLabel,
   onPrintLabelChange,
@@ -394,6 +402,10 @@ export function AccessionMobileWizard({
                 accessionRouting={catalog?.accessionRouting}
                 currentUserId={currentUserId}
               />
+              <ReferringPhysicianSection
+                value={referringPhysician}
+                onChange={onReferringPhysicianChange}
+              />
               <div className="rounded-xl border border-border bg-card px-4 py-3">
                 <div className="flex flex-wrap items-center gap-4">
                   <label className="flex items-center gap-2 text-sm">
@@ -436,6 +448,24 @@ export function AccessionMobileWizard({
                   <div className="mt-3">
                     <FastingCallout show={fasting} />
                   </div>
+                </div>
+              ) : null}
+              {referringPhysician.name.trim() ||
+              referringPhysician.email.trim() ? (
+                <div className="rounded-xl border border-border bg-card p-4 text-sm">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Referring physician
+                  </p>
+                  {referringPhysician.name.trim() ? (
+                    <p className="mt-1 font-medium">
+                      {referringPhysician.name.trim()}
+                    </p>
+                  ) : null}
+                  {referringPhysician.email.trim() ? (
+                    <p className="text-muted-foreground">
+                      {referringPhysician.email.trim()}
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
               <MultiLabelPreviewPanel

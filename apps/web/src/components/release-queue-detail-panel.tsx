@@ -11,7 +11,9 @@ import {
   flagRowClass,
   flagValueClass,
   isAlarmFlag,
+  isCriticalFlag,
 } from "./result-status";
+import { CriticalUrgencyMark } from "./critical-urgency";
 import { ScrollContainer } from "./ui/scroll-container";
 import { SheetCloseButton } from "./ui/sheet";
 
@@ -53,6 +55,18 @@ export function ReleaseQueueDetailPanel({
   const collectorTitle = group.collectedBy?.jobTitle?.trim() || null;
   const releaser = actorLabel(group.releasedBy ?? null);
   const isPending = group.queuePhase === "pending_authorization";
+  const critical =
+    group.hasCritical || isCriticalFlag(group.worstFlag);
+  const alarm = group.hasAlarm || isAlarmFlag(group.worstFlag);
+
+  function resultCtx(r: ReleaseQueueGroup["results"][number]) {
+    return {
+      value: r.value,
+      orderedTestCode: r.orderedTestCode,
+      resultComponentCode: r.resultComponentCode,
+      testCode: r.testCode,
+    };
+  }
 
   return (
     <div
@@ -61,14 +75,20 @@ export function ReleaseQueueDetailPanel({
         !embedded &&
           "rounded-xl border border-border shadow-sm",
         !embedded &&
-          group.worstFlag &&
-          isAlarmFlag(group.worstFlag) &&
+          alarm &&
           "border-l-[3px] border-l-lab-alarm",
+        critical && !embedded && "relative",
         embedded && "h-full flex-1",
         className,
       )}
     >
-      <div className="flex shrink-0 items-start justify-between gap-2 border-b border-border/60 p-4">
+      <div className="relative flex shrink-0 items-start justify-between gap-2 border-b border-border/60 p-4">
+        {critical ? (
+          <span
+            className="pointer-events-none absolute inset-0 animate-alarm-ring bg-lab-danger/20"
+            aria-hidden
+          />
+        ) : null}
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
             <h3 className="font-display text-lg font-semibold tracking-tight">
@@ -92,17 +112,18 @@ export function ReleaseQueueDetailPanel({
             </p>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-2">
-            {isPending ? (
+          <div className="relative flex flex-wrap items-center gap-2">
+            {!isPending ? (
+              <Badge variant="ok" className="text-[10px]">
+                Released
+              </Badge>
+            ) : null}
+            {group.worstFlag && group.worstFlag !== "normal" ? (
               <>
                 <AlarmSign flag={group.worstFlag} />
                 <FlagChip flag={group.worstFlag} />
               </>
-            ) : (
-              <Badge variant="ok" className="text-[10px]">
-                Released
-              </Badge>
-            )}
+            ) : null}
             <Badge variant="muted" className="text-[10px]">
               {group.testCount} {group.testCount === 1 ? "test" : "tests"}
             </Badge>
@@ -112,6 +133,12 @@ export function ReleaseQueueDetailPanel({
               </Badge>
             ) : null}
           </div>
+          {critical ? (
+            <CriticalUrgencyMark
+              phase={isPending ? "authorize" : "send"}
+              className="relative"
+            />
+          ) : null}
 
           <dl className="space-y-1 text-xs text-muted-foreground">
             {submitter ? (
@@ -196,12 +223,14 @@ export function ReleaseQueueDetailPanel({
 
           {useCards ? (
             <ul className="space-y-2">
-              {group.results.map((r) => (
+              {group.results.map((r) => {
+                const ctx = resultCtx(r);
+                return (
                 <li
                   key={r.id}
                   className="rounded-lg border border-border p-2.5"
                   style={{
-                    boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag)}`,
+                    boxShadow: `inset 3px 0 0 0 ${flagBarColor(r.flag, ctx)}`,
                   }}
                 >
                   <div className="flex items-baseline justify-between gap-2 pl-1">
@@ -215,7 +244,7 @@ export function ReleaseQueueDetailPanel({
                       ) : null}
                     </span>
                     <span className="shrink-0 text-lg font-semibold tabular-nums">
-                      <span className={flagValueClass(r.flag)}>{r.value}</span>
+                      <span className={flagValueClass(r.flag, ctx)}>{r.value}</span>
                       {r.units ? (
                         <span className="ml-1 text-sm font-medium text-muted-foreground">
                           {r.units}
@@ -224,8 +253,8 @@ export function ReleaseQueueDetailPanel({
                     </span>
                   </div>
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5 pl-1">
-                    <AlarmSign flag={r.flag} />
-                    <FlagChip flag={r.flag} />
+                    <AlarmSign flag={r.flag} ctx={ctx} />
+                    <FlagChip flag={r.flag} {...ctx} />
                   </div>
                   <p className="mt-1.5 pl-1 text-sm leading-snug text-muted-foreground">
                     {analyzerLabel(r.analyzerId)}
@@ -243,7 +272,8 @@ export function ReleaseQueueDetailPanel({
                     </p>
                   ) : null}
                 </li>
-              ))}
+                );
+              })}
             </ul>
           ) : (
             <div className="overflow-x-auto">
@@ -258,12 +288,14 @@ export function ReleaseQueueDetailPanel({
                   </tr>
                 </thead>
                 <tbody>
-                  {group.results.map((r) => (
+                  {group.results.map((r) => {
+                    const ctx = resultCtx(r);
+                    return (
                     <tr
                       key={r.id}
                       className={cn(
                         "border-t border-border/60",
-                        flagRowClass(r.flag),
+                        flagRowClass(r.flag, ctx),
                       )}
                     >
                       <td className="px-2 py-2 whitespace-nowrap text-xs tabular-nums">
@@ -282,7 +314,7 @@ export function ReleaseQueueDetailPanel({
                         <span
                           className={cn(
                             "text-base font-semibold tabular-nums",
-                            flagValueClass(r.flag),
+                            flagValueClass(r.flag, ctx),
                           )}
                         >
                           {r.value}
@@ -294,7 +326,7 @@ export function ReleaseQueueDetailPanel({
                         ) : null}
                       </td>
                       <td className="px-2 py-2">
-                        <FlagChip flag={r.flag} />
+                        <FlagChip flag={r.flag} {...ctx} />
                       </td>
                       <td className="px-2 py-2 text-xs text-muted-foreground">
                         <p>{analyzerLabel(r.analyzerId)}</p>
@@ -308,7 +340,8 @@ export function ReleaseQueueDetailPanel({
                         ) : null}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

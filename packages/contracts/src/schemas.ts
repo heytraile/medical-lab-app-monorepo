@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   emailField,
+  optionalEmailField,
   optionalPersonNameField,
   passwordField,
   personNameField,
@@ -302,6 +303,8 @@ export const RegisterSpecimensBatchRequestSchema = z.object({
   labelRouting: LabRoutingSettingsSchema.optional(),
   /** Staff confirmed a similar recent accession for this patient. */
   acknowledgeSimilarAccession: z.boolean().optional(),
+  referringPhysician: z.string().max(200).optional(),
+  referringPhysicianEmail: optionalEmailField.optional(),
 });
 export type RegisterSpecimensBatchRequest = z.infer<
   typeof RegisterSpecimensBatchRequestSchema
@@ -562,6 +565,7 @@ export const RequisitionCreateSchema = z.object({
     })
     .optional(),
   referringPhysician: z.string().max(200).optional(),
+  referringPhysicianEmail: optionalEmailField.optional(),
   clinicalNotes: z.string().max(500).optional(),
   specimenInfo: SpecimenInfoSchema.optional(),
   selections: z.array(OrderSelectionSchema).min(1),
@@ -580,6 +584,7 @@ export const LabRequisitionSchema = z.object({
   patientId: z.string().nullable().optional(),
   patientSnapshot: z.record(z.unknown()).nullable().optional(),
   referringPhysician: z.string().nullable().optional(),
+  referringPhysicianEmail: z.string().nullable().optional(),
   clinicalNotes: z.string().nullable().optional(),
   specimenInfo: SpecimenInfoSchema.optional(),
   orderedSelections: z.array(OrderSelectionSchema),

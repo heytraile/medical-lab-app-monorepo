@@ -2,13 +2,17 @@ import {
   ActorSnapshotSchema,
   CollectorSnapshotSchema,
   MissingExpectedResultSchema,
+  resolveDisplayFlag,
   type ActorSnapshot,
   type CollectorSnapshot,
   type ReleaseQueueGroup,
   type ReleaseQueuePatient,
   type ReleaseQueuePhase,
 } from "@drax-lis/contracts";
-import { resolveDisplayFlag } from "@drax-lis/contracts";
+import {
+  getClinicalLimits,
+  resolveClinicalDisplayFlag,
+} from "@drax-lis/catalog";
 
 export function parseActorSnapshot(raw: unknown): ActorSnapshot | null {
   const parsed = ActorSnapshotSchema.safeParse(raw);
@@ -49,6 +53,65 @@ export function worstFlag(flags: string[]): string {
   return worst;
 }
 
+function isAlarmFlag(flag: string): boolean {
+  return (
+    flag === "critical_high" || flag === "critical_low" || flag === "high"
+  );
+}
+
+function isCriticalFlag(flag: string): boolean {
+  return flag === "critical_high" || flag === "critical_low";
+}
+
+function limitsContextFromRow(row: {
+  ordered_test_code?: string | null;
+  result_component_code?: string | null;
+  test_code?: string | null;
+}): {
+  orderedTestCode?: string;
+  resultComponentCode?: string;
+} {
+  const ordered =
+    row.ordered_test_code?.trim() ||
+    row.test_code?.split(":")[0]?.trim() ||
+    undefined;
+  const component =
+    row.result_component_code?.trim() ||
+    (row.test_code?.includes(":")
+      ? row.test_code.split(":")[1]?.trim()
+      : undefined);
+  return { orderedTestCode: ordered, resultComponentCode: component };
+}
+
+export function resolveQueueDisplayFlag(row: {
+  flag?: string | null;
+  value?: string | null;
+  reference_low?: number | null;
+  reference_high?: number | null;
+  ordered_test_code?: string | null;
+  result_component_code?: string | null;
+  test_code?: string | null;
+}): string {
+  const { orderedTestCode, resultComponentCode } = limitsContextFromRow(row);
+  if (
+    orderedTestCode &&
+    getClinicalLimits(orderedTestCode, resultComponentCode)
+  ) {
+    return resolveClinicalDisplayFlag(
+      row.flag,
+      row.value ?? undefined,
+      orderedTestCode,
+      resultComponentCode,
+    );
+  }
+  return resolveDisplayFlag(
+    row.flag,
+    row.value ?? undefined,
+    row.reference_low,
+    row.reference_high,
+  );
+}
+
 type ResultRow = {
   id: string;
   accession_number: string;
@@ -59,6 +122,8 @@ type ResultRow = {
   value: string;
   units?: string | null;
   flag: string;
+  ordered_test_code?: string | null;
+  result_component_code?: string | null;
   reference_low?: number | null;
   reference_high?: number | null;
   observed_at: string;
@@ -174,15 +239,11 @@ export function assembleReleaseQueueGroups(
     );
     const first = sorted[0]!;
     const resolvedResults = sorted.map((r) => {
-      const displayFlag = resolveDisplayFlag(
-        String(r.flag ?? "unknown"),
-        String(r.value ?? ""),
-        r.reference_low ?? null,
-        r.reference_high ?? null,
-      );
+      const displayFlag = resolveQueueDisplayFlag(r);
       return { row: r, displayFlag };
     });
     const flags = resolvedResults.map((entry) => entry.displayFlag);
+    const worst = worstFlag(flags);
     const releasedRow = sorted.find((r) => r.released_at) ?? first;
     const missingParsed = Array.isArray(specimen?.submit_missing_expected)
       ? specimen.submit_missing_expected
@@ -227,6 +288,8 @@ export function assembleReleaseQueueGroups(
         value: String(r.value),
         units: (r.units as string | null) ?? null,
         flag: displayFlag,
+        orderedTestCode: r.ordered_test_code ?? null,
+        resultComponentCode: r.result_component_code ?? null,
         observedAt: String(r.observed_at),
         analyzerId: String(r.analyzer_id ?? "unknown"),
         manualEnteredBy: parseActorSnapshot(
@@ -245,7 +308,9 @@ export function assembleReleaseQueueGroups(
       missingExpectedResults: missingParsed,
       submittedIncomplete: missingParsed.length > 0,
       testCount: sorted.length,
-      worstFlag: worstFlag(flags),
+      worstFlag: worst,
+      hasAlarm: flags.some((flag) => isAlarmFlag(flag)),
+      hasCritical: flags.some((flag) => isCriticalFlag(flag)),
     });
   }
 

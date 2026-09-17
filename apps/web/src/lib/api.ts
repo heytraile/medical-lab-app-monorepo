@@ -353,6 +353,8 @@ export type SpecimenRow = {
   registeredByName?: string | null;
   patientDisplayName?: string;
   patientMrn?: string | null;
+  referringPhysician?: string | null;
+  referringPhysicianEmail?: string | null;
 };
 
 export type LabelPreviewFields = {
@@ -894,6 +896,36 @@ export const api = {
       `/requisitions?accession=${encodeURIComponent(accession)}`,
       { baseUrl: CLOUD_API_URL, auth: true },
     ),
+  async referringPhysicianForAccession(accession: string): Promise<{
+    name: string | null;
+    email: string | null;
+  }> {
+    const trimmed = accession.trim();
+    if (!trimmed) return { name: null, email: null };
+    try {
+      const req = await request<LabRequisition | null>(
+        `/requisitions?accession=${encodeURIComponent(trimmed)}`,
+        { baseUrl: CLOUD_API_URL, auth: true },
+      );
+      const email = req?.referringPhysicianEmail?.trim() || null;
+      const name = req?.referringPhysician?.trim() || null;
+      if (email || name) return { name, email };
+    } catch {
+      /* fall through to edge */
+    }
+    try {
+      const row = await request<SpecimenRow | null>(
+        `/specimens?accession=${encodeURIComponent(trimmed)}`,
+        { auth: false },
+      );
+      return {
+        name: row?.referringPhysician?.trim() || null,
+        email: row?.referringPhysicianEmail?.trim() || null,
+      };
+    } catch {
+      return { name: null, email: null };
+    }
+  },
   getRequisition: (id: string) =>
     request<LabRequisition>(`/requisitions/${encodeURIComponent(id)}`, {
       baseUrl: CLOUD_API_URL,

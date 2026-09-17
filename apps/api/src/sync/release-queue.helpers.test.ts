@@ -300,6 +300,48 @@ describe("assembleReleaseQueueGroups", () => {
     assert.equal(groups[0]?.results[1]?.flag, "high");
     assert.equal(groups[0]?.worstFlag, "high");
   });
+
+  it("upgrades stored low to critical_low using clinical panic limits", () => {
+    const groups = assembleReleaseQueueGroups(
+      [
+        {
+          id: "na-0",
+          accession_number: "ACC-1",
+          analyzer_id: "diamond_prolyte",
+          test_code: "NA",
+          ordered_test_code: "ELECTROLYTES",
+          result_component_code: "NA",
+          value: "0",
+          flag: "low",
+          observed_at: "2026-01-01T11:00:00.000Z",
+          submitted_at: "2026-01-01T12:00:00.000Z",
+        },
+        {
+          id: "k-normal",
+          accession_number: "ACC-1",
+          analyzer_id: "diamond_prolyte",
+          test_code: "K",
+          ordered_test_code: "ELECTROLYTES",
+          result_component_code: "K",
+          value: "4.1",
+          flag: "normal",
+          observed_at: "2026-01-01T11:00:00.000Z",
+          submitted_at: "2026-01-01T12:00:00.000Z",
+        },
+      ],
+      specimenByAccession,
+      "pending_authorization",
+    );
+
+    assert.equal(groups[0]?.results.find((r) => r.id === "na-0")?.flag, "critical_low");
+    assert.equal(groups[0]?.worstFlag, "critical_low");
+    assert.equal(groups[0]?.hasCritical, true);
+    assert.equal(groups[0]?.hasAlarm, true);
+    assert.equal(
+      groups[0]?.results.find((r) => r.id === "na-0")?.orderedTestCode,
+      "ELECTROLYTES",
+    );
+  });
 });
 
 describe("filterReleasedResultsVerifiedOnEdge", () => {

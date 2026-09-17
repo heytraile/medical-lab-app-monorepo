@@ -46,6 +46,7 @@ type Row = {
   patient_id: string | null;
   patient_snapshot: Record<string, unknown> | null;
   referring_physician: string | null;
+  referring_physician_email: string | null;
   clinical_notes: string | null;
   specimen_info: Record<string, unknown> | null;
   ordered_selections: OrderSelection[];
@@ -103,6 +104,7 @@ export class LabRequisitionsService {
       patient_id: body.patientId && isUuid(body.patientId) ? body.patientId : null,
       patient_snapshot: body.patientSnapshot ?? null,
       referring_physician: body.referringPhysician ?? null,
+      referring_physician_email: body.referringPhysicianEmail ?? null,
       clinical_notes: body.clinicalNotes ?? null,
       specimen_info: body.specimenInfo ?? {},
       ordered_selections: selections,
@@ -126,6 +128,7 @@ export class LabRequisitionsService {
           patient_id: row.patient_id,
           patient_snapshot: row.patient_snapshot,
           referring_physician: row.referring_physician,
+          referring_physician_email: row.referring_physician_email,
           clinical_notes: row.clinical_notes,
           specimen_info: row.specimen_info,
           ordered_selections: row.ordered_selections,
@@ -259,6 +262,7 @@ function toDto(row: Row, fastingRequired?: boolean): LabRequisition {
     patientId: row.patient_id,
     patientSnapshot: row.patient_snapshot,
     referringPhysician: row.referring_physician,
+    referringPhysicianEmail: row.referring_physician_email ?? null,
     clinicalNotes: row.clinical_notes,
     specimenInfo: (row.specimen_info as SpecimenInfo | null) ?? undefined,
     orderedSelections: row.ordered_selections ?? [],

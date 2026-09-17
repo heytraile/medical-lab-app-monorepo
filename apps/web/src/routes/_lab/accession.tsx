@@ -39,6 +39,11 @@ import {
   EMPTY_SPECIMEN_INFO,
   SpecimenInformationSection,
 } from "../../components/requisition/specimen-information-section";
+import {
+  EMPTY_REFERRING_PHYSICIAN,
+  ReferringPhysicianSection,
+  type ReferringPhysicianInfo,
+} from "../../components/requisition/referring-physician-section";
 import { selectionsToOrderedTests } from "../../components/requisition/test-order-form";
 import { ConfirmAccessionActionDialog } from "../../components/confirm-accession-action-dialog";
 import { CatalogOfflineBanner } from "../../components/catalog-offline-banner";
@@ -109,6 +114,8 @@ function AccessionPage() {
   const [copied, setCopied] = useState<"barcode" | null>(null);
   const [specimenInfo, setSpecimenInfo] =
     useState<SpecimenInfo>(EMPTY_SPECIMEN_INFO);
+  const [referringPhysician, setReferringPhysician] =
+    useState<ReferringPhysicianInfo>(EMPTY_REFERRING_PHYSICIAN);
   const [discardOpen, setDiscardOpen] = useState(false);
   const [discardIntent, setDiscardIntent] = useState<"nav" | "start-over">(
     "nav",
@@ -257,6 +264,8 @@ function AccessionPage() {
         collectedByStaffId: specimenInfo.collectedByStaffId,
         collectedBy: specimenInfo.collectedBy,
         collectedByJobTitle: specimenInfo.collectedByJobTitle,
+        referringPhysician: referringPhysician.name.trim() || undefined,
+        referringPhysicianEmail: referringPhysician.email.trim() || undefined,
         selections: deferredSelections,
         specimens: batchSpecimens,
         labelRouting,
@@ -278,6 +287,9 @@ function AccessionPage() {
             },
             selections: deferredSelections,
             specimenInfo,
+            referringPhysician: referringPhysician.name.trim() || undefined,
+            referringPhysicianEmail:
+              referringPhysician.email.trim() || undefined,
           });
           await api.linkRequisition(req.id, {
             accessionNumber: data.accessionNumber,
@@ -392,6 +404,7 @@ function AccessionPage() {
     setSelected(null);
     setSelections(EMPTY_SELECTIONS);
     setSpecimenInfo(EMPTY_SPECIMEN_INFO);
+    setReferringPhysician(EMPTY_REFERRING_PHYSICIAN);
     setConfirmPayload(null);
     setPendingConfirmation(null);
     mutation.reset();
@@ -512,6 +525,8 @@ function AccessionPage() {
       fasting={fasting}
       specimenInfo={specimenInfo}
       onSpecimenInfoChange={setSpecimenInfo}
+      referringPhysician={referringPhysician}
+      onReferringPhysicianChange={setReferringPhysician}
       currentUserId={auth.session?.user?.id ?? auth.profile?.id}
       printLabel={printLabel}
       onPrintLabelChange={setPrintLabel}
@@ -760,6 +775,11 @@ function AccessionPage() {
                 expandedTests={expandedTests}
                 accessionRouting={catalogQ.data?.accessionRouting}
                 currentUserId={auth.session?.user?.id ?? auth.profile?.id}
+              />
+
+              <ReferringPhysicianSection
+                value={referringPhysician}
+                onChange={setReferringPhysician}
               />
 
               <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card px-4 py-3 shadow-sm">

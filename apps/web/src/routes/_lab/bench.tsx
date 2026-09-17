@@ -22,7 +22,6 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ArrowUpDown, X } from "lucide-react";
-import { resolveDisplayFlag } from "@drax-lis/contracts";
 import { api, type BenchResult } from "../../lib/api";
 import { analyzerLabel } from "../../lib/analyzers";
 import { useDebouncedValue } from "../../lib/use-debounced-value";
@@ -57,9 +56,11 @@ import {
   AlarmSign,
   FlagChip,
   WorkflowStatusChip,
+  benchResultFlagContext,
   flagBarColor,
   flagRowTint,
   flagValueClass,
+  resolvedResultFlag,
 } from "../../components/result-status";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -287,15 +288,7 @@ function BenchPage() {
     } else if (tab === "released") {
       rows = rows.filter((r) => r.status === "released");
     } else if (tab === "flagged") {
-      rows = rows.filter(
-        (r) =>
-          resolveDisplayFlag(
-            r.flag,
-            r.value,
-            r.referenceLow,
-            r.referenceHigh,
-          ) !== "normal",
-      );
+      rows = rows.filter((r) => resolvedResultFlag(r) !== "normal");
     }
     return rows;
   }, [data, analyzer, deferredQ, specimenHayByAccession, tab]);
@@ -617,11 +610,7 @@ function BenchPage() {
         header: ({ column }) => <SortHeader label="Value" column={column} />,
         cell: (info) => {
           const row = info.row.original;
-          const ctx = {
-            value: row.value,
-            referenceLow: row.referenceLow,
-            referenceHigh: row.referenceHigh,
-          };
+          const ctx = benchResultFlagContext(row);
           return (
             <span
               className={cn(
@@ -653,23 +642,11 @@ function BenchPage() {
           <span className="inline-flex items-center gap-1.5">
             <AlarmSign
               flag={info.getValue()}
-              ctx={{
-                value: row.value,
-                referenceLow: row.referenceLow,
-                referenceHigh: row.referenceHigh,
-                orderedTestCode: row.orderedTestCode,
-                resultComponentCode: row.resultComponentCode,
-                testCode: row.testCode,
-              }}
+              ctx={benchResultFlagContext(row)}
             />
             <FlagChip
               flag={info.getValue()}
-              value={row.value}
-              referenceLow={row.referenceLow}
-              referenceHigh={row.referenceHigh}
-              orderedTestCode={row.orderedTestCode}
-              resultComponentCode={row.resultComponentCode}
-              testCode={row.testCode}
+              {...benchResultFlagContext(row)}
             />
           </span>
           );
@@ -803,7 +780,7 @@ function BenchPage() {
                       onJumpToFlag={() => {
                         row.toggleExpanded(true);
                         const target = row.subRows.find(
-                          (sr) => sr.original.flag === summary.worstFlag,
+                          (sr) => sr.original.id === summary.worstResultId,
                         );
                         setFocusedResultId(target?.original.id ?? null);
                       }}
@@ -836,7 +813,7 @@ function BenchPage() {
                 striped
                   ? "bg-sky-100 dark:bg-sky-900/40"
                   : "bg-sky-50 dark:bg-sky-950/60",
-                flagRowTint(row.original.flag),
+                flagRowTint(row.original.flag, benchResultFlagContext(row.original)),
                 q &&
                   row.original.accessionNumber
                     .toLowerCase()
@@ -869,7 +846,10 @@ function BenchPage() {
                           isLastCell && "border-r-4 border-r-muted",
                         )}
                         style={cellShadow({
-                          barColor: flagBarColor(row.original.flag),
+                          barColor: flagBarColor(
+                            row.original.flag,
+                            benchResultFlagContext(row.original),
+                          ),
                           focused: isFocused,
                           first: ci === 0,
                           last: isLastCell,
@@ -911,7 +891,7 @@ function BenchPage() {
               setExpanded({ [row.id]: true });
             }
             const target = row.subRows.find(
-              (sr) => sr.original.flag === summary.worstFlag,
+              (sr) => sr.original.id === summary.worstResultId,
             );
             setFocusedResultId(target?.original.id ?? null);
           }}

@@ -10,7 +10,7 @@
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "echo \"lint ok\"",
-    "test": "node --experimental-strip-types --test src/lib/auth-storage.test.ts src/lib/unidentified-results.test.ts src/lib/manual-results.test.ts src/lib/manual-entry-label.test.ts src/lib/result-workflow.test.ts src/lib/accession-sessions.test.ts src/lib/ordered-tests.test.ts src/lib/bench-work-queue.test.ts"
+    "test": "node --experimental-strip-types --test src/lib/auth-storage.test.ts src/lib/unidentified-results.test.ts src/lib/manual-results.test.ts src/lib/manual-entry-label.test.ts src/lib/result-workflow.test.ts src/lib/accession-sessions.test.ts src/lib/ordered-tests.test.ts src/lib/bench-work-queue.test.ts src/lib/bench-result-flag.test.ts"
   },
   "dependencies": {
     "@drax-lis/catalog": "workspace:*",

@@ -13,6 +13,7 @@ import {
 import { NotifyAuthorizerButton } from "./notify-authorizer-button";
 import { SubmitForReleaseButton } from "./submit-for-release-button";
 import { RecallFromReleaseButton } from "./recall-from-release-button";
+import { CriticalPulse, CriticalUrgencyMark } from "./critical-urgency";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import type { BenchGroupSummary } from "./bench-group-row";
@@ -20,6 +21,7 @@ import {
   AlarmSign,
   FlagChip,
   WorkflowStatusChip,
+  benchResultFlagContext,
   flagBarColor,
   flagLabel,
   flagValueClass,
@@ -124,7 +126,9 @@ export function BenchMobileList({
                 }
               >
                 <div className="flex min-w-0 items-center gap-2">
-                  <AlarmSign flag={summary.worstFlag} />
+                  <CriticalPulse active={summary.hasCritical}>
+                    <AlarmSign flag={summary.worstFlag} />
+                  </CriticalPulse>
                   {summary.patient ? (
                     <span
                       className={cn(
@@ -172,18 +176,25 @@ export function BenchMobileList({
                     </Badge>
                   )}
                   {summary.worstFlag && summary.worstFlag !== "normal" && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        stopCardSelect(e);
-                        onJumpToFlag(row, summary);
-                      }}
-                      aria-label={`Show first ${flagLabel(summary.worstFlag)} result for ${name}`}
-                      className="rounded-md"
-                    >
-                      <FlagChip flag={summary.worstFlag} />
-                    </button>
+                    <CriticalPulse active={summary.hasCritical}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          stopCardSelect(e);
+                          onJumpToFlag(row, summary);
+                        }}
+                        aria-label={`Show first ${flagLabel(summary.worstFlag)} result for ${name}`}
+                        className="relative rounded-md"
+                      >
+                        <FlagChip flag={summary.worstFlag} />
+                      </button>
+                    </CriticalPulse>
                   )}
+                  {summary.hasCritical ? (
+                    <CriticalUrgencyMark
+                      phase={summary.allReleased ? "send" : "authorize"}
+                    />
+                  ) : null}
                   {summary.allReleased ? (
                     <WorkflowStatusChip status="released" />
                   ) : summary.submittedCount > 0 && summary.pendingCount === 0 ? (
@@ -199,7 +210,11 @@ export function BenchMobileList({
                 >
                   {summary.accessionCount === 1 ? (
                     <>
-                      <SubmitForReleaseButton summary={summary} fullWidth />
+                      <SubmitForReleaseButton
+                        summary={summary}
+                        fullWidth
+                        omitUrgencyCopy
+                      />
                       <RecallFromReleaseButton summary={summary} fullWidth />
                     </>
                   ) : (
@@ -268,11 +283,7 @@ function ResultCard({
   focused: boolean;
   focusedRef: React.RefObject<HTMLElement | null>;
 }) {
-  const ctx = {
-    value: result.value,
-    referenceLow: result.referenceLow,
-    referenceHigh: result.referenceHigh,
-  };
+  const ctx = benchResultFlagContext(result);
 
   return (
     <article
@@ -315,12 +326,7 @@ function ResultCard({
           </span>
         ) : null}
         <AlarmSign flag={result.flag} ctx={ctx} />
-        <FlagChip
-          flag={result.flag}
-          value={result.value}
-          referenceLow={result.referenceLow}
-          referenceHigh={result.referenceHigh}
-        />
+        <FlagChip flag={result.flag} {...ctx} />
         <WorkflowStatusChip status={result.status} />
       </div>
 

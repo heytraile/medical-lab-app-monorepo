@@ -4,6 +4,7 @@ import { AlertTriangle, Check, Loader2, RefreshCw, Send } from "lucide-react";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Button } from "./ui/button";
+import { CriticalPulse, CriticalUrgencyMark } from "./critical-urgency";
 import {
   Dialog,
   DialogContent,
@@ -18,10 +19,13 @@ export function SubmitForReleaseButton({
   summary,
   className,
   fullWidth,
+  omitUrgencyCopy = false,
 }: {
   summary: BenchGroupSummary;
   className?: string;
   fullWidth?: boolean;
+  /** Set when a parent already renders CriticalUrgencyMark (e.g. mobile list). */
+  omitUrgencyCopy?: boolean;
 }) {
   const auth = useAuth();
   const queryClient = useQueryClient();
@@ -73,6 +77,11 @@ export function SubmitForReleaseButton({
     }
     submit.mutate(false);
   }
+
+  const isEmergency = summary.hasCritical;
+  const submitLabel = isEmergency
+    ? "Submit for emergency release"
+    : "Submit for release";
 
   const warningDialog = (
     <Dialog open={warningOpen} onOpenChange={setWarningOpen}>
@@ -128,9 +137,18 @@ export function SubmitForReleaseButton({
             <Button
               type="button"
               disabled={submit.isPending}
+              className={
+                isEmergency
+                  ? "bg-lab-alarm hover:bg-lab-alarm/90 text-white"
+                  : undefined
+              }
               onClick={() => submit.mutate(true)}
             >
-              {submit.isPending ? "Submitting…" : "Submit anyway"}
+              {submit.isPending
+                ? "Submitting…"
+                : isEmergency
+                  ? "Emergency submit anyway"
+                  : "Submit anyway"}
             </Button>
           </div>
         </div>
@@ -156,16 +174,31 @@ export function SubmitForReleaseButton({
 
   if (summary.allReleased) {
     return (
-      <span
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-md border border-lab-ok/40 bg-lab-ok/10 px-2 py-1 text-xs font-medium text-lab-ok",
-          fullWidth && "h-11 w-full justify-center text-sm",
-          className,
-        )}
-      >
-        <Check className="size-3.5" aria-hidden />
-        Released
-      </span>
+      <div className={cn("flex flex-col gap-1", fullWidth && "w-full")}>
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md border border-lab-ok/40 bg-lab-ok/10 px-2 py-1 text-xs font-medium text-lab-ok",
+            fullWidth && "h-11 w-full justify-center text-sm",
+            className,
+          )}
+        >
+          <Check className="size-3.5" aria-hidden />
+          Released
+        </span>
+        {isEmergency ? (
+          <CriticalPulse active className={cn(fullWidth && "w-full")}>
+            <span
+              className={cn(
+                "relative inline-flex items-center gap-1.5 rounded-md border border-lab-alarm bg-lab-alarm px-2 py-1 text-xs font-semibold text-white",
+                fullWidth && "h-11 w-full justify-center text-sm",
+              )}
+            >
+              <AlertTriangle className="size-3.5" aria-hidden />
+              Send to doctor immediately
+            </span>
+          </CriticalPulse>
+        ) : null}
+      </div>
     );
   }
 
@@ -182,21 +215,27 @@ export function SubmitForReleaseButton({
           <Check className="size-3.5" aria-hidden />
           Submitted on bench — waiting for sign-off queue
         </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn(fullWidth && "h-11 w-full", className)}
-          disabled={submit.isPending}
-          onClick={() => submit.mutate(summary.missingExpectedCount > 0)}
-        >
-          {submit.isPending ? (
-            <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
-          ) : (
-            <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
-          )}
-          Send to sign-off queue
-        </Button>
+        {isEmergency && !omitUrgencyCopy ? (
+          <CriticalUrgencyMark phase="authorize" />
+        ) : null}
+        {syncPending ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={cn(fullWidth && "h-11 w-full", className)}
+            disabled={submit.isPending}
+            aria-label="Send to sign-off queue"
+            onClick={() => submit.mutate(summary.missingExpectedCount > 0)}
+          >
+            {submit.isPending ? (
+              <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
+            ) : (
+              <RefreshCw className="mr-1.5 size-3.5" aria-hidden />
+            )}
+            Send to sign-off queue
+          </Button>
+        ) : null}
         {error ? (
           <p className="text-xs text-lab-danger">{error}</p>
         ) : null}
@@ -216,21 +255,46 @@ export function SubmitForReleaseButton({
 
   return (
     <div className={cn("flex flex-col gap-1", fullWidth && "w-full")}>
-      <Button
-        type="button"
-        variant="default"
-        size="sm"
-        className={cn(fullWidth && "h-11 w-full", className)}
-        disabled={submit.isPending}
-        onClick={requestSubmit}
-      >
-        {submit.isPending ? (
-          <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
-        ) : (
-          <Send className="mr-1.5 size-3.5" aria-hidden />
+      <div
+        className={cn(
+          "relative inline-flex",
+          fullWidth && "w-full",
         )}
-        Submit for release
-      </Button>
+      >
+        {isEmergency ? (
+          <span
+            className="pointer-events-none absolute inset-0 animate-alarm-ring rounded-md bg-lab-danger/45"
+            aria-hidden
+          />
+        ) : null}
+        <Button
+          type="button"
+          variant="default"
+          size="sm"
+          className={cn(
+            fullWidth && "h-11 w-full",
+            isEmergency &&
+              "relative border-lab-alarm bg-lab-alarm text-white hover:bg-lab-alarm/90",
+            className,
+          )}
+          disabled={submit.isPending}
+          aria-label={
+            isEmergency
+              ? "Submit critical results for emergency release"
+              : "Submit for release"
+          }
+          onClick={requestSubmit}
+        >
+          {submit.isPending ? (
+            <Loader2 className="mr-1.5 size-3.5 animate-spin" aria-hidden />
+          ) : isEmergency ? (
+            <AlertTriangle className="mr-1.5 size-3.5" aria-hidden />
+          ) : (
+            <Send className="mr-1.5 size-3.5" aria-hidden />
+          )}
+          {submitLabel}
+        </Button>
+      </div>
       {error ? (
         <p className="text-xs text-lab-danger">{error}</p>
       ) : null}

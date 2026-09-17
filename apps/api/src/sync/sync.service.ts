@@ -539,6 +539,14 @@ export class SyncService implements OnModuleInit {
         payload.labId ?? "00000000-0000-4000-8000-000000000001",
       ),
       patient_snapshot: payload.patient ?? { patientName: payload.patientName },
+      referring_physician:
+        typeof payload.referringPhysician === "string"
+          ? payload.referringPhysician
+          : null,
+      referring_physician_email:
+        typeof payload.referringPhysicianEmail === "string"
+          ? payload.referringPhysicianEmail
+          : null,
       ordered_selections: selections,
       ordered_tests: orderedTests,
       status: "registered",
@@ -1732,7 +1740,7 @@ export class SyncService implements OnModuleInit {
       const { data: results, error: resErr } = await client
         .from("results")
         .select(
-          "id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, manual_entered_by_snapshot, manual_entered_at, manual_last_edited_by_snapshot, manual_last_edited_at",
+          "id, accession_number, barcode, analyzer_id, test_code, test_name, ordered_test_code, result_component_code, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, manual_entered_by_snapshot, manual_entered_at, manual_last_edited_by_snapshot, manual_last_edited_at",
         )
         .eq("status", "pending_authorization")
         .order("submitted_at", { ascending: false })
@@ -1766,6 +1774,12 @@ export class SyncService implements OnModuleInit {
         analyzer_id: String(r.analyzer_id ?? r.analyzerId ?? "unknown"),
         test_code: String(r.test_code ?? r.testCode ?? ""),
         test_name: (r.test_name ?? r.testName) as string | null | undefined,
+        ordered_test_code: (r.ordered_test_code ??
+          r.orderedTestCode ??
+          null) as string | null | undefined,
+        result_component_code: (r.result_component_code ??
+          r.resultComponentCode ??
+          null) as string | null | undefined,
         value: String(r.value ?? ""),
         units: (r.units as string | null | undefined) ?? null,
         reference_low: (r.reference_low ?? r.referenceLow ?? null) as
@@ -1809,7 +1823,7 @@ export class SyncService implements OnModuleInit {
       const { data: rawResults, error: resErr } = await client
         .from("results")
         .select(
-          "id, edge_result_id, accession_number, barcode, analyzer_id, test_code, test_name, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, released_at, released_by_snapshot, manual_entered_by_snapshot, manual_entered_at, manual_last_edited_by_snapshot, manual_last_edited_at",
+          "id, edge_result_id, accession_number, barcode, analyzer_id, test_code, test_name, ordered_test_code, result_component_code, value, units, reference_low, reference_high, flag, observed_at, submitted_at, submitted_by_snapshot, released_at, released_by_snapshot, manual_entered_by_snapshot, manual_entered_at, manual_last_edited_by_snapshot, manual_last_edited_at",
         )
         .eq("status", "released")
         .order("released_at", { ascending: false })
@@ -1884,6 +1898,12 @@ export class SyncService implements OnModuleInit {
         analyzer_id: String(r.analyzer_id ?? r.analyzerId ?? "unknown"),
         test_code: String(r.test_code ?? r.testCode ?? ""),
         test_name: (r.test_name ?? r.testName) as string | null | undefined,
+        ordered_test_code: (r.ordered_test_code ??
+          r.orderedTestCode ??
+          null) as string | null | undefined,
+        result_component_code: (r.result_component_code ??
+          r.resultComponentCode ??
+          null) as string | null | undefined,
         value: String(r.value ?? ""),
         units: (r.units as string | null | undefined) ?? null,
         reference_low: (r.reference_low ?? r.referenceLow ?? null) as
