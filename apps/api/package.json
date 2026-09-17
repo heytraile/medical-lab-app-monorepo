@@ -17,7 +17,7 @@
     "@drax-lis/catalog": "workspace:*",
     "@drax-lis/contracts": "workspace:*",
     "@nestjs/common": "^11.1.2",
-    "@nestjs/core": "^11.1.2",
+    "@nestjs/core": "^12.0.1",
     "@nestjs/platform-express": "^11.1.2",
     "@supabase/supabase-js": "^2.49.8",
     "nodemailer": "^6.10.1",
