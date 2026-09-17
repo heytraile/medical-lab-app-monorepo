@@ -20,7 +20,7 @@
     "@nestjs/core": "^11.1.2",
     "@nestjs/platform-express": "^11.1.2",
     "@supabase/supabase-js": "^2.49.8",
-    "nodemailer": "^6.10.1",
+    "nodemailer": "^10.0.9",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "dotenv": "^16.5.0"
